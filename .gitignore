@@ -1,3 +1,7 @@
+*.tsbuildinfo
+.env
+.env.*
+.pnpm-store/
 coverage/
 dist/
 node_modules/
