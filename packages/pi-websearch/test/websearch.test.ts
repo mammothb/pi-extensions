@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebsearchConfig } from "../src/config";
 import { DEFAULT_CONFIG } from "../src/config";
 import type { SearchArgs } from "../src/lib/types";
-import { WebsearchParameters } from "../src/lib/types";
 import { createWebsearchTool } from "../src/websearch";
 
 // Mock the providers module
