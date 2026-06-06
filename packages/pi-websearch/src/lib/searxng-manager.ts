@@ -6,9 +6,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { expandTilde } from "@mammothb/pi-shared";
 
 const __dirname = new URL(".", import.meta.url).pathname;
 
@@ -50,13 +50,6 @@ export function cleanStaleLocks(dir: string): void {
  * Run the searxng management script (up/down).
  * Uses the provided scriptPath, or falls back to the built-in `bin/searxng`.
  */
-export function expandTilde(filepath: string): string {
-  if (filepath.startsWith("~/") || filepath === "~") {
-    return join(homedir(), filepath.slice(1));
-  }
-  return filepath;
-}
-
 export async function runScript(
   command: "up" | "down",
   scriptPath?: string,

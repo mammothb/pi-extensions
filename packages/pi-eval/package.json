@@ -15,6 +15,9 @@
       "./index.ts"
     ]
   },
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*"
+  },
   "devDependencies": {
     "typebox": "^1.2.0"
   },

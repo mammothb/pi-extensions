@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { expandTilde } from "@mammothb/pi-shared";
 
 export interface EvalConfig {
   /**
@@ -50,9 +51,17 @@ export function loadConfig(cwd: string): EvalConfig {
     }
   }
 
-  return {
+  const merged = {
     ...DEFAULT_CONFIG,
     ...global,
     ...project,
+  };
+
+  return {
+    ...merged,
+    pythonPath: merged.pythonPath ? expandTilde(merged.pythonPath) : undefined,
+    nodeModulesPath: merged.nodeModulesPath
+      ? expandTilde(merged.nodeModulesPath)
+      : undefined,
   };
 }

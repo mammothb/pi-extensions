@@ -50,6 +50,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '*'
         version: 0.78.1
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
     devDependencies:
       typebox:
         specifier: ^1.2.0
@@ -69,6 +72,8 @@ importers:
       typebox:
         specifier: '*'
         version: 1.2.0
+
+  packages/pi-shared: {}
 
   packages/pi-toast:
     dependencies:
@@ -118,6 +123,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '*'
         version: 0.78.1
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
       typebox:
         specifier: '*'
         version: 1.2.0

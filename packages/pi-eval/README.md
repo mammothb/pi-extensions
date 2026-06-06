@@ -11,19 +11,33 @@ between calls.
 
 ### Tool parameters
 
-| Parameter          | Type   | Default    | Description |
-| ------------------ | ------ | ---------- | ----------- |
-| `language`         | string | _(required)_ | Programming language: `"javascript"` or `"python"` |
-| `code`             | string | _(required)_ | Code to execute |
-| `nodeModulesPath`  | string | —          | Path to node_modules for `require()` resolution |
-| `pythonPath`       | string | —          | Path to python3 binary (e.g., `.venv/bin/python3`) |
+| Parameter  | Type   | Default     | Description |
+| ---------- | ------ | ----------- | ----------- |
+| `language` | string | _(required)_ | Programming language: `"javascript"` or `"python"` |
+| `code`     | string | _(required)_ | Code to execute |
+
+### Runtime configuration
+
+Python binary and Node.js module paths are configured via JSON files, not per-call parameters:
+
+- **Global**: `~/.pi/agent/pi-eval.json`
+- **Project**: `.pi/pi-eval.json` (overrides global)
+
+```json
+{
+  "pythonPath": ".venv/bin/python3",
+  "nodeModulesPath": "./node_modules"
+}
+```
+
+Relative paths in project configs are resolved relative to the project root.
 
 ### Features
 
 - **JavaScript**: Writes code to a temp file, spawns `node` as a subprocess.
   Console output is captured as labeled `STDOUT:` / `STDERR:` sections.
+  Set `nodeModulesPath` in config to make project packages available via `require()`.
 - **Python**: Spawns `python3` with `-c`, capturing stdout/stderr identically.
-  Supports virtual environments via the `pythonPath` parameter.
-- **Safety**: 30-second timeout, 1 MB output cap, abort-on-Escape support.
-- **Dependency isolation**: Use `nodeModulesPath` to resolve packages from a
-  project's `node_modules/`. Use `pythonPath` to target a venv.
+  By default, searches `PATH` for `python3` (falling back to `/usr/bin/python3`,
+  `/usr/local/bin/python3`). Set `pythonPath` in config to target a venv or custom binary.
+- **Safety**: 30-second timeout, 1 MB output cap, Escape to cancel a running evaluation.

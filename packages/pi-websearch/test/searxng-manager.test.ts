@@ -69,9 +69,9 @@ function createChild(behavior: {
 }
 
 // Now import the module under test
+import { expandTilde } from "@mammothb/pi-shared";
 import {
   cleanStaleLocks,
-  expandTilde,
   isProcessAlive,
   registerInstance,
   runScript,

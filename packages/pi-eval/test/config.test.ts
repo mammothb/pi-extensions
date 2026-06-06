@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { expandTilde } from "@mammothb/pi-shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EvalConfig } from "../src/config";
 import { DEFAULT_CONFIG, loadConfig } from "../src/config";
@@ -131,5 +132,72 @@ describe("loadConfig", () => {
     // Project parse failed, global still loaded
     expect(config.pythonPath).toBe(".venv/bin/python3");
     expect(config.nodeModulesPath).toBeUndefined();
+  });
+
+  it("expands tilde in pythonPath from global config", () => {
+    writeGlobal({ pythonPath: "~/.venv/bin/python3" });
+    const config = loadConfig(projectDir);
+
+    expect(config.pythonPath).toBe(join(homedir(), ".venv/bin/python3"));
+  });
+
+  it("expands tilde in nodeModulesPath from global config", () => {
+    writeGlobal({ nodeModulesPath: "~/packages/node_modules" });
+    const config = loadConfig(projectDir);
+
+    expect(config.nodeModulesPath).toBe(
+      join(homedir(), "packages/node_modules"),
+    );
+  });
+
+  it("expands bare tilde to home directory", () => {
+    writeGlobal({ pythonPath: "~" });
+    const config = loadConfig(projectDir);
+
+    expect(config.pythonPath).toBe(homedir());
+  });
+
+  it("does not expand paths without tilde", () => {
+    writeGlobal({ pythonPath: "/usr/bin/python3" });
+    const config = loadConfig(projectDir);
+
+    expect(config.pythonPath).toBe("/usr/bin/python3");
+  });
+
+  it("does not expand relative paths without tilde", () => {
+    writeGlobal({ nodeModulesPath: "./node_modules" });
+    const config = loadConfig(projectDir);
+
+    expect(config.nodeModulesPath).toBe("./node_modules");
+  });
+
+  it("expands tilde from project config overriding global", () => {
+    writeGlobal({ pythonPath: ".venv/bin/python3" });
+    writeProject({ pythonPath: "~/.local/venv/bin/python3" });
+
+    const config = loadConfig(projectDir);
+    expect(config.pythonPath).toBe(join(homedir(), ".local/venv/bin/python3"));
+  });
+});
+
+describe("expandTilde", () => {
+  it("expands ~/...", () => {
+    expect(expandTilde("~/foo/bar")).toBe(join(homedir(), "foo/bar"));
+  });
+
+  it("expands bare ~", () => {
+    expect(expandTilde("~")).toBe(homedir());
+  });
+
+  it("returns absolute paths unchanged", () => {
+    expect(expandTilde("/usr/bin/python3")).toBe("/usr/bin/python3");
+  });
+
+  it("returns relative paths unchanged", () => {
+    expect(expandTilde(".venv/bin/python3")).toBe(".venv/bin/python3");
+  });
+
+  it("returns empty string unchanged", () => {
+    expect(expandTilde("")).toBe("");
   });
 });

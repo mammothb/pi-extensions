@@ -1,0 +1,10 @@
+{
+  "name": "@mammothb/pi-shared",
+  "version": "0.1.0",
+  "description": "Shared utilities for pi extensions",
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src"
+  ]
+}
