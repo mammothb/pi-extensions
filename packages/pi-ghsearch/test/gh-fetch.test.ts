@@ -140,14 +140,18 @@ describe("gh_fetch tool", () => {
 
     const result = await tool.execute(
       "call-1",
-      { url: "https://github.com/octocat/Hello-World/blob/main/docs/README.md" },
+      {
+        url: "https://github.com/octocat/Hello-World/blob/main/docs/README.md",
+      },
       undefined,
       undefined,
       {} as any,
     );
 
     if (result.content[0]?.type === "text") {
-      expect(result.content[0].text).toContain("--- Decoded file content (docs/README.md) ---");
+      expect(result.content[0].text).toContain(
+        "--- Decoded file content (docs/README.md) ---",
+      );
       expect(result.content[0].text).toContain("# Hello World");
       expect(result.content[0].text).toContain("This is a test.");
       // The JSON metadata should still be present
@@ -248,7 +252,9 @@ describe("gh_fetch tool", () => {
     );
 
     if (result.content[0]?.type === "text") {
-      expect(result.content[0].text).toContain("--- Decoded file content (empty.txt) ---");
+      expect(result.content[0].text).toContain(
+        "--- Decoded file content (empty.txt) ---",
+      );
     }
   });
 

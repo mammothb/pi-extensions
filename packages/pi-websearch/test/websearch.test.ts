@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebsearchConfig } from "../src/config";
 import { DEFAULT_CONFIG } from "../src/config";
 import type { SearchArgs } from "../src/lib/types";
@@ -267,7 +267,10 @@ describe("renderResult", () => {
     const theme = mockTheme();
 
     // Generate content with many lines to trigger collapsing
-    const longContent = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join("\n");
+    const longContent = Array.from(
+      { length: 20 },
+      (_, i) => `Line ${i + 1}`,
+    ).join("\n");
     const payload = {
       content: [{ type: "text" as const, text: longContent }],
       details: { query: "big query" },
@@ -360,5 +363,3 @@ describe("renderResult", () => {
     expect(joined).toContain("world");
   });
 });
-
-

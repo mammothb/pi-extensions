@@ -16,7 +16,8 @@ describe("decodeGitHubContent", () => {
 
   it("strips embedded newlines before decoding", () => {
     // GitHub wraps base64 at 60 chars with \n
-    const wrapped = "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0IGZpbGUgY29udGFpbmlu\nZyBtdWx0aXBsZSBsaW5lcyBvZiB0ZXh0Lg==";
+    const wrapped =
+      "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0IGZpbGUgY29udGFpbmlu\nZyBtdWx0aXBsZSBsaW5lcyBvZiB0ZXh0Lg==";
     const parsed = {
       name: "test.txt",
       path: "test.txt",
@@ -70,7 +71,9 @@ describe("decodeGitHubContent", () => {
   });
 
   it("returns null for an array", () => {
-    expect(decodeGitHubContent([{ encoding: "base64", content: "SGVsbG8=" }])).toBeNull();
+    expect(
+      decodeGitHubContent([{ encoding: "base64", content: "SGVsbG8=" }]),
+    ).toBeNull();
   });
 
   it("returns null for null", () => {

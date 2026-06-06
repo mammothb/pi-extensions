@@ -37,8 +37,10 @@ describe("createProvider", () => {
   });
 
   it("throws for an unknown provider value", () => {
-    const config = { ...BASE_CONFIG, provider: "unknown" as unknown as WebsearchConfig["provider"] };
+    const config = {
+      ...BASE_CONFIG,
+      provider: "unknown" as unknown as WebsearchConfig["provider"],
+    };
     expect(() => createProvider(config)).toThrow("Unknown provider: unknown");
   });
-
 });

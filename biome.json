@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "formatter": {
     "enabled": true,
     "indentStyle": "space"
@@ -17,13 +17,18 @@
       "!coverage",
       "!packages/*/dist",
       "!packages/*/coverage",
-      "!node_modules",
-      "!forks/wreq-js"
+      "!node_modules"
     ]
   },
   "overrides": [
     {
-      "includes": ["test/**", "*.test.ts", "*.spec.ts"],
+      "includes": [
+        "test/**",
+        "packages/*/test/**",
+        "packages/*/evals/**",
+        "*.test.ts",
+        "*.spec.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

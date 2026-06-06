@@ -20,15 +20,6 @@
       "./index.ts"
     ]
   },
-  "scripts": {
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "@vitest/coverage-v8": "4.1.7",
-    "typescript": "6.0.3",
-    "vitest": "4.1.7"
-  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

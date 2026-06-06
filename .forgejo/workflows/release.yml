@@ -7,7 +7,7 @@ on:
 enable-openid-connect: true
 jobs:
   publish-npm:
-    name: NPM - Publish
+    name: NPM - Publish all packages
     runs-on:
       - codeberg-small
     steps:
@@ -19,9 +19,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
+      - name: Install dependencies
+        run: npm ci
       - name: Publish
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm --no-git-tag-version version from-git
-          npm publish --access public --ignore-scripts
+          for pkg in packages/*; do
+            cd "$pkg"
+            npm --no-git-tag-version version from-git
+            npm publish --access public --ignore-scripts
+            cd "$OLDPWD"
+          done

@@ -6,9 +6,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -21,7 +20,9 @@ interface SpawnChild extends EventEmitter {
 }
 
 // Store the mock implementation here so tests can control it
-let mockSpawnImpl: ((cmd: string, args: string[], opts: unknown) => SpawnChild) | null = null;
+let mockSpawnImpl:
+  | ((cmd: string, args: string[], opts: unknown) => SpawnChild)
+  | null = null;
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn((cmd: string, args: string[], opts: unknown): SpawnChild => {
@@ -38,6 +39,7 @@ vi.mock("node:child_process", () => ({
 
 // Import the mocked module
 import { spawn } from "node:child_process";
+
 const spawnMock = vi.mocked(spawn);
 
 // ---------------------------------------------------------------------------
@@ -189,7 +191,6 @@ describe("cleanStaleLocks", () => {
 
     expect(existsSync(join(dir, `${process.pid}.lock`))).toBe(true);
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -201,14 +202,22 @@ describe("runScript", () => {
     givenSpawn({ exitCode: 0 });
 
     await expect(runScript("up")).resolves.toBeUndefined();
-    expect(spawnMock).toHaveBeenCalledWith("bash", [expect.any(String), "up"], expect.any(Object));
+    expect(spawnMock).toHaveBeenCalledWith(
+      "bash",
+      [expect.any(String), "up"],
+      expect.any(Object),
+    );
   });
 
   it("resolves on successful down (code 0)", async () => {
     givenSpawn({ exitCode: 0 });
 
     await expect(runScript("down")).resolves.toBeUndefined();
-    expect(spawnMock).toHaveBeenCalledWith("bash", [expect.any(String), "down"], expect.any(Object));
+    expect(spawnMock).toHaveBeenCalledWith(
+      "bash",
+      [expect.any(String), "down"],
+      expect.any(Object),
+    );
   });
 
   it("rejects with stderr on non-zero exit", async () => {
@@ -354,7 +363,10 @@ describe("unregisterInstance", () => {
     // First create the lock file
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ exitCode: 0 });
 
@@ -366,7 +378,10 @@ describe("unregisterInstance", () => {
   it("calls runScript with 'down' when no other live instances remain", async () => {
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ exitCode: 0 });
 
@@ -383,9 +398,15 @@ describe("unregisterInstance", () => {
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
     // Our lock
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
     // Another "live" lock (same PID, different filename — simulates a sibling instance)
-    writeFileSync(join(instancesDir, `${process.pid}-other.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}-other.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ exitCode: 0 });
 
@@ -402,7 +423,10 @@ describe("unregisterInstance", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ exitCode: 1, stderr: "docker not found" });
 
@@ -417,7 +441,10 @@ describe("unregisterInstance", () => {
   it("forwards scriptPath to runScript for down", async () => {
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ exitCode: 0 });
     const customScript = "/usr/local/bin/my-searxng";
@@ -432,7 +459,10 @@ describe("unregisterInstance", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
 
     givenSpawn({ error: "spawn failed" as unknown as Error });
 
@@ -448,7 +478,10 @@ describe("unregisterInstance", () => {
     const instancesDir = join(agentDir, "searxng-instances");
     mkdirSync(instancesDir, { recursive: true });
     // Our lock
-    writeFileSync(join(instancesDir, `${process.pid}.lock`), String(process.pid));
+    writeFileSync(
+      join(instancesDir, `${process.pid}.lock`),
+      String(process.pid),
+    );
     // Non-numeric lock (should be ignored)
     writeFileSync(join(instancesDir, "not-a-pid.lock"), "not-a-pid");
     // Dead PID lock

@@ -5,11 +5,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, loadConfig } from "../src/config";
 import type { WebsearchConfig } from "../src/config";
+import { DEFAULT_CONFIG, loadConfig } from "../src/config";
 
 // We test loadConfig end-to-end using real temp directories to avoid
 // mocking getAgentDir (which is complex and fragile).
@@ -196,10 +196,7 @@ describe("loadConfig", () => {
 
   it("handles malformed project JSON gracefully (falls back)", () => {
     writeGlobal({ timeoutMs: 5000 });
-    writeFileSync(
-      join(projectDir, ".pi", "pi-websearch.json"),
-      "{ not json }",
-    );
+    writeFileSync(join(projectDir, ".pi", "pi-websearch.json"), "{ not json }");
 
     const config = loadConfig(projectDir);
 
