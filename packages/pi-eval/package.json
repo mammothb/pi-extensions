@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-eval",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A pi extension that adds an eval tool for executing JavaScript and Python code in isolated subprocesses",
   "keywords": [
     "pi-package"
