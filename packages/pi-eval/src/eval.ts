@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { loadConfig } from "./config.js";
 import { executeJavaScript } from "./javascript.js";
 import { executePython } from "./python.js";
 import {
@@ -13,21 +14,6 @@ export const TIMEOUT_MS = 30_000;
 const Parameters = Type.Object({
   language: Type.Union([Type.Literal("javascript"), Type.Literal("python")]),
   code: Type.String({ description: "Code to execute" }),
-  pythonPath: Type.Optional(
-    Type.String({
-      description:
-        "Path to python3 binary (e.g., '.venv/bin/python3' for venvs). " +
-        "Defaults to 'python3'.",
-    }),
-  ),
-  nodeModulesPath: Type.Optional(
-    Type.String({
-      description:
-        "Path to a node_modules directory. When set, NODE_PATH is passed " +
-        "to the subprocess so require() resolves from this directory. " +
-        "Use './node_modules' for project-local packages.",
-    }),
-  ),
 });
 
 export function createEvalTool(): ToolDefinition<
@@ -42,13 +28,13 @@ export function createEvalTool(): ToolDefinition<
 - Each call is a fresh subprocess — no state persists between calls
 - 30-second timeout; press Escape to cancel a running evaluation
 - Working directory is the agent's current working directory (like bash)
-- Use nodeModulesPath to resolve require() from a project directory
-- Use pythonPath to target a virtual environment`,
+- Set pythonPath or nodeModulesPath in ~/.pi/agent/pi-eval.json (global) or .pi/pi-eval.json (project) to configure the runtime for all eval calls`,
     promptSnippet:
       "Execute JavaScript or Python code in an isolated subprocess",
     parameters: Parameters,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const { language, code, pythonPath, nodeModulesPath } = params;
+      const { language, code } = params;
+      const config = loadConfig(ctx.cwd);
 
       // Validate language (belt-and-suspenders: TypeBox schema already constrains it,
       // but a raw API call could bypass validation)
@@ -69,13 +55,19 @@ export function createEvalTool(): ToolDefinition<
       }
 
       if (language === "python") {
-        return executePython(code, pythonPath, signal, timeoutSignal, ctx.cwd);
+        return executePython(
+          code,
+          config.pythonPath,
+          signal,
+          timeoutSignal,
+          ctx.cwd,
+        );
       }
 
       // ── JavaScript execution via temp file + node subprocess ──
       return executeJavaScript(
         code,
-        nodeModulesPath,
+        config.nodeModulesPath,
         signal,
         timeoutSignal,
         ctx.cwd,

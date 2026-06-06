@@ -1,8 +1,10 @@
 // Direct test of pi-eval/src/eval.ts
 
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createEvalTool } from "../src/eval.js";
 import {
   EvalBinaryNotFoundError,
@@ -31,12 +33,10 @@ describe("createEvalTool — definition shape", () => {
     expect(tool.promptSnippet!.length).toBeGreaterThan(10);
   });
 
-  it("has language, code, pythonPath, nodeModulesPath params", () => {
+  it("has language and code params", () => {
     const props = tool.parameters.properties;
     expect(props.language).toBeDefined();
     expect(props.code).toBeDefined();
-    expect(props.pythonPath).toBeDefined();
-    expect(props.nodeModulesPath).toBeDefined();
   });
 
   it("unknown language rejects with EvalUnsupportedLanguageError", async () => {
@@ -279,19 +279,44 @@ describe("eval — Python execution", () => {
   });
 });
 
-describe("eval — pythonPath validation", () => {
+describe("eval — pythonPath via config", () => {
+  let tmpDir: string;
+  let agentDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(
+      tmpdir(),
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    agentDir = join(tmpDir, "agent");
+    mkdirSync(agentDir, { recursive: true });
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+  });
+
+  afterEach(() => {
+    delete process.env.PI_CODING_AGENT_DIR;
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(config: {
+    pythonPath?: string;
+    nodeModulesPath?: string;
+  }): void {
+    writeFileSync(
+      join(agentDir, "pi-eval.json"),
+      JSON.stringify(config, null, 2),
+    );
+  }
+
   it("pythonPath: /nonexistent → clear error, not crash", async () => {
+    writeConfig({ pythonPath: "/nonexistent/python3" });
     await expect(
       tool.execute(
         "pp1",
-        {
-          language: "python",
-          code: 'print("hi")',
-          pythonPath: "/nonexistent/python3",
-        },
+        { language: "python", code: 'print("hi")' },
         undefined,
         undefined,
-        mockContext(cwd),
+        mockContext(tmpDir),
       ),
     ).rejects.toThrow(EvalBinaryNotFoundError);
   });
@@ -307,12 +332,12 @@ describe("eval — pythonPath validation", () => {
       // .venv not present, skip
     }
     if (!hasVenv) return;
+    writeConfig({ pythonPath: ".venv/bin/python3" });
     const r = await tool.execute(
       "pp2",
       {
         language: "python",
         code: "import sys; print(sys.executable)",
-        pythonPath: ".venv/bin/python3",
       },
       undefined,
       undefined,
@@ -332,6 +357,7 @@ describe("eval — pythonPath validation", () => {
       // .venv not present
     }
     if (!hasVenv) return;
+    writeConfig({ pythonPath: ".venv/bin/python3" });
     // Try importing numpy; it may or may not be installed
     try {
       const r = await tool.execute(
@@ -339,7 +365,6 @@ describe("eval — pythonPath validation", () => {
         {
           language: "python",
           code: "import numpy; print(numpy.__version__)",
-          pythonPath: ".venv/bin/python3",
         },
         undefined,
         undefined,
@@ -460,20 +485,49 @@ describe("eval — safety boundaries", () => {
   });
 });
 
-describe("eval — nodeModulesPath", () => {
+describe("eval — nodeModulesPath via config", () => {
+  let tmpDir: string;
+  let agentDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(
+      tmpdir(),
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    agentDir = join(tmpDir, "agent");
+    mkdirSync(agentDir, { recursive: true });
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+  });
+
+  afterEach(() => {
+    delete process.env.PI_CODING_AGENT_DIR;
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(config: {
+    pythonPath?: string;
+    nodeModulesPath?: string;
+  }): void {
+    writeFileSync(
+      join(agentDir, "pi-eval.json"),
+      JSON.stringify(config, null, 2),
+    );
+  }
+
   it("require() fails without nodeModulesPath for non-core module", async () => {
+    // No config set — should fail as before
     await expect(
       tool.execute(
         "nmp1",
         { language: "javascript", code: "require('nonexistent-pkg-xyz');" },
         undefined,
         undefined,
-        mockContext(cwd),
+        mockContext(tmpDir),
       ),
     ).rejects.toThrow(EvalToolError);
   });
 
-  it("require() resolves from nodeModulesPath when set", async () => {
+  it("require() resolves from nodeModulesPath when set via config", async () => {
     // Check if we have a local node_modules to test against
     const { access } = await import("node:fs/promises");
     let hasModules = false;
@@ -485,11 +539,11 @@ describe("eval — nodeModulesPath", () => {
     }
     if (!hasModules) return;
 
+    writeConfig({ nodeModulesPath: "./node_modules" });
     const r = await tool.execute(
       "nmp2",
       {
         language: "javascript",
-        nodeModulesPath: "./node_modules",
         code: `const pkg = require('typebox/package.json'); console.log(pkg.name);`,
       },
       undefined,
