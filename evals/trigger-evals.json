@@ -1,0 +1,89 @@
+[
+  {
+    "id": 1,
+    "query": "are there any pi extensions on github that use typebox and vitest? i need to see how they structure their tests",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "User wants to find repos matching criteria — core search use case"
+  },
+  {
+    "id": 2,
+    "query": "what are the most recent open issues in vercel/next.js about 'useEffect cleanup'? just the last 5 or so",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "Issue search on a specific repo with keyword, wants limited results"
+  },
+  {
+    "id": 3,
+    "query": "search for code that uses async ToolDefinition from pi-coding-agent in typescript files",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "Code search with language filter — distinct scope"
+  },
+  {
+    "id": 4,
+    "query": "show me recent commits by github-actions[bot] in the facebook/react repo",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "Commit search with author and repo filters"
+  },
+  {
+    "id": 5,
+    "query": "find pull requests labeled 'bug' AND 'help wanted' in the typescript repo that are still open",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "PR search with multiple labels and state filter"
+  },
+  {
+    "id": 6,
+    "query": "read the README.md from the expressjs/express repo on github",
+    "tool": "gh_fetch",
+    "should_trigger": true,
+    "rationale": "Direct file fetch — should NOT trigger gh_search since the path is known"
+  },
+  {
+    "id": 7,
+    "query": "fetch this issue and summarize the discussion: https://github.com/microsoft/typescript/issues/60241",
+    "tool": "gh_fetch",
+    "should_trigger": true,
+    "rationale": "URL-based fetch — the URL is already known, no search needed"
+  },
+  {
+    "id": 8,
+    "query": "i keep getting 'authentication failed' when trying to search github. can you check if i'm logged in?",
+    "tool": "gh_auth_status",
+    "should_trigger": true,
+    "rationale": "User is experiencing auth errors — auth diagnosis is appropriate"
+  },
+  {
+    "id": 9,
+    "query": "hey can you run `gh search repos 'typebox' --limit 5 --json name,url` in bash and pipe the output to a file",
+    "tool": "gh_search",
+    "should_trigger": false,
+    "should_use": "bash",
+    "rationale": "Explicitly asks for bash gh command execution — agent should use bash, not gh_search"
+  },
+  {
+    "id": 10,
+    "query": "what does the npm page for express look like? show me the latest version and description",
+    "tool": "gh_search",
+    "should_trigger": false,
+    "should_use": "websearch or webfetch",
+    "rationale": "User wants npm registry info, not GitHub search. Near-miss: 'express' is a popular GitHub repo too"
+  },
+  {
+    "id": 11,
+    "query": "is the github cli installed on this system? can you check with `which gh` or `gh --version`?",
+    "tool": "gh_auth_status",
+    "should_trigger": false,
+    "should_use": "bash",
+    "rationale": "User wants to check if gh binary exists — needs bash which/version, not auth status"
+  },
+  {
+    "id": 12,
+    "query": "find me the most starred TypeScript library for building CLI tools — i want to compare a few options",
+    "tool": "gh_search",
+    "should_trigger": true,
+    "rationale": "Ambiguous but should trigger — user wants to discover repos by criteria (stars, language, topic)"
+  }
+]
