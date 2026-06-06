@@ -22,7 +22,8 @@ between calls.
 
 - **JavaScript**: Writes code to a temp file, spawns `node` as a subprocess.
   Console output is captured as labeled `STDOUT:` / `STDERR:` sections.
-- **Python**: Coming in a future release.
+- **Python**: Spawns `python3` with `-c`, capturing stdout/stderr identically.
+  Supports virtual environments via the `pythonPath` parameter.
 - **Safety**: 30-second timeout, 1 MB output cap, abort-on-Escape support.
 - **Dependency isolation**: Use `nodeModulesPath` to resolve packages from a
   project's `node_modules/`. Use `pythonPath` to target a venv.

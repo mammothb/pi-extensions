@@ -1,16 +1,9 @@
 # pi-eval Evals
 
-Evaluation and benchmark tests for the pi-eval extension. These are **not** part
-of `pnpm test` — use the standalone vitest config instead.
+End-to-end evaluation and benchmark tests for the pi-eval extension. These are
+**not** part of `pnpm test` — they require an LLM API key and are run manually.
 
-## Smoke Tests
-
-Verify end-to-end extension behavior with real `node` / `python3` subprocesses.
-No LLM required. Fast (~60s).
-
-```bash
-npx vitest run --config vitest.evals.config.ts packages/pi-eval/evals/smoke.test.ts
-```
+Integration tests (no LLM required) live alongside the source in `test/`.
 
 ## Benchmark Tests
 
@@ -29,3 +22,11 @@ Metrics collected per task:
 
 Results are printed as a comparison table and persisted to
 `packages/pi-eval/evals/results/benchmark-<timestamp>.json`.
+
+## Expensive Smoke Tests
+
+Verify timeout behavior with real subprocesses (~60s per test). No LLM required.
+
+```bash
+npx vitest run --config vitest.expensive.config.ts
+```

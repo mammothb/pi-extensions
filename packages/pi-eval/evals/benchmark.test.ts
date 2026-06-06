@@ -276,11 +276,7 @@ function printComparison(
         noEval ? (noEval.wallTimeMs / 1000).toFixed(1) : "-",
         yesEval ? (yesEval.wallTimeMs / 1000).toFixed(1) : "-",
       ],
-      [
-        "Tool calls",
-        noEval?.toolCalls ?? "-",
-        yesEval?.toolCalls ?? "-",
-      ],
+      ["Tool calls", noEval?.toolCalls ?? "-", yesEval?.toolCalls ?? "-"],
       [
         "Input tokens",
         noEval?.tokens.input ?? "-",
@@ -320,11 +316,7 @@ function printComparison(
       (withoutEval.totalWallTimeMs / 1000).toFixed(1),
       (withEval.totalWallTimeMs / 1000).toFixed(1),
     ],
-    [
-      "Total tool calls",
-      withoutEval.totalToolCalls,
-      withEval.totalToolCalls,
-    ],
+    ["Total tool calls", withoutEval.totalToolCalls, withEval.totalToolCalls],
     [
       "Total input tokens",
       withoutEval.totalInputTokens,
@@ -335,11 +327,7 @@ function printComparison(
       withoutEval.totalOutputTokens,
       withEval.totalOutputTokens,
     ],
-    [
-      "Total tokens",
-      withoutEval.totalTokens,
-      withEval.totalTokens,
-    ],
+    ["Total tokens", withoutEval.totalTokens, withEval.totalTokens],
     [
       "Success rate",
       `${withoutEval.successCount}/${tasks.length}`,
@@ -347,7 +335,9 @@ function printComparison(
     ],
   ];
 
-  console.log(`  ${"TOTALS".padEnd(12)} ${"".padEnd(24)} ${"".padEnd(18)} ${"".padEnd(18)} ${"".padEnd(12)}`);
+  console.log(
+    `  ${"TOTALS".padEnd(12)} ${"".padEnd(24)} ${"".padEnd(18)} ${"".padEnd(18)} ${"".padEnd(12)}`,
+  );
   for (const [metric, noVal, yesVal] of totalRows) {
     console.log(
       `  ${"".padEnd(12)} ${metric.padEnd(24)} ${String(noVal).padEnd(18)} ${String(yesVal).padEnd(18)} ${"".padEnd(12)}`,
@@ -404,7 +394,9 @@ if (runBenchmark) {
     it(
       "runs all tasks and prints comparison table",
       async () => {
-        console.log("\n🏃 Running WITHOUT eval extension (bash + write + read)...\n");
+        console.log(
+          "\n🏃 Running WITHOUT eval extension (bash + write + read)...\n",
+        );
         const withoutEval = await runAllTasks(TASKS, false, TIMEOUT_PER_TASK);
 
         console.log("\n🏃 Running WITH eval extension...\n");
@@ -424,9 +416,7 @@ if (runBenchmark) {
 } else {
   describe("benchmark: bash+write vs eval", () => {
     it("skipped — set BENCHMARK=1 to run", () => {
-      console.log(
-        "  BENCHMARK=1 not set. Skipping real-LLM benchmark tests.",
-      );
+      console.log("  BENCHMARK=1 not set. Skipping real-LLM benchmark tests.");
       console.log(
         "  Run: BENCHMARK=1 npx vitest run packages/pi-eval/evals/benchmark.test.ts",
       );

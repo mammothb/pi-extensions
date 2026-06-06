@@ -2,19 +2,19 @@
 
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { createEvalTool } from "../src/eval.js";
+import {
+  EvalBinaryNotFoundError,
+  EvalCancelledError,
+  EvalTimeoutError,
+  EvalToolError,
+  EvalUnsupportedLanguageError,
+} from "../src/types.js";
+import { hasPython3, mockContext, text } from "./_helpers.js";
 
 const tool = createEvalTool();
 const cwd = process.cwd();
-
-function text(result: AgentToolResult<unknown>) {
-  return result.content
-    .filter((c): c is { type: "text"; text: string } => c.type === "text")
-    .map((c) => c.text)
-    .join("\n");
-}
 
 describe("createEvalTool — definition shape", () => {
   it('has name "eval"', () => {
@@ -26,12 +26,29 @@ describe("createEvalTool — definition shape", () => {
     expect(tool.promptSnippet).toBeTruthy();
   });
 
+  it("has a non-empty description and promptSnippet with meaningful length", () => {
+    expect(tool.description.length).toBeGreaterThan(50);
+    expect(tool.promptSnippet!.length).toBeGreaterThan(10);
+  });
+
   it("has language, code, pythonPath, nodeModulesPath params", () => {
     const props = tool.parameters.properties;
     expect(props.language).toBeDefined();
     expect(props.code).toBeDefined();
     expect(props.pythonPath).toBeDefined();
     expect(props.nodeModulesPath).toBeDefined();
+  });
+
+  it("unknown language rejects with EvalUnsupportedLanguageError", async () => {
+    await expect(
+      tool.execute(
+        "t-unsupported",
+        { language: "rust", code: 'println!("hi");' } as any,
+        undefined,
+        undefined,
+        mockContext(cwd),
+      ),
+    ).rejects.toThrow(EvalUnsupportedLanguageError);
   });
 });
 
@@ -42,7 +59,7 @@ describe("eval — JavaScript execution", () => {
       { language: "javascript", code: 'console.log("hello");' },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain("STDOUT:\nhello");
   });
@@ -54,9 +71,9 @@ describe("eval — JavaScript execution", () => {
         { language: "javascript", code: 'throw new Error("fail");' },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow(/STDERR:\n.*Error: fail/s);
+    ).rejects.toThrow(EvalToolError);
   });
 
   it("JSON.stringify outputs JSON", async () => {
@@ -68,7 +85,7 @@ describe("eval — JavaScript execution", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain('{"a":1}');
   });
@@ -80,9 +97,9 @@ describe("eval — JavaScript execution", () => {
         { language: "javascript", code: "require('nonexistent-pkg-xyz');" },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(EvalToolError);
   });
 
   it("process.exit(1) → throws", async () => {
@@ -92,20 +109,21 @@ describe("eval — JavaScript execution", () => {
         { language: "javascript", code: "process.exit(1);" },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(EvalToolError);
   });
 
-  it("process.exit(0) → resolves with exitCode 0", async () => {
+  it("process.exit(0) → resolves with exitCode 0 and exitSignal null", async () => {
     const r = await tool.execute(
       "t6",
       { language: "javascript", code: "process.exit(0);" },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(r.details.exitCode).toBe(0);
+    expect(r.details.exitSignal).toBeNull();
   });
 
   it("empty code → (no output)", async () => {
@@ -114,7 +132,7 @@ describe("eval — JavaScript execution", () => {
       { language: "javascript", code: "// nothing" },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain("(no output)");
   });
@@ -128,28 +146,13 @@ describe("eval — JavaScript execution", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     const t = text(r);
     expect(t).toContain("STDOUT:\nout");
     expect(t).toContain("STDERR:\nerr");
   });
 });
-
-async function hasPython3(): Promise<boolean> {
-  try {
-    const { execFile } = await import("node:child_process");
-    await new Promise<void>((resolvePromise, reject) => {
-      execFile("python3", ["--version"], (error) => {
-        if (error) reject(error);
-        else resolvePromise();
-      });
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 describe("eval — Python execution", () => {
   it('print("hello") → STDOUT contains hello', async () => {
@@ -159,7 +162,7 @@ describe("eval — Python execution", () => {
       { language: "python", code: 'print("hello")' },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain("STDOUT:\nhello");
   });
@@ -172,9 +175,9 @@ describe("eval — Python execution", () => {
         { language: "python", code: "1/0" },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow(/STDERR:\n.*ZeroDivisionError/s);
+    ).rejects.toThrow(EvalToolError);
   });
 
   it("multi-line code works", async () => {
@@ -187,7 +190,7 @@ describe("eval — Python execution", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain("STDOUT:\n0\n1\n2");
   });
@@ -200,9 +203,38 @@ describe("eval — Python execution", () => {
         { language: "python", code: "import sys; sys.exit(1)" },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(EvalToolError);
+  });
+
+  it("sys.exit(0) → resolves with exitCode 0", async () => {
+    if (!(await hasPython3())) return;
+    const r = await tool.execute(
+      "p4b",
+      { language: "python", code: "import sys; sys.exit(0)" },
+      undefined,
+      undefined,
+      mockContext(cwd),
+    );
+    expect(r.details.exitCode).toBe(0);
+  });
+
+  it("stderr is labelled separately from stdout", async () => {
+    if (!(await hasPython3())) return;
+    const r = await tool.execute(
+      "p4c",
+      {
+        language: "python",
+        code: "import sys; print('out'); print('err', file=sys.stderr)",
+      },
+      undefined,
+      undefined,
+      mockContext(cwd),
+    );
+    const t = text(r);
+    expect(t).toContain("STDOUT:\nout");
+    expect(t).toContain("STDERR:\nerr");
   });
 
   it("empty code → (no output)", async () => {
@@ -212,23 +244,10 @@ describe("eval — Python execution", () => {
       { language: "python", code: "" },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain("(no output)");
   });
-
-  it("Python infinite loop is killed by 30s timeout", async () => {
-    if (!(await hasPython3())) return;
-    await expect(
-      tool.execute(
-        "p6",
-        { language: "python", code: "while True: pass" },
-        undefined,
-        undefined,
-        { cwd } as any,
-      ),
-    ).rejects.toThrow(/timed out|cancelled/i);
-  }, 60_000);
 
   it("2 MB output is truncated at 1 MB with notice", async () => {
     if (!(await hasPython3())) return;
@@ -240,7 +259,7 @@ describe("eval — Python execution", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     const t = text(r);
     expect(t).toContain("[Output truncated at 1 MB]");
@@ -254,7 +273,7 @@ describe("eval — Python execution", () => {
       { language: "python", code: 'print("short")' },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).not.toContain("[Output truncated at 1 MB]");
   });
@@ -272,9 +291,9 @@ describe("eval — pythonPath validation", () => {
         },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow(/not found or not executable/);
+    ).rejects.toThrow(EvalBinaryNotFoundError);
   });
 
   it("pythonPath: .venv/bin/python3 uses venv binary", async () => {
@@ -297,7 +316,7 @@ describe("eval — pythonPath validation", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).toContain(".venv/bin/python3");
   });
@@ -324,7 +343,7 @@ describe("eval — pythonPath validation", () => {
         },
         undefined,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       );
       expect(text(r)).toContain("STDOUT:\n");
     } catch {
@@ -334,19 +353,7 @@ describe("eval — pythonPath validation", () => {
 });
 
 describe("eval — safety boundaries", () => {
-  it("infinite loop is killed by 30s timeout", async () => {
-    await expect(
-      tool.execute(
-        "t10",
-        { language: "javascript", code: "while(true){}" },
-        undefined,
-        undefined,
-        { cwd } as any,
-      ),
-    ).rejects.toThrow(/timed out|cancelled/i);
-  }, 60_000);
-
-  it("already-aborted signal throws immediately", async () => {
+  it("already-aborted signal throws EvalCancelledError immediately", async () => {
     const ac = new AbortController();
     ac.abort();
     await expect(
@@ -355,9 +362,29 @@ describe("eval — safety boundaries", () => {
         { language: "javascript", code: 'console.log("nope");' },
         ac.signal,
         undefined,
-        { cwd } as any,
+        mockContext(cwd),
       ),
-    ).rejects.toThrow(/cancelled/i);
+    ).rejects.toThrow(EvalCancelledError);
+  });
+
+  it("user abort during execution throws EvalCancelledError, not EvalTimeoutError", async () => {
+    const ac = new AbortController();
+    const promise = tool.execute(
+      "t-cancel",
+      {
+        language: "javascript",
+        code: "const start = Date.now(); while(Date.now() - start < 5000) {}",
+      },
+      ac.signal,
+      undefined,
+      mockContext(cwd),
+    );
+    // Abort after a short delay (before the 30s timeout)
+    await new Promise((r) => setTimeout(r, 50));
+    ac.abort();
+    await expect(promise).rejects.toThrow(EvalCancelledError);
+    // It must NOT be a timeout error
+    await expect(promise).rejects.not.toThrow(EvalTimeoutError);
   });
 
   it("2 MB output is truncated at 1 MB with notice", async () => {
@@ -369,7 +396,7 @@ describe("eval — safety boundaries", () => {
       },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     const t = text(r);
     expect(t).toContain("[Output truncated at 1 MB]");
@@ -383,7 +410,7 @@ describe("eval — safety boundaries", () => {
       { language: "javascript", code: 'console.log("short");' },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     expect(text(r)).not.toContain("[Output truncated at 1 MB]");
   });
@@ -397,11 +424,78 @@ describe("eval — safety boundaries", () => {
       { language: "javascript", code: 'console.log("cleanup");' },
       undefined,
       undefined,
-      { cwd } as any,
+      mockContext(cwd),
     );
     const after = (await readdir(tmpdir())).filter((f) =>
       f.startsWith("pi-eval-"),
     );
     expect(after.length).toBeLessThanOrEqual(before.length);
+  });
+
+  it("temp file is cleaned up even on error", async () => {
+    const before = (await readdir(tmpdir())).filter((f) =>
+      f.startsWith("pi-eval-"),
+    ).length;
+
+    try {
+      await tool.execute(
+        "t-cleanup-err",
+        { language: "javascript", code: 'throw new Error("cleanup fail");' },
+        undefined,
+        undefined,
+        mockContext(cwd),
+      );
+    } catch {
+      // expected
+    }
+
+    // Small delay to let rm resolve
+    await new Promise((r) => setTimeout(r, 100));
+
+    const after = (await readdir(tmpdir())).filter((f) =>
+      f.startsWith("pi-eval-"),
+    ).length;
+
+    expect(after).toBeLessThanOrEqual(before);
+  });
+});
+
+describe("eval — nodeModulesPath", () => {
+  it("require() fails without nodeModulesPath for non-core module", async () => {
+    await expect(
+      tool.execute(
+        "nmp1",
+        { language: "javascript", code: "require('nonexistent-pkg-xyz');" },
+        undefined,
+        undefined,
+        mockContext(cwd),
+      ),
+    ).rejects.toThrow(EvalToolError);
+  });
+
+  it("require() resolves from nodeModulesPath when set", async () => {
+    // Check if we have a local node_modules to test against
+    const { access } = await import("node:fs/promises");
+    let hasModules = false;
+    try {
+      await access(`${cwd}/node_modules/typebox`, 1);
+      hasModules = true;
+    } catch {
+      // no local node_modules
+    }
+    if (!hasModules) return;
+
+    const r = await tool.execute(
+      "nmp2",
+      {
+        language: "javascript",
+        nodeModulesPath: "./node_modules",
+        code: `const pkg = require('typebox/package.json'); console.log(pkg.name);`,
+      },
+      undefined,
+      undefined,
+      mockContext(cwd),
+    );
+    expect(text(r)).toContain("typebox");
   });
 });
