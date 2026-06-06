@@ -10,6 +10,13 @@ export default defineConfig({
     projects: [
       {
         test: {
+          name: "pi-eval",
+          root: "./packages/pi-eval",
+          include: ["test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "pi-ghsearch",
           root: "./packages/pi-ghsearch",
           include: ["test/**/*.test.ts"],
