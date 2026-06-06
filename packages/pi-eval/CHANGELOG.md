@@ -1,5 +1,11 @@
 # pi-eval
 
+## 2.0.1
+
+### Patch Changes
+
+- 2a0e808: Move internal modules into `src/lib/` for consistency with other packages in the monorepo (`pi-ghsearch`, `pi-webfetch`, `pi-websearch` already follow this pattern)
+
 ## 2.0.0
 
 ### Major Changes
