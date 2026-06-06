@@ -1,15 +1,13 @@
 {
   "name": "pi-extensions",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "lint": "biome check .",
+    "check": "biome check .",
     "format": "biome format --write .",
-    "check": "biome check ."
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
