@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./src/config.js";
+import { extractPreview } from "./src/preview.js";
 
 const execFileP = promisify(execFile);
 
@@ -35,24 +34,6 @@ async function sendToast(
   } catch (err) {
     console.error("pi-toast: notification failed:", err);
   }
-}
-
-// ── message preview ─────────────────────────────────────────────────────────
-
-function extractPreview(messages: AgentMessage[]): string {
-  const last = [...messages]
-    .reverse()
-    .find((m): m is AssistantMessage => m.role === "assistant");
-  if (!last) return "(no assistant message)";
-
-  const text = last.content
-    .filter((c): c is TextContent => c.type === "text")
-    .map((c) => c.text)
-    .join(" ");
-  if (!text) return "(no text content)";
-
-  const preview = text.slice(0, 200);
-  return preview.length < text.length ? `${preview}...` : preview;
 }
 
 // ── extension entry point ───────────────────────────────────────────────────

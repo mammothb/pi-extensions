@@ -17,6 +17,12 @@ export default defineConfig({
       },
       {
         test: {
+          name: "pi-toast",
+          root: "./packages/pi-toast",
+        },
+      },
+      {
+        test: {
           name: "pi-webfetch",
           root: "./packages/pi-webfetch",
         },

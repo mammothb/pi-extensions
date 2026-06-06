@@ -46,13 +46,15 @@ All keys are optional — missing keys fall back to built-in defaults.
 ## Development
 
 ```bash
-# Run unit tests (no network required)
-npm test
+# Run unit tests from the workspace root (no network required)
+cd ../.. && pnpm run test
 
 # Run eval/smoke tests (requires gh CLI + network)
-# These are excluded from `npm test` by default.
-# To run them, temporarily add "evals/**/*.test.ts" to vitest.config.ts include.
+# These are excluded from the default test run because vitest.config.ts
+# only includes `test/**/*.test.ts`. To run them, temporarily add
+# `"evals/**/*.test.ts"` to the pi-ghsearch project's `include` in
+# the root `vitest.config.ts`.
 
-# Test locally with pi
+# Test locally with pi (from this package directory)
 pi -e ./index.ts
 ```
