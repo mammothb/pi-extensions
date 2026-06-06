@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
-import { assertSuccessOrThrow, formatOutput } from "../src/format.js";
-import { EvalToolError, type SubprocessResult } from "../src/types.js";
+import { assertSuccessOrThrow, formatOutput } from "../src/lib/format.js";
+import { EvalToolError, type SubprocessResult } from "../src/lib/types.js";
 
 function text(result: AgentToolResult<unknown>): string {
   return result.content

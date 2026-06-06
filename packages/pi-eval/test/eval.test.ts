@@ -12,7 +12,7 @@ import {
   EvalTimeoutError,
   EvalToolError,
   EvalUnsupportedLanguageError,
-} from "../src/types.js";
+} from "../src/lib/types.js";
 import { hasPython3, mockContext, text } from "./_helpers.js";
 
 const tool = createEvalTool();

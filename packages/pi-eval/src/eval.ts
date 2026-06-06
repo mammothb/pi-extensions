@@ -1,13 +1,13 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadConfig } from "./config.js";
-import { executeJavaScript } from "./javascript.js";
-import { executePython } from "./python.js";
+import { loadConfig } from "./lib/config.js";
+import { executeJavaScript } from "./lib/javascript.js";
+import { executePython } from "./lib/python.js";
 import {
   EvalCancelledError,
   type EvalDetails,
   EvalUnsupportedLanguageError,
-} from "./types.js";
+} from "./lib/types.js";
 
 export const TIMEOUT_MS = 30_000;
 

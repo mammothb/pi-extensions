@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseResponse } from "../src/lib/parsers";
+import { parseResponse } from "../src/lib/providers/exa-mcp";
 
 describe("parseResponse", () => {
   it("parses valid direct JSON and returns first text content", () => {

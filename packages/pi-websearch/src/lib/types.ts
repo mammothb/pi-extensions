@@ -12,6 +12,9 @@ export interface SearchProvider {
   /** Human-readable provider name (e.g. "exa-mcp", "brave", "tavily"). */
   readonly name: string;
 
+  /** Usage notes shown in the tool description for the LLM. */
+  readonly usageNotes: string;
+
   /**
    * Execute a search and return the result text.
    * Returns undefined if the search returned no results.

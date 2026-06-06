@@ -25,6 +25,7 @@ describe("createProvider", () => {
   it('returns an exa-mcp provider when config.provider is "exa-mcp"', () => {
     const provider = createProvider(BASE_CONFIG);
     expect(provider.name).toBe("exa-mcp");
+    expect(provider.usageNotes).toBeTruthy();
   });
 
   it('returns a searxng provider when config.provider is "searxng"', () => {
@@ -34,6 +35,7 @@ describe("createProvider", () => {
     };
     const provider = createProvider(config);
     expect(provider.name).toBe("searxng");
+    expect(provider.usageNotes).toBeTruthy();
   });
 
   it("throws for an unknown provider value", () => {

@@ -210,4 +210,174 @@ describe("search", () => {
     const provider = createSearxngProvider(SEARXNG_CONFIG);
     expect(provider.name).toBe("searxng");
   });
+
+  it("has non-empty usageNotes", () => {
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+    expect(provider.usageNotes).toBeTruthy();
+    expect(provider.usageNotes).toContain("SearXNG");
+  });
+
+  // -----------------------------------------------------------------------
+  // Retry behavior
+  // -----------------------------------------------------------------------
+
+  it("retries on connection errors (TypeError) and succeeds", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls++;
+        if (calls <= 2) {
+          return Promise.reject(new TypeError("fetch failed"));
+        }
+        return Promise.resolve(
+          new Response(
+            searchResponse([
+              { title: "R", url: "https://a.com", content: "C" },
+            ]),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    expect(result).toContain("R");
+    expect(calls).toBe(3); // 2 failures + 1 success
+  });
+
+  it("retries on HTTP 502 and succeeds", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls++;
+        if (calls === 1) {
+          return Promise.resolve(
+            new Response("", { status: 502, statusText: "Bad Gateway" }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            searchResponse([
+              { title: "R", url: "https://a.com", content: "C" },
+            ]),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    expect(result).toContain("R");
+    expect(calls).toBe(2);
+  });
+
+  it("retries on HTTP 503 and succeeds", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls++;
+        if (calls === 1) {
+          return Promise.resolve(
+            new Response("", {
+              status: 503,
+              statusText: "Service Unavailable",
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            searchResponse([
+              { title: "R", url: "https://a.com", content: "C" },
+            ]),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    expect(result).toContain("R");
+    expect(calls).toBe(2);
+  });
+
+  it("does NOT retry on HTTP 404 (client error)", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls++;
+        return Promise.resolve(
+          new Response("", { status: 404, statusText: "Not Found" }),
+        );
+      }),
+    );
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    await expect(provider.search(searchArgs)).rejects.toThrow(
+      "SearXNG returned HTTP 404: Not Found",
+    );
+    expect(calls).toBe(1); // No retries
+  });
+
+  it("does NOT retry on AbortError (timeout)", async () => {
+    // Use neverResolves so the timeout fires, which causes AbortError
+    mockFetch({ neverResolves: true });
+    const provider = createSearxngProvider({
+      ...SEARXNG_CONFIG,
+      timeoutMs: 10,
+    });
+
+    await expect(provider.search(searchArgs)).rejects.toThrow(
+      "Request timed out",
+    );
+  });
+
+  it("gives up after retry budget is exhausted", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("fetch failed")),
+    );
+    const provider = createSearxngProvider({
+      ...SEARXNG_CONFIG,
+      // Short overall timeout → small retry budget (80% of 200ms = 160ms).
+      // With 300ms base delay, the second attempt already exceeds the budget.
+      timeoutMs: 200,
+    });
+
+    // Retry budget runs out before the full timeout, so the underlying
+    // connection error propagates.
+    await expect(provider.search(searchArgs)).rejects.toThrow("fetch failed");
+  });
+
+  it("retries multiple connection errors before succeeding", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        calls++;
+        if (calls <= 4) {
+          return Promise.reject(new TypeError("fetch failed"));
+        }
+        return Promise.resolve(
+          new Response(
+            searchResponse([
+              { title: "R", url: "https://a.com", content: "C" },
+            ]),
+            { status: 200 },
+          ),
+        );
+      }),
+    );
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    expect(result).toContain("R");
+    expect(calls).toBe(5); // 4 failures + 1 success
+  });
 });

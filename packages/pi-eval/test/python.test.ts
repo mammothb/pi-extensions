@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolvePythonBinary } from "../src/python.js";
-import { EvalBinaryNotFoundError, EvalToolError } from "../src/types.js";
+import { resolvePythonBinary } from "../src/lib/python.js";
+import { EvalBinaryNotFoundError, EvalToolError } from "../src/lib/types.js";
 import { hasPython3 } from "./_helpers.js";
 
 const cwd = process.cwd();

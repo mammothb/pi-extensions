@@ -17,8 +17,22 @@ function getScriptPath(): string {
   return join(__dirname, "..", "..", "bin", "searxng");
 }
 
-function getInstancesDir(): string {
+export function getInstancesDir(): string {
   return join(getAgentDir(), "searxng-instances");
+}
+
+/** Result of a shutdown health check. */
+export interface ShutdownHealth {
+  /** Number of PID files whose process is dead (unclean shutdown). */
+  uncleanCount: number;
+  /** Number of PID files whose process is still alive (shutdown in progress). */
+  stillRunning: number;
+  /**
+   * Remove the shutdown PID files that were just inspected.
+   * Call after reporting health status so stale files don't
+   * trigger false positives on the next startup.
+   */
+  cleanup(): void;
 }
 
 /**
@@ -49,12 +63,87 @@ export function cleanStaleLocks(dir: string): void {
 /**
  * Run the searxng management script (up/down).
  * Uses the provided scriptPath, or falls back to the built-in `bin/searxng`.
+ *
+ * Waits for the child process to complete and captures stdout/stderr.
+ * Use this when you need the exit code and output (e.g., for the `up` command).
  */
 export async function runScript(
   command: "up" | "down",
   scriptPath?: string,
-): Promise<void> {
+): Promise<void>;
+
+/**
+ * Run the searxng management script in detached mode.
+ *
+ * The child process is detached from the parent and will survive parent exit.
+ * No output is captured and no exit code is available. Use this for
+ * fire-and-forget commands (e.g., `docker compose down` during shutdown).
+ *
+ * @param opts.shutdownPidDir When set, the command is wrapped in a bash script
+ *   that creates a `shutdown-<pid>.pid` file before running the command and
+ *   removes it on exit. Enables cross-session health checks via
+ *   {@link checkShutdownHealth}.
+ */
+export function runScript(
+  command: "up" | "down",
+  scriptPath: string | undefined,
+  opts: { detached: true; shutdownPidDir?: string },
+): void;
+
+export function runScript(
+  command: "up" | "down",
+  scriptPath?: string,
+  opts?: { detached?: boolean; shutdownPidDir?: string },
+): Promise<void> | void {
   const script = scriptPath ? expandTilde(scriptPath) : getScriptPath();
+
+  // Detached mode: fire-and-forget, child survives parent exit
+  if (opts?.detached) {
+    if (opts.shutdownPidDir) {
+      // Bash wrapper that tracks the down command via a PID file.
+      // The wrapper creates shutdown-<pid>.pid, runs the script, then
+      // removes the file. If the file remains on next startup, the
+      // shutdown was unclean.
+      const child = spawn(
+        "bash",
+        [
+          "-c",
+          `
+          PID_FILE="${opts.shutdownPidDir}/shutdown-$$.pid"
+          echo $$ > "$PID_FILE"
+          "${script}" ${command}
+          EXIT=$?
+          rm -f "$PID_FILE"
+          exit $EXIT
+          `,
+        ],
+        {
+          stdio: "ignore",
+          detached: true,
+        },
+      );
+      child.unref();
+      child.on("error", (err) => {
+        console.error(
+          `pi-websearch: failed to run searxng ${command}: ${err.message}`,
+        );
+      });
+    } else {
+      const child = spawn("bash", [script, command], {
+        stdio: "ignore",
+        detached: true,
+      });
+      child.unref();
+      child.on("error", (err) => {
+        console.error(
+          `pi-websearch: failed to run searxng ${command}: ${err.message}`,
+        );
+      });
+    }
+    return;
+  }
+
+  // Default mode: wait for completion, capture output
   return new Promise((resolve, reject) => {
     const child = spawn("bash", [script, command], {
       stdio: "pipe",
@@ -85,6 +174,45 @@ export async function runScript(
 
     child.on("error", reject);
   });
+}
+
+/**
+ * Check for leftover shutdown PID files from previous sessions.
+ *
+ * Returns counts of unclean and still-running shutdowns, plus a
+ * `cleanup()` method that removes the inspected PID files. Call
+ * `cleanup()` after reporting to prevent false positives on the
+ * next startup.
+ */
+export function checkShutdownHealth(dir: string): ShutdownHealth {
+  const pids: string[] = [];
+  let uncleanCount = 0;
+  let stillRunning = 0;
+
+  if (existsSync(dir)) {
+    for (const entry of readdirSync(dir)) {
+      const match = entry.match(/^shutdown-(\d+)\.pid$/);
+      if (!match) continue;
+
+      pids.push(entry);
+      const pid = parseInt(match[1], 10);
+      if (isProcessAlive(pid)) {
+        stillRunning++;
+      } else {
+        uncleanCount++;
+      }
+    }
+  }
+
+  return {
+    uncleanCount,
+    stillRunning,
+    cleanup() {
+      for (const entry of pids) {
+        rmSync(join(dir, entry), { force: true });
+      }
+    },
+  };
 }
 
 /**
@@ -147,11 +275,8 @@ export async function unregisterInstance(scriptPath?: string): Promise<void> {
     }
   }
 
-  // No more live instances — shut down SearXNG
-  try {
-    await runScript("down", scriptPath);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`pi-websearch: failed to stop SearXNG: ${message}`);
-  }
+  // No more live instances — shut down SearXNG.
+  // Use detached mode with PID tracking so unclean shutdowns are detected
+  // on the next startup via checkShutdownHealth().
+  runScript("down", scriptPath, { detached: true, shutdownPidDir: dir });
 }

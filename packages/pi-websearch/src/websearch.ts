@@ -78,10 +78,7 @@ export function createWebsearchTool(
   const { defaults } = config;
   const provider = createProvider(config);
 
-  const usageNotes =
-    config.provider === "searxng"
-      ? "\n  - Results are fetched from a self-hosted SearXNG metasearch instance"
-      : "\n  - Supports live crawling modes when available: 'fallback' (backup if cached unavailable) or 'preferred' (prioritize live crawling)\n  - Search types when available: 'auto' (balanced), 'fast' (quick results), 'deep' (comprehensive search)";
+  const usageNotes = provider.usageNotes;
 
   return {
     name: "websearch",

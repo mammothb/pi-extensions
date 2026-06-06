@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { createEvalTool } from "../src/eval.js";
-import { EvalTimeoutError } from "../src/types.js";
+import { EvalTimeoutError } from "../src/lib/types.js";
 import { hasPython3, mockContext } from "../test/_helpers.js";
 
 const tool = createEvalTool();

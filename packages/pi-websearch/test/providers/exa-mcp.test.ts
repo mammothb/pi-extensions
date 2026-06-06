@@ -179,4 +179,10 @@ describe("search", () => {
     const provider = createExaMcpProvider(EXA_MCP_CONFIG);
     expect(provider.name).toBe("exa-mcp");
   });
+
+  it("has non-empty usageNotes", () => {
+    const provider = createExaMcpProvider(EXA_MCP_CONFIG);
+    expect(provider.usageNotes).toBeTruthy();
+    expect(provider.usageNotes).toContain("live crawling");
+  });
 });

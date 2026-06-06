@@ -3,8 +3,8 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expandTilde } from "@mammothb/pi-shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EvalConfig } from "../src/config";
-import { DEFAULT_CONFIG, loadConfig } from "../src/config";
+import type { EvalConfig } from "../src/lib/config";
+import { DEFAULT_CONFIG, loadConfig } from "../src/lib/config";
 
 let tmpDir: string;
 let agentDir: string;
