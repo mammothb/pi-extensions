@@ -1,5 +1,11 @@
 # @mammothb/pi-toast
 
+## 2.0.0
+
+### Major Changes
+
+- 759d16c: update readme
+
 ## 1.0.0
 
 ### Major Changes
