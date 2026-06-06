@@ -1,0 +1,27 @@
+name: Release
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+enable-openid-connect: true
+jobs:
+  publish-npm:
+    name: NPM - Publish
+    runs-on:
+      - codeberg-small
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Setup - Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - name: Publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm --no-git-tag-version version from-git
+          npm publish --access public --ignore-scripts
