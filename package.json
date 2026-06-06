@@ -1,0 +1,38 @@
+{
+  "name": "@mammothb/pi-webfetch",
+  "version": "0.1.0",
+  "description": "A pi extension that adds a webfetch tool for fetching and converting web content",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "htmlparser2": "12.0.0",
+    "turndown": "7.2.4"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/turndown": "5.0.6",
+    "@vitest/coverage-v8": "4.1.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}
