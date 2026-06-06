@@ -1,0 +1,48 @@
+[
+  {
+    "id": 1,
+    "scope": "repos",
+    "query": "pi-coding-agent extension",
+    "limit": 5,
+    "expected_min_results": 3,
+    "expected_contains": ["pi-coding-agent"],
+    "description": "Repo search for pi extensions"
+  },
+  {
+    "id": 2,
+    "scope": "issues",
+    "query": "'useEffect cleanup' repo:facebook/react",
+    "limit": 5,
+    "state": "open",
+    "expected_min_results": 3,
+    "expected_contains": ["useEffect"],
+    "description": "Issue search in facebook/react for useEffect cleanup"
+  },
+  {
+    "id": 3,
+    "scope": "commits",
+    "query": "dependabot repo:facebook/react",
+    "limit": 3,
+    "expected_min_results": 2,
+    "description": "Commit search for dependabot in facebook/react"
+  },
+  {
+    "id": 4,
+    "scope": "repos",
+    "query": "typebox",
+    "language": "typescript",
+    "limit": 5,
+    "expected_min_results": 3,
+    "expected_contains": ["typebox"],
+    "description": "Filtered repo search: typebox in TypeScript repos"
+  },
+  {
+    "id": 5,
+    "scope": "prs",
+    "query": "bug fix repo:microsoft/typescript",
+    "limit": 5,
+    "state": "closed",
+    "expected_min_results": 3,
+    "description": "PR search for bug fixes in microsoft/typescript"
+  }
+]
