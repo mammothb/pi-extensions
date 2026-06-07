@@ -16,6 +16,7 @@
     ]
   },
   "dependencies": {
+    "@mammothb/pi-shared": "workspace:*",
     "htmlparser2": "catalog:",
     "turndown": "catalog:"
   },

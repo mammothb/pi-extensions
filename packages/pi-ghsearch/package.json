@@ -15,6 +15,9 @@
       "./index.ts"
     ]
   },
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

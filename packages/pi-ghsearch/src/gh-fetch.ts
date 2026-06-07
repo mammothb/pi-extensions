@@ -8,6 +8,7 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { firstTextBlock, renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
 import type { GhSearchConfig } from "./config.js";
 import { decodeGitHubContent } from "./lib/decode-contents.js";
@@ -59,11 +60,11 @@ export function createGhFetchTool(
       }
 
       let text = theme.fg("toolTitle", theme.bold("gh_fetch "));
-      text += theme.fg("dim", shortUrl);
+      text += theme.fg("muted", shortUrl);
 
       try {
         const endpoint = githubUrlToEndpoint(url);
-        text += `  ${theme.fg("dim", "->")}  ${theme.fg("muted", endpoint)}`;
+        text += `  ${theme.fg("muted", "->")}  ${theme.fg("muted", endpoint)}`;
       } catch {
         // URL can't be converted — omit endpoint
       }
@@ -72,11 +73,10 @@ export function createGhFetchTool(
     },
     renderResult(result, { expanded }, theme, context) {
       const details = result.details as GhFetchDetails | undefined;
-      const rawText =
-        result.content[0]?.type === "text" ? result.content[0].text : "";
+      const rawText = firstTextBlock(result);
 
       if (context.isError) {
-        return new Text(theme.fg("error", rawText), 0, 0);
+        return renderError(rawText, theme);
       }
 
       if (expanded) {

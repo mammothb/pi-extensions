@@ -1,11 +1,11 @@
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import {
+  formatSize,
   getMarkdownTheme,
-  keyText,
   type Theme,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { extractTextContent, getExpandKey } from "@mammothb/pi-shared";
 import Type from "typebox";
 import { buildHeaders } from "./lib/headers.js";
 import { toMarkdown, toText } from "./lib/processors.js";
@@ -117,13 +117,8 @@ function formatTitle(details: WebfetchDetails): string {
   return details.displayTitle ?? details.url ?? "Unknown URL";
 }
 
-function formatSize(bytes: number | undefined): string {
-  if (bytes === undefined) {
-    return "unknown size";
-  }
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatSizeOrUnknown(bytes: number | undefined): string {
+  return bytes !== undefined ? formatSize(bytes) : "unknown size";
 }
 
 function isBlockedByCloudflare(response: Response): boolean {
@@ -139,10 +134,6 @@ function isImageAttachment(mime: string): boolean {
     mime !== "image/svg+xml" &&
     mime !== "image/vnd.fastbidsheet"
   );
-}
-
-function isTextContent(c: TextContent | ImageContent): c is TextContent {
-  return c.type === "text";
 }
 
 function renderWebfetchResult(
@@ -166,7 +157,7 @@ function renderWebfetchResult(
     container.addChild(
       new Text(
         theme.fg("syntaxKeyword", "size: ") +
-          theme.fg("syntaxString", formatSize(details.size)),
+          theme.fg("syntaxString", formatSizeOrUnknown(details.size)),
       ),
     );
   }
@@ -205,11 +196,11 @@ function renderWebfetchResult(
 
     if (remaining > 0) {
       container.addChild(new Spacer(1));
-      const expandKey = keyText("app.tools.expand") || "Ctrl+O";
+      const expandKey = getExpandKey();
       container.addChild(
         new Text(
           theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("dim", expandKey) +
+            theme.fg("muted", expandKey) +
             theme.fg("muted", " to expand)"),
         ),
       );
@@ -363,7 +354,7 @@ Usage notes:
         return new Text(
           theme.fg(
             "muted",
-            `Image: ${formatTitle(details)} (${formatSize(details.size)})`,
+            `Image: ${formatTitle(details)} (${formatSizeOrUnknown(details.size)})`,
           ),
         );
       }
@@ -374,10 +365,7 @@ Usage notes:
         );
       }
 
-      const textContent = result.content
-        .filter(isTextContent)
-        .map((c) => c.text)
-        .join("\n");
+      const textContent = extractTextContent(result);
       return renderWebfetchResult(
         details,
         textContent,

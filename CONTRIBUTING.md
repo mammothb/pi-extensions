@@ -35,6 +35,34 @@ pi -e ./index.ts
 Biome enforces double quotes, semicolons, and space indentation (see
 `biome.json`).
 
+### Theme colors in tool renderers
+
+When rendering tool output via `renderCall` or `renderResult`, the content is
+displayed inside a colored box (`toolPendingBg`, `toolSuccessBg`, or
+`toolErrorBg`). Some theme colors have poor contrast on these backgrounds:
+
+| Color | Dark theme | Contrast on `toolSuccessBg` (#283228) |
+|-------|-----------|---------------------------------------|
+| `dim` | #666666 | **2.4:1** — unreadable |
+| `muted` / `toolOutput` | #808080 | **3.4:1** — below WCAG AA (4.5:1) |
+| `text` | #d4d4d4 | **9.3:1** — passes AAA |
+
+**Rules of thumb:**
+
+- **Never use `dim`** for text on tool backgrounds. Use `muted` instead.
+- Use `toolOutput` for code-like or output content that needs to be readable.
+- `text` is always safe but should be reserved for primary content (it removes
+  visual hierarchy when overused).
+- `success`, `error`, and `warning` have adequate contrast for status info.
+
+Status colors (`success`/`error`) and `toolTitle`/`toolOutput` are designed
+for use on tool backgrounds. General-purpose colors (`dim`, `muted`) are
+designed for use on the terminal's default background and lose readability
+when placed on colored boxes.
+
+If a theme author wants to improve contrast further, they can brighten
+`toolOutput` independently without affecting other uses of `muted`.
+
 ### Tests
 
 The vitest workspace (`vitest.config.ts`) covers `pi-ghsearch`, `pi-webfetch`,

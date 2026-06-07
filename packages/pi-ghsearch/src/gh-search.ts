@@ -9,6 +9,7 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { firstTextBlock, renderError } from "@mammothb/pi-shared";
 import { type Static, Type } from "typebox";
 import type { GhSearchConfig } from "./config.js";
 import { applyTruncation } from "./lib/truncation.js";
@@ -167,7 +168,7 @@ export function createGhSearchTool(
       const text =
         `${theme.fg("toolTitle", theme.bold("gh_search"))} ` +
         `${theme.fg("muted", args.scope)} ` +
-        `${theme.fg("dim", args.query)}`;
+        `${theme.fg("muted", args.query)}`;
       return new Text(text, 0, 0);
     },
     renderResult(result, { expanded }, theme, context) {
@@ -175,12 +176,11 @@ export function createGhSearchTool(
       const scope: string = context.args?.scope ?? "results";
       const isCode = scope === "code";
       const parsed = details?.parsed;
-      const rawText =
-        result.content[0]?.type === "text" ? result.content[0].text : "";
+      const rawText = firstTextBlock(result);
 
       // Handle errors
       if (context.isError) {
-        return new Text(theme.fg("error", rawText), 0, 0);
+        return renderError(rawText, theme);
       }
 
       // Expanded: show raw output as sent to LLM
@@ -212,7 +212,7 @@ export function createGhSearchTool(
       // JSON scopes: count + first-item preview
       const count = parsed.length;
       if (count === 0) {
-        return new Text(theme.fg("dim", `— no ${scope} found`), 0, 0);
+        return new Text(theme.fg("muted", `— no ${scope} found`), 0, 0);
       }
 
       const first = parsed[0] as Record<string, unknown> | undefined;
@@ -222,7 +222,7 @@ export function createGhSearchTool(
 
       let text = `${theme.fg("accent", String(count))} ${theme.fg("muted", scopeLabel)} — ${preview}`;
       if (count > 1) {
-        text += `, ${theme.fg("dim", `+${count - 1} more`)}`;
+        text += `, ${theme.fg("muted", `+${count - 1} more`)}`;
       }
 
       if (details?.truncation) {

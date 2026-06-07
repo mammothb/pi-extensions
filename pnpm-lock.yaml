@@ -69,11 +69,24 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '*'
         version: 0.78.1
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
       typebox:
         specifier: '*'
         version: 1.2.0
 
-  packages/pi-shared: {}
+  packages/pi-shared:
+    dependencies:
+      '@earendil-works/pi-ai':
+        specifier: '*'
+        version: 0.78.1(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.78.1(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: '*'
+        version: 0.78.1
 
   packages/pi-toast:
     dependencies:
@@ -98,6 +111,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '*'
         version: 0.78.1
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
       htmlparser2:
         specifier: 'catalog:'
         version: 12.0.0

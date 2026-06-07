@@ -3,6 +3,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { firstTextBlock, renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
 import type { GhSearchConfig } from "./config.js";
 import type { GhAuthStatusDetails } from "./lib/types.js";
@@ -44,11 +45,10 @@ export function createGhAuthStatusTool(
     },
     renderResult(result, _options, theme, context) {
       const details = result.details as GhAuthStatusDetails | undefined;
-      const raw =
-        result.content[0]?.type === "text" ? result.content[0].text : "";
+      const raw = firstTextBlock(result);
 
       if (context.isError) {
-        return new Text(theme.fg("error", raw), 0, 0);
+        return renderError(raw, theme);
       }
 
       if (details?.authenticated) {
@@ -64,7 +64,7 @@ export function createGhAuthStatusTool(
 
       let text = `${theme.fg("error", "!")} ${theme.fg("warning", "Not authenticated")}`;
       if (raw && raw !== "(no output)") {
-        text += `\n  ${theme.fg("dim", raw)}`;
+        text += `\n  ${theme.fg("muted", raw)}`;
       }
       return new Text(text, 0, 0);
     },

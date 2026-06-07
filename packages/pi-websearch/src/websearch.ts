@@ -1,10 +1,10 @@
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import {
-  keyText,
-  type Theme,
-  type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
+import {
+  extractTextContent,
+  getExpandKey,
+  renderError,
+} from "@mammothb/pi-shared";
 import type { WebsearchConfig } from "./config";
 import { createProvider } from "./lib/providers";
 import type { SearchArgs } from "./lib/types";
@@ -14,10 +14,6 @@ const COLLAPSED_PREVIEW_LINES = 7;
 
 interface WebsearchDetails {
   query: string;
-}
-
-function isTextContent(c: TextContent | ImageContent): c is TextContent {
-  return c.type === "text";
 }
 
 function renderExpandableResult(
@@ -58,11 +54,11 @@ function renderExpandableResult(
 
     if (remaining > 0) {
       container.addChild(new Spacer(1));
-      const expandKey = keyText("app.tools.expand") || "Ctrl+O";
+      const expandKey = getExpandKey();
       container.addChild(
         new Text(
           theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("dim", expandKey) +
+            theme.fg("muted", expandKey) +
             theme.fg("muted", " to expand)"),
         ),
       );
@@ -132,15 +128,16 @@ Usage notes:${usageNotes}
           theme.fg("muted", `"${args.query}"`),
       );
     },
-    renderResult: (result, options, theme, _ctx) => {
+    renderResult: (result, options, theme, context) => {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Searching..."));
       }
 
-      const textContent = result.content
-        .filter(isTextContent)
-        .map((c) => c.text)
-        .join("\n");
+      if (context.isError) {
+        return renderError(extractTextContent(result), theme);
+      }
+
+      const textContent = extractTextContent(result);
 
       return renderExpandableResult(
         result.details,
