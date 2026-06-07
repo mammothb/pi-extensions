@@ -26,6 +26,18 @@ export function githubUrlToEndpoint(url: string): string {
     );
   }
 
+  // gist.github.com URLs — map to the Gists API
+  if (parsed.hostname === "gist.github.com") {
+    const gistParts = path.split("/");
+    const gistId = gistParts[1];
+    if (!gistId) {
+      throw new Error(
+        `Could not extract gist ID from URL: ${url}. Expected gist.github.com/owner/gist_id`,
+      );
+    }
+    return `gists/${gistId}`;
+  }
+
   // api.github.com URLs — pass through the path
   if (parsed.hostname === "api.github.com") {
     return path;

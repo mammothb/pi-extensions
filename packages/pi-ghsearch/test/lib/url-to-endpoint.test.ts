@@ -106,6 +106,20 @@ describe("githubUrlToEndpoint", () => {
     ).toBe("repos/octocat/Hello-World/commits");
   });
 
+  it("converts gist.github.com/owner/gistId to gists/gistId", () => {
+    expect(
+      githubUrlToEndpoint(
+        "https://gist.github.com/Colelyman/61d156be5c0b1d9c15acf9d18a017109",
+      ),
+    ).toBe("gists/61d156be5c0b1d9c15acf9d18a017109");
+  });
+
+  it("throws on gist.github.com with no gist ID", () => {
+    expect(() =>
+      githubUrlToEndpoint("https://gist.github.com/Colelyman"),
+    ).toThrow("Could not extract gist ID");
+  });
+
   it("passes through generic resources", () => {
     expect(
       githubUrlToEndpoint("https://github.com/octocat/Hello-World/releases/1"),

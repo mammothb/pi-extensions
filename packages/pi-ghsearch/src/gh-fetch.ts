@@ -41,7 +41,7 @@ export function createGhFetchTool(
     promptGuidelines: [
       "File contents from the GitHub Contents API are automatically decoded inline. The response includes both metadata JSON and the decoded file text — no separate base64 decode step is needed.",
       "Large responses are truncated; the full output path is in result details. Use bash read to access it if needed.",
-      "Do not use gh_fetch for URLs that are not from github.com or api.github.com.",
+      "Do not use gh_fetch for URLs that are not from github.com, gist.github.com, or api.github.com.",
     ],
     parameters: GhFetchParams,
     renderCall(args, theme, _context) {
