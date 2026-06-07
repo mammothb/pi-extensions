@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A pi extension that gives the agent persistent memory across sessions",
   "keywords": [
     "pi-package"
