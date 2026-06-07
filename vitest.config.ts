@@ -40,6 +40,13 @@ export default defineConfig({
           root: "./packages/pi-websearch",
         },
       },
+      {
+        test: {
+          name: "pi-memory",
+          root: "./packages/pi-memory",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });
