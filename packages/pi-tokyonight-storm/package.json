@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-tokyonight-storm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tokyo Night Storm theme for pi coding agent — colors corrected to match folke/tokyonight.nvim",
   "keywords": [
     "pi-package",
