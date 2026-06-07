@@ -100,6 +100,12 @@ importers:
         specifier: '*'
         version: 0.78.1(ws@8.21.0)(zod@4.4.3)
 
+  packages/pi-tokyonight-storm:
+    dependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.78.1(ws@8.21.0)(zod@4.4.3)
+
   packages/pi-webfetch:
     dependencies:
       '@earendil-works/pi-ai':

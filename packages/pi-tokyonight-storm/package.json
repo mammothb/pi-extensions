@@ -1,0 +1,21 @@
+{
+  "name": "@mammothb/pi-tokyonight-storm",
+  "version": "0.1.0",
+  "description": "Tokyo Night Storm theme for pi coding agent — colors corrected to match folke/tokyonight.nvim",
+  "keywords": [
+    "pi-package",
+    "pi-theme"
+  ],
+  "license": "MIT",
+  "files": [
+    "themes"
+  ],
+  "pi": {
+    "themes": [
+      "./themes"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
