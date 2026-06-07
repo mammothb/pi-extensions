@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-ghsearch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A pi extension that adds a ghsearch tool for searching GitHub code",
   "keywords": [
     "pi-package"
