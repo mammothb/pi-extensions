@@ -2,12 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
-import {
-  loadMemoryMeta,
-  loadMemoryRaw,
-  saveMemory,
-  saveMemoryMeta,
-} from "./lib/store.js";
+import type { MemoryBackend } from "./lib/backend.js";
 
 const Parameters = Type.Object({
   action: Type.Union([Type.Literal("delete"), Type.Literal("rename")]),
@@ -18,7 +13,7 @@ const Parameters = Type.Object({
 });
 
 export function createMemoryEditTool(
-  baseDir?: string,
+  backend: MemoryBackend,
 ): ToolDefinition<typeof Parameters> {
   return {
     name: "memory_edit",
@@ -52,29 +47,13 @@ export function createMemoryEditTool(
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { action, key, newKey } = params;
 
-      const memory = loadMemoryRaw(ctx.cwd, baseDir);
-
       switch (action) {
         case "delete": {
-          if (!(key in memory)) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Key "${key}" not found — nothing deleted.`,
-                },
-              ],
-              details: {},
-            };
-          }
-          delete memory[key];
-          saveMemory(ctx.cwd, memory, baseDir);
-          // Clean up any TTL metadata
-          const meta = loadMemoryMeta(ctx.cwd, baseDir);
-          if (key in meta) {
-            delete meta[key];
-            saveMemoryMeta(ctx.cwd, meta, baseDir);
-          }
+          await backend.forget({
+            scope: "project",
+            cwd: ctx.cwd,
+            key,
+          });
           return {
             content: [{ type: "text", text: `Deleted "${key}"` }],
             details: {},
@@ -103,33 +82,12 @@ export function createMemoryEditTool(
               details: {},
             };
           }
-          if (!(key in memory)) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Key "${key}" not found — nothing renamed.`,
-                },
-              ],
-              details: {},
-            };
-          }
-          // key existence was checked above
-          // biome-ignore lint/style/noNonNullAssertion: guarded by `key in memory` check above
-          const value = memory[key]!;
-          delete memory[key];
-          memory[newKey] = value;
-          saveMemory(ctx.cwd, memory, baseDir);
-          // Move any TTL metadata to the new key
-          const meta = loadMemoryMeta(ctx.cwd, baseDir);
-          if (key in meta) {
-            const ttlEntry = meta[key];
-            if (ttlEntry) {
-              meta[newKey] = ttlEntry;
-            }
-            delete meta[key];
-            saveMemoryMeta(ctx.cwd, meta, baseDir);
-          }
+          await backend.rename({
+            scope: "project",
+            cwd: ctx.cwd,
+            oldKey: key,
+            newKey,
+          });
           return {
             content: [{ type: "text", text: `Renamed "${key}" → "${newKey}"` }],
             details: {},

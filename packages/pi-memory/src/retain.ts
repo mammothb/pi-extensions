@@ -2,7 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
-import { setGlobalMemoryAndTTL, setMemoryAndTTL } from "./lib/store.js";
+import type { MemoryBackend } from "./lib/backend.js";
 
 const Parameters = Type.Object({
   key: Type.String({ description: "Key to store the value under" }),
@@ -23,7 +23,7 @@ const Parameters = Type.Object({
 });
 
 export function createRetainTool(
-  baseDir?: string,
+  backend: MemoryBackend,
 ): ToolDefinition<typeof Parameters> {
   return {
     name: "retain",
@@ -71,21 +71,22 @@ export function createRetainTool(
         };
       }
 
+      const effectiveScope = scope ?? "project";
       const ttlNote = ttlSeconds != null ? ` (expires in ${ttlSeconds}s)` : "";
 
-      if (scope === "global") {
-        setGlobalMemoryAndTTL(key, value, ttlSeconds, baseDir);
-        return {
-          content: [
-            { type: "text", text: `Retained "${key}" (global)${ttlNote}` },
-          ],
-          details: {},
-        };
-      }
+      await backend.remember({
+        scope: effectiveScope,
+        cwd: ctx.cwd,
+        key,
+        value,
+        ttlSeconds,
+      });
 
-      setMemoryAndTTL(ctx.cwd, key, value, ttlSeconds, baseDir);
+      const scopeLabel = effectiveScope === "global" ? " (global)" : "";
       return {
-        content: [{ type: "text", text: `Retained "${key}"${ttlNote}` }],
+        content: [
+          { type: "text", text: `Retained "${key}"${scopeLabel}${ttlNote}` },
+        ],
         details: {},
       };
     },

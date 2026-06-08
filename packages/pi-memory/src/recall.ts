@@ -2,8 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { extractTextContent, renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
-import { searchMemory } from "./lib/search.js";
-import { loadGlobalMemory, loadMemory } from "./lib/store.js";
+import type { MemoryBackend, MemoryScope } from "./lib/backend.js";
 
 const Parameters = Type.Object({
   query: Type.Optional(
@@ -22,61 +21,6 @@ const Parameters = Type.Object({
 
 const MAX_PREVIEW = 80;
 
-interface MemoryEntry {
-  value: string;
-  source: "global" | "project";
-}
-
-/**
- * Merge global and project memory. Project entries override global
- * entries with the same key. Tracks source for display labels.
- */
-function mergedMemory(
-  cwd: string,
-  baseDir?: string,
-): Record<string, MemoryEntry> {
-  const global = loadGlobalMemory(baseDir);
-  const project = loadMemory(cwd, baseDir);
-
-  // Start with all global entries
-  const merged: Record<string, MemoryEntry> = {};
-  for (const [key, value] of Object.entries(global)) {
-    merged[key] = { value, source: "global" };
-  }
-  // Overlay project entries (overrides on conflict)
-  for (const [key, value] of Object.entries(project)) {
-    merged[key] = { value, source: "project" };
-  }
-  return merged;
-}
-
-/** Convert MemoryEntry map to a plain Record<string, string> for search. */
-function toSearchMemory(
-  entries: Record<string, MemoryEntry>,
-): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(entries)) {
-    result[key] = entry.value;
-  }
-  return result;
-}
-
-/**
- * Filter entries to keys matching the namespace prefix.
- */
-function filterByNamespace(
-  entries: Record<string, MemoryEntry>,
-  namespace: string,
-): Record<string, MemoryEntry> {
-  const result: Record<string, MemoryEntry> = {};
-  for (const [key, entry] of Object.entries(entries)) {
-    if (key.startsWith(namespace)) {
-      result[key] = entry;
-    }
-  }
-  return result;
-}
-
 /**
  * Strip a namespace prefix from a key for display.
  * e.g. "project:build-command" → "build-command" when namespace is "project:"
@@ -91,16 +35,16 @@ function stripNamespace(key: string, namespace: string): string {
 /** Format a key for display with optional namespace stripping and source label. */
 function formatKey(
   key: string,
-  source: "global" | "project",
+  scope: MemoryScope,
   namespace?: string,
 ): string {
   const displayKey = namespace ? stripNamespace(key, namespace) : key;
-  const label = source === "global" ? "(global)" : "(project)";
+  const label = scope === "global" ? "(global)" : "(project)";
   return `${label} ${displayKey}`;
 }
 
 export function createRecallTool(
-  baseDir?: string,
+  backend: MemoryBackend,
 ): ToolDefinition<typeof Parameters> {
   return {
     name: "recall",
@@ -148,19 +92,16 @@ export function createRecallTool(
       return new Text(textContent, 0, 0);
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      let entries = mergedMemory(ctx.cwd, baseDir);
-      const namespace = params.namespace;
+      const { query, list, namespace } = params;
 
-      // Filter by namespace if provided
-      if (namespace) {
-        entries = filterByNamespace(entries, namespace);
-      }
-
-      const keys = Object.keys(entries);
+      const entries = await backend.recall({
+        cwd: ctx.cwd,
+        options: { query, list, namespace },
+      });
 
       // List mode
-      if (params.list) {
-        if (keys.length === 0) {
+      if (list) {
+        if (entries.length === 0) {
           const nsMsg = namespace
             ? `No memory entries found for namespace "${namespace}".`
             : "No memory entries found for this project.";
@@ -169,19 +110,14 @@ export function createRecallTool(
             details: {},
           };
         }
-        const lines = keys
-          .sort()
-          .map((k) => {
-            const entry = entries[k];
-            if (!entry) return null;
-            const keyDisplay = formatKey(k, entry.source, namespace);
-            const preview =
-              entry.value.length > MAX_PREVIEW
-                ? `${entry.value.slice(0, MAX_PREVIEW)}…`
-                : entry.value;
-            return `${keyDisplay}: ${preview}`;
-          })
-          .filter((l): l is string => l !== null);
+        const lines = entries.map((e) => {
+          const keyDisplay = formatKey(e.key, e.scope, namespace);
+          const preview =
+            e.value.length > MAX_PREVIEW
+              ? `${e.value.slice(0, MAX_PREVIEW)}…`
+              : e.value;
+          return `${keyDisplay}: ${preview}`;
+        });
         return {
           content: [{ type: "text", text: lines.join("\n") }],
           details: {},
@@ -189,7 +125,7 @@ export function createRecallTool(
       }
 
       // Search mode
-      if (!params.query || params.query.trim().length === 0) {
+      if (!query || query.trim().length === 0) {
         return {
           content: [
             {
@@ -201,10 +137,7 @@ export function createRecallTool(
         };
       }
 
-      const searchInput = toSearchMemory(entries);
-      const results = searchMemory(searchInput, params.query);
-
-      if (results.length === 0) {
+      if (entries.length === 0) {
         const nsMsg = namespace
           ? `No relevant memory found in namespace "${namespace}".`
           : "No relevant memory found.";
@@ -214,14 +147,15 @@ export function createRecallTool(
         };
       }
 
-      const lines = results
-        .map((r) => {
-          const entry = entries[r.key];
-          if (!entry) return null;
-          const keyDisplay = formatKey(r.key, entry.source, namespace);
-          return `[score: ${r.score}] ${keyDisplay}: ${r.valuePreview}`;
-        })
-        .filter((l): l is string => l !== null);
+      const lines = entries.map((e) => {
+        const keyDisplay = formatKey(e.key, e.scope, namespace);
+        const preview =
+          e.value.length > MAX_PREVIEW
+            ? `${e.value.slice(0, MAX_PREVIEW)}…`
+            : e.value;
+        const scoreStr = e.score != null ? `[score: ${e.score}] ` : "";
+        return `${scoreStr}${keyDisplay}: ${preview}`;
+      });
       return {
         content: [{ type: "text", text: lines.join("\n") }],
         details: {},

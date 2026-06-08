@@ -2,7 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { extractTextContent, renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
-import { loadGlobalMemoryRaw, loadMemoryRaw } from "./lib/store.js";
+import type { MemoryBackend } from "./lib/backend.js";
 
 const DEFAULT_THRESHOLD = 2000;
 
@@ -17,7 +17,7 @@ const Parameters = Type.Object({
 });
 
 export function createCompactMemoryTool(
-  baseDir?: string,
+  backend: MemoryBackend,
 ): ToolDefinition<typeof Parameters> {
   return {
     name: "compact_memory",
@@ -58,35 +58,24 @@ export function createCompactMemoryTool(
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const threshold = params.threshold ?? DEFAULT_THRESHOLD;
 
-      // Check both project and global memory independently.
-      const projectEntries = Object.entries(loadMemoryRaw(ctx.cwd, baseDir));
-      const globalEntries = Object.entries(loadGlobalMemoryRaw(baseDir));
+      const entries = await backend.recall({
+        cwd: ctx.cwd,
+        options: { list: true },
+      });
 
-      const oversized: {
-        key: string;
-        value: string;
-        source: "project" | "global";
-      }[] = [];
-      for (const [key, value] of projectEntries) {
-        if (value.length > threshold) {
-          oversized.push({ key, value, source: "project" });
-        }
-      }
-      for (const [key, value] of globalEntries) {
-        if (value.length > threshold) {
-          oversized.push({ key, value, source: "global" });
-        }
-      }
-      oversized.sort((a, b) => b.value.length - a.value.length);
+      const projectEntries = entries.filter((e) => e.scope === "project");
+      const globalEntries = entries.filter((e) => e.scope === "global");
 
-      const totalEntries = projectEntries.length + globalEntries.length;
+      const oversized = entries
+        .filter((e) => e.value.length > threshold)
+        .sort((a, b) => b.value.length - a.value.length);
 
       if (oversized.length === 0) {
         return {
           content: [
             {
               type: "text",
-              text: `All ${totalEntries} entries (${projectEntries.length} project, ${globalEntries.length} global) are within the ${threshold}-character threshold. No compaction needed.`,
+              text: `All ${entries.length} entries (${projectEntries.length} project, ${globalEntries.length} global) are within the ${threshold}-character threshold. No compaction needed.`,
             },
           ],
           details: {},
@@ -98,14 +87,14 @@ export function createCompactMemoryTool(
         0,
       );
       const lines: string[] = [
-        `${oversized.length} of ${totalEntries} entries exceed the ${threshold}-character threshold (${totalOversized.toLocaleString()} total oversized chars).`,
+        `${oversized.length} of ${entries.length} entries exceed the ${threshold}-character threshold (${totalOversized.toLocaleString()} total oversized chars).`,
         "",
         'For each entry below, summarize the value to 2-3 concise sentences, then call retain to store the compacted version. Use scope: "global" for entries labeled (global). Skip entries that cannot be meaningfully shortened.',
         "",
       ];
 
-      for (const { key, value, source } of oversized) {
-        const label = source === "global" ? " (global)" : "";
+      for (const { key, value, scope } of oversized) {
+        const label = scope === "global" ? " (global)" : "";
         lines.push(
           `## ${key}${label} (${value.length.toLocaleString()} chars)`,
           "```",

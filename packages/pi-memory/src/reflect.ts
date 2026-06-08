@@ -2,7 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { renderError } from "@mammothb/pi-shared";
 import { Type } from "typebox";
-import { setGlobalMemoryAndTTL, setMemoryAndTTL } from "./lib/store.js";
+import type { MemoryBackend } from "./lib/backend.js";
 
 const Parameters = Type.Object({
   observation: Type.String({
@@ -30,7 +30,7 @@ const Parameters = Type.Object({
 });
 
 export function createReflectTool(
-  baseDir?: string,
+  backend: MemoryBackend,
 ): ToolDefinition<typeof Parameters> {
   return {
     name: "reflect",
@@ -88,25 +88,24 @@ export function createReflectTool(
         ? key.trim()
         : `reflection-${new Date().toISOString()}`;
 
+      const effectiveScope = scope ?? "project";
       const ttlNote = ttlSeconds != null ? ` (expires in ${ttlSeconds}s)` : "";
 
-      if (scope === "global") {
-        setGlobalMemoryAndTTL(effectiveKey, observation, ttlSeconds, baseDir);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Reflected as "${effectiveKey}" (global)${ttlNote}`,
-            },
-          ],
-          details: {},
-        };
-      }
+      await backend.remember({
+        scope: effectiveScope,
+        cwd: ctx.cwd,
+        key: effectiveKey,
+        value: observation,
+        ttlSeconds,
+      });
 
-      setMemoryAndTTL(ctx.cwd, effectiveKey, observation, ttlSeconds, baseDir);
+      const scopeLabel = effectiveScope === "global" ? " (global)" : "";
       return {
         content: [
-          { type: "text", text: `Reflected as "${effectiveKey}"${ttlNote}` },
+          {
+            type: "text",
+            text: `Reflected as "${effectiveKey}"${scopeLabel}${ttlNote}`,
+          },
         ],
         details: {},
       };

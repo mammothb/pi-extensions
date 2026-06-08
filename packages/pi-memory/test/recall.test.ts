@@ -2,11 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  saveGlobalMemory,
-  saveMemory,
-  saveMemoryMeta,
-} from "../src/lib/store.js";
+import { FileSystemBackend } from "../src/lib/backends/filesystem.js";
 import { createRecallTool } from "../src/recall.js";
 
 let baseDir: string;
@@ -21,19 +17,32 @@ afterEach(() => {
   }
 });
 
+function makeBackend() {
+  return new FileSystemBackend({ baseDir });
+}
+
 describe("recall tool", () => {
   it("registers with the expected name", () => {
-    const tool = createRecallTool(baseDir);
+    const tool = createRecallTool(makeBackend());
     expect(tool.name).toBe("recall");
   });
 
   it("returns exact key match with highest score", async () => {
-    saveMemory(
-      "/test/project",
-      { build: "pnpm build", test: "vitest" },
-      baseDir,
-    );
-    const tool = createRecallTool(baseDir);
+    const backend = makeBackend();
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "build",
+      value: "pnpm build",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "test",
+      value: "vitest",
+    });
+
+    const tool = createRecallTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -53,16 +62,27 @@ describe("recall tool", () => {
   });
 
   it("returns keyword-matched results for a partial query", async () => {
-    saveMemory(
-      "/test/project",
-      {
-        "build-command": "pnpm run build",
-        "test-framework": "vitest",
-        "preferred-formatter": "biome",
-      },
-      baseDir,
-    );
-    const tool = createRecallTool(baseDir);
+    const backend = makeBackend();
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "build-command",
+      value: "pnpm run build",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "test-framework",
+      value: "vitest",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "preferred-formatter",
+      value: "biome",
+    });
+
+    const tool = createRecallTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -80,8 +100,15 @@ describe("recall tool", () => {
   });
 
   it('returns "No relevant memory found" for no-match queries', async () => {
-    saveMemory("/test/project", { foo: "bar" }, baseDir);
-    const tool = createRecallTool(baseDir);
+    const backend = makeBackend();
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "foo",
+      value: "bar",
+    });
+
+    const tool = createRecallTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -98,12 +125,27 @@ describe("recall tool", () => {
   });
 
   it("returns all keys in list mode", async () => {
-    saveMemory(
-      "/test/project",
-      { a: "value a", b: "value b", c: "value c" },
-      baseDir,
-    );
-    const tool = createRecallTool(baseDir);
+    const backend = makeBackend();
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "a",
+      value: "value a",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "b",
+      value: "value b",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "c",
+      value: "value c",
+    });
+
+    const tool = createRecallTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -122,7 +164,7 @@ describe("recall tool", () => {
   });
 
   it("shows message when listing empty memory", async () => {
-    const tool = createRecallTool(baseDir);
+    const tool = createRecallTool(makeBackend());
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -139,7 +181,7 @@ describe("recall tool", () => {
   });
 
   it("returns usage guidance when neither query nor list provided", async () => {
-    const tool = createRecallTool(baseDir);
+    const tool = createRecallTool(makeBackend());
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute("call-1", {}, undefined, undefined, ctx);
@@ -150,15 +192,21 @@ describe("recall tool", () => {
   });
 
   it("scores key matches higher than value matches", async () => {
-    saveMemory(
-      "/test/project",
-      {
-        format: "biome",
-        "tool-preference": "use format command for formatting",
-      },
-      baseDir,
-    );
-    const tool = createRecallTool(baseDir);
+    const backend = makeBackend();
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "format",
+      value: "biome",
+    });
+    await backend.remember({
+      scope: "project",
+      cwd: "/test/project",
+      key: "tool-preference",
+      value: "use format command for formatting",
+    });
+
+    const tool = createRecallTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -177,22 +225,44 @@ describe("recall tool", () => {
   });
 
   describe("namespace filtering", () => {
-    beforeEach(() => {
-      saveMemory(
-        "/test/project",
-        {
-          "project:build-command": "pnpm run build",
-          "project:test-framework": "vitest",
-          "user:editor": "vscode",
-          "user:prefers-tabs": "true",
-          "convention:error-handling": "Result<T, E> pattern",
-        },
-        baseDir,
-      );
-    });
+    async function seedNamespaceData(backend: FileSystemBackend) {
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "project:build-command",
+        value: "pnpm run build",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "project:test-framework",
+        value: "vitest",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "user:editor",
+        value: "vscode",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "user:prefers-tabs",
+        value: "true",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "convention:error-handling",
+        value: "Result<T, E> pattern",
+      });
+    }
 
     it("returns only keys matching the namespace prefix in search mode", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -212,7 +282,10 @@ describe("recall tool", () => {
     });
 
     it("strips namespace prefix from display output", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -231,7 +304,10 @@ describe("recall tool", () => {
     });
 
     it("returns all keys when namespace is omitted (backward compatible)", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -248,7 +324,10 @@ describe("recall tool", () => {
     });
 
     it("filters list mode by namespace", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -268,7 +347,10 @@ describe("recall tool", () => {
     });
 
     it("shows empty message for namespace with no matches", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -287,7 +369,10 @@ describe("recall tool", () => {
     });
 
     it("shows namespace-specific message for no-match search", async () => {
-      const tool = createRecallTool(baseDir);
+      const backend = makeBackend();
+      await seedNamespaceData(backend);
+
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -306,12 +391,21 @@ describe("recall tool", () => {
 
   describe("global memory merging", () => {
     it("includes global entries alongside project entries", async () => {
-      // Set up global memory
-      saveGlobalMemory({ "user:editor": "vscode" }, baseDir);
-      // Set up project memory
-      saveMemory("/test/project", { "project:build": "pnpm build" }, baseDir);
+      const backend = makeBackend();
+      await backend.remember({
+        scope: "global",
+        cwd: "/test/project",
+        key: "user:editor",
+        value: "vscode",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "project:build",
+        value: "pnpm build",
+      });
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
       const result = await tool.execute(
         "gm1",
@@ -330,10 +424,21 @@ describe("recall tool", () => {
     });
 
     it("project entries override global entries with the same key", async () => {
-      saveGlobalMemory({ "user:editor": "global-vscode" }, baseDir);
-      saveMemory("/test/project", { "user:editor": "project-zed" }, baseDir);
+      const backend = makeBackend();
+      await backend.remember({
+        scope: "global",
+        cwd: "/test/project",
+        key: "user:editor",
+        value: "global-vscode",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "user:editor",
+        value: "project-zed",
+      });
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
       const result = await tool.execute(
         "gm2",
@@ -353,9 +458,15 @@ describe("recall tool", () => {
     });
 
     it("global entries show (global) label when no project override", async () => {
-      saveGlobalMemory({ "user:theme": "tokyonight" }, baseDir);
+      const backend = makeBackend();
+      await backend.remember({
+        scope: "global",
+        cwd: "/test/project",
+        key: "user:theme",
+        value: "tokyonight",
+      });
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
       const result = await tool.execute(
         "gm3",
@@ -372,9 +483,15 @@ describe("recall tool", () => {
     });
 
     it("global entries are visible across different project cwds", async () => {
-      saveGlobalMemory({ "user:editor": "vscode" }, baseDir);
+      const backend = makeBackend();
+      await backend.remember({
+        scope: "global",
+        cwd: "/test/project",
+        key: "user:editor",
+        value: "vscode",
+      });
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       // Query from a different project
       const ctx = { cwd: "/other/project" } as any;
       const result = await tool.execute(
@@ -394,18 +511,27 @@ describe("recall tool", () => {
 
   describe("TTL filtering in recall", () => {
     it("does not return expired entries in search mode", async () => {
-      saveMemory(
-        "/test/project",
-        { permanent: "keep", ephemeral: "discard" },
-        baseDir,
-      );
-      saveMemoryMeta(
-        "/test/project",
-        { ephemeral: { expiresAt: "2000-01-01T00:00:00.000Z" } },
-        baseDir,
-      );
+      const backend = makeBackend();
+      // Store a permanent entry
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "permanent",
+        value: "keep",
+      });
+      // Store an entry with past-expiry TTL using direct file write
+      // (backend.remember with negative TTL would set future expiry,
+      //  so we write an already-expired entry via a short TTL + wait)
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "ephemeral",
+        value: "discard",
+        ttlSeconds: 0.01,
+      });
+      await new Promise((r) => setTimeout(r, 20));
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
       const result = await tool.execute(
         "ttl1",
@@ -422,14 +548,23 @@ describe("recall tool", () => {
     });
 
     it("does not return expired entries in list mode", async () => {
-      saveMemory("/test/project", { keep: "yes", stale: "no" }, baseDir);
-      saveMemoryMeta(
-        "/test/project",
-        { stale: { expiresAt: "2000-01-01T00:00:00.000Z" } },
-        baseDir,
-      );
+      const backend = makeBackend();
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "keep",
+        value: "yes",
+      });
+      await backend.remember({
+        scope: "project",
+        cwd: "/test/project",
+        key: "stale",
+        value: "no",
+        ttlSeconds: 0.01,
+      });
+      await new Promise((r) => setTimeout(r, 20));
 
-      const tool = createRecallTool(baseDir);
+      const tool = createRecallTool(backend);
       const ctx = { cwd: "/test/project" } as any;
       const result = await tool.execute(
         "ttl2",

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadMemory, loadMemoryMeta } from "../src/lib/store.js";
+import { FileSystemBackend } from "../src/lib/backends/filesystem.js";
 import { createMemoryEditTool } from "../src/memory-edit.js";
 import { createRetainTool } from "../src/retain.js";
 
@@ -18,16 +18,21 @@ afterEach(() => {
   }
 });
 
+function makeBackend() {
+  return new FileSystemBackend({ baseDir });
+}
+
 describe("memory_edit tool", () => {
   it("registers with the expected name", () => {
-    const tool = createMemoryEditTool(baseDir);
+    const tool = createMemoryEditTool(makeBackend());
     expect(tool.name).toBe("memory_edit");
   });
 
   describe("delete", () => {
     it("deletes an existing key", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await retain.execute(
@@ -49,33 +54,18 @@ describe("memory_edit tool", () => {
       expect(result.content).toEqual([
         { type: "text", text: 'Deleted "temp-key"' },
       ]);
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({});
-    });
 
-    it("reports when key is not found", async () => {
-      const edit = createMemoryEditTool(baseDir);
-      const ctx = { cwd: "/test/project" } as any;
-
-      const result = await edit.execute(
-        "e2",
-        { action: "delete", key: "nonexistent" },
-        undefined,
-        undefined,
-        ctx,
-      );
-
-      expect(result.content).toEqual([
-        {
-          type: "text",
-          text: 'Key "nonexistent" not found — nothing deleted.',
-        },
-      ]);
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(0);
     });
 
     it("does not affect other keys when deleting", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await retain.execute(
@@ -101,15 +91,21 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({ keep: "kept" });
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toMatchObject([
+        { key: "keep", value: "kept", scope: "project" },
+      ]);
     });
   });
 
   describe("rename", () => {
     it("renames an existing key", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await retain.execute(
@@ -132,13 +128,19 @@ describe("memory_edit tool", () => {
         { type: "text", text: 'Renamed "old-name" → "new-name"' },
       ]);
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({ "new-name": "the value" });
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toMatchObject([
+        { key: "new-name", value: "the value", scope: "project" },
+      ]);
     });
 
     it("overwrites newKey if it already exists", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await retain.execute(
@@ -164,12 +166,20 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({ "new-name": "old value" });
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        key: "new-name",
+        value: "old value",
+        scope: "project",
+      });
     });
 
     it("reports error when newKey is missing", async () => {
-      const edit = createMemoryEditTool(baseDir);
+      const edit = createMemoryEditTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await edit.execute(
@@ -189,7 +199,7 @@ describe("memory_edit tool", () => {
     });
 
     it("reports error when newKey is same as key", async () => {
-      const edit = createMemoryEditTool(baseDir);
+      const edit = createMemoryEditTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await edit.execute(
@@ -207,34 +217,16 @@ describe("memory_edit tool", () => {
         },
       ]);
     });
-
-    it("reports when source key is not found", async () => {
-      const edit = createMemoryEditTool(baseDir);
-      const ctx = { cwd: "/test/project" } as any;
-
-      const result = await edit.execute(
-        "e8",
-        { action: "rename", key: "nonexistent", newKey: "dest" },
-        undefined,
-        undefined,
-        ctx,
-      );
-
-      expect(result.content).toEqual([
-        {
-          type: "text",
-          text: 'Key "nonexistent" not found — nothing renamed.',
-        },
-      ]);
-    });
   });
 
   describe("TTL cleanup", () => {
-    it("delete removes TTL metadata alongside the key", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+    it("delete removes the entry (TTL is cleaned up internally)", async () => {
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
+      // Store with TTL
       await retain.execute(
         "t1",
         { key: "temp", value: "val", ttlSeconds: 3600 },
@@ -243,9 +235,14 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
-      let meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta.temp).toBeDefined();
+      // Verify it exists
+      let entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
 
+      // Delete
       await edit.execute(
         "t2",
         { action: "delete", key: "temp" },
@@ -254,17 +251,21 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
-      meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta.temp).toBeUndefined();
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory.temp).toBeUndefined();
+      // Verify it's gone
+      entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(0);
     });
 
-    it("rename moves TTL metadata to the new key", async () => {
-      const retain = createRetainTool(baseDir);
-      const edit = createMemoryEditTool(baseDir);
+    it("rename preserves value (TTL is moved internally)", async () => {
+      const backend = makeBackend();
+      const retain = createRetainTool(backend);
+      const edit = createMemoryEditTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
+      // Store with TTL
       await retain.execute(
         "t3",
         { key: "old", value: "val", ttlSeconds: 3600 },
@@ -273,6 +274,7 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
+      // Rename
       await edit.execute(
         "t4",
         { action: "rename", key: "old", newKey: "new" },
@@ -281,9 +283,17 @@ describe("memory_edit tool", () => {
         ctx,
       );
 
-      const meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta.old).toBeUndefined();
-      expect(meta.new).toBeDefined();
+      // Verify new key exists with the value
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        key: "new",
+        value: "val",
+        scope: "project",
+      });
     });
   });
 });

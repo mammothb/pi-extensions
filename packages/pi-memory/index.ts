@@ -1,6 +1,8 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createCompactMemoryTool } from "./src/compact-memory.js";
-import { hashCwd, loadIndex, saveIndex } from "./src/lib/store.js";
+import { FileSystemBackend } from "./src/lib/backends/filesystem.js";
 import { createMemoryEditTool } from "./src/memory-edit.js";
 import { createRecallTool } from "./src/recall.js";
 import { createReflectTool } from "./src/reflect.js";
@@ -18,21 +20,21 @@ const REFLECTION_INSTRUCTION = [
 ].join("\n");
 
 export default function (pi: ExtensionAPI) {
-  pi.registerTool(createRetainTool());
-  pi.registerTool(createRecallTool());
-  pi.registerTool(createReflectTool());
-  pi.registerTool(createMemoryEditTool());
-  pi.registerTool(createCompactMemoryTool());
+  const backend = new FileSystemBackend({
+    baseDir: path.join(os.homedir(), ".pi", "agent"),
+  });
 
-  pi.on("session_start", (_event, ctx) => {
-    // Update the project registry so index.json tracks known projects
-    const index = loadIndex();
-    const hash = hashCwd(ctx.cwd);
-    index[hash] = {
+  pi.registerTool(createRetainTool(backend));
+  pi.registerTool(createRecallTool(backend));
+  pi.registerTool(createReflectTool(backend));
+  pi.registerTool(createMemoryEditTool(backend));
+  pi.registerTool(createCompactMemoryTool(backend));
+
+  pi.on("session_start", async (_event, ctx) => {
+    await backend.upsertIndex(ctx.cwd, {
       path: ctx.cwd,
       lastAccess: new Date().toISOString(),
-    };
-    saveIndex(index);
+    });
   });
 
   pi.on("before_agent_start", (_event, _ctx) => {

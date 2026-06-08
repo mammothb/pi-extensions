@@ -2,11 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  loadGlobalMemory,
-  loadMemory,
-  loadMemoryMeta,
-} from "../src/lib/store.js";
+import { FileSystemBackend } from "../src/lib/backends/filesystem.js";
 import { createReflectTool } from "../src/reflect.js";
 
 let baseDir: string;
@@ -21,14 +17,19 @@ afterEach(() => {
   }
 });
 
+function makeBackend() {
+  return new FileSystemBackend({ baseDir });
+}
+
 describe("reflect tool", () => {
   it("registers with the expected name", () => {
-    const tool = createReflectTool(baseDir);
+    const tool = createReflectTool(makeBackend());
     expect(tool.name).toBe("reflect");
   });
 
   it("stores observation under auto-generated timestamp key", async () => {
-    const tool = createReflectTool(baseDir);
+    const backend = makeBackend();
+    const tool = createReflectTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -43,15 +44,19 @@ describe("reflect tool", () => {
       result.content[0]?.type === "text" ? result.content[0].text : "";
     expect(text).toContain('Reflected as "reflection-');
 
-    const memory = loadMemory("/test/project", baseDir);
-    const keys = Object.keys(memory);
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toMatch(/^reflection-\d{4}-\d{2}-\d{2}T/);
-    expect(memory[keys[0]!]).toBe("This project uses TypeScript");
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.key).toMatch(/^reflection-\d{4}-\d{2}-\d{2}T/);
+    expect(entries[0]!.value).toBe("This project uses TypeScript");
+    expect(entries[0]!.scope).toBe("project");
   });
 
   it("stores observation under explicit key when provided", async () => {
-    const tool = createReflectTool(baseDir);
+    const backend = makeBackend();
+    const tool = createReflectTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -66,12 +71,17 @@ describe("reflect tool", () => {
       { type: "text", text: 'Reflected as "project-structure"' },
     ]);
 
-    const memory = loadMemory("/test/project", baseDir);
-    expect(memory).toEqual({ "project-structure": "Uses pnpm workspaces" });
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toMatchObject([
+      { key: "project-structure", value: "Uses pnpm workspaces" },
+    ]);
   });
 
   it("rejects empty observation", async () => {
-    const tool = createReflectTool(baseDir);
+    const tool = createReflectTool(makeBackend());
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -88,7 +98,8 @@ describe("reflect tool", () => {
   });
 
   it("generates unique keys for sequential reflections", async () => {
-    const tool = createReflectTool(baseDir);
+    const backend = makeBackend();
+    const tool = createReflectTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     await tool.execute(
@@ -108,15 +119,18 @@ describe("reflect tool", () => {
       ctx,
     );
 
-    const memory = loadMemory("/test/project", baseDir);
-    const keys = Object.keys(memory);
-    expect(keys).toHaveLength(2);
-    expect(keys[0]).not.toBe(keys[1]);
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]!.key).not.toBe(entries[1]!.key);
   });
 
   describe("global scope", () => {
-    it("writes to global.json when scope is global", async () => {
-      const tool = createReflectTool(baseDir);
+    it("writes to global scope when scope is global", async () => {
+      const backend = makeBackend();
+      const tool = createReflectTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -127,16 +141,18 @@ describe("reflect tool", () => {
         ctx,
       );
 
-      const globalMem = loadGlobalMemory(baseDir);
-      expect(Object.values(globalMem)).toContain("Global preference");
-      expect(Object.keys(globalMem)[0]).toMatch(/^reflection-/);
-      // Project memory should be unaffected
-      const projectMem = loadMemory("/test/project", baseDir);
-      expect(projectMem).toEqual({});
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.value).toBe("Global preference");
+      expect(entries[0]!.key).toMatch(/^reflection-/);
+      expect(entries[0]!.scope).toBe("global");
     });
 
     it("returns confirmation with (global) label", async () => {
-      const tool = createReflectTool(baseDir);
+      const tool = createReflectTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -158,8 +174,9 @@ describe("reflect tool", () => {
   });
 
   describe("TTL", () => {
-    it("stores TTL metadata alongside the reflection", async () => {
-      const tool = createReflectTool(baseDir);
+    it("stores entry with TTL (visible before expiry)", async () => {
+      const backend = makeBackend();
+      const tool = createReflectTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -174,15 +191,18 @@ describe("reflect tool", () => {
         ctx,
       );
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory["temp-reflection"]).toBe("Temporary learning");
-
-      const meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta["temp-reflection"]).toBeDefined();
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.key).toBe("temp-reflection");
+      expect(entries[0]!.value).toBe("Temporary learning");
     });
 
     it("entry with ttlSeconds expires and is not recalled", async () => {
-      const tool = createReflectTool(baseDir);
+      const backend = makeBackend();
+      const tool = createReflectTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -199,12 +219,15 @@ describe("reflect tool", () => {
 
       await new Promise((r) => setTimeout(r, 20));
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory.ephemeral).toBeUndefined();
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(0);
     });
 
     it("reflect with ttlSeconds shows expiry in confirmation", async () => {
-      const tool = createReflectTool(baseDir);
+      const tool = createReflectTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(

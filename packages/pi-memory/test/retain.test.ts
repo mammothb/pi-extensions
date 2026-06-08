@@ -2,11 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  loadGlobalMemory,
-  loadMemory,
-  loadMemoryMeta,
-} from "../src/lib/store.js";
+import { FileSystemBackend } from "../src/lib/backends/filesystem.js";
 import { createRetainTool } from "../src/retain.js";
 
 let baseDir: string;
@@ -21,14 +17,19 @@ afterEach(() => {
   }
 });
 
+function makeBackend() {
+  return new FileSystemBackend({ baseDir });
+}
+
 describe("retain tool", () => {
   it("registers with the expected name", () => {
-    const tool = createRetainTool(baseDir);
+    const tool = createRetainTool(makeBackend());
     expect(tool.name).toBe("retain");
   });
 
   it("stores a key-value pair", async () => {
-    const tool = createRetainTool(baseDir);
+    const backend = makeBackend();
+    const tool = createRetainTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     await tool.execute(
@@ -39,12 +40,18 @@ describe("retain tool", () => {
       ctx,
     );
 
-    const memory = loadMemory("/test/project", baseDir);
-    expect(memory).toEqual({ build: "pnpm build" });
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toMatchObject([
+      { key: "build", value: "pnpm build", scope: "project" },
+    ]);
   });
 
   it("overwrites an existing key", async () => {
-    const tool = createRetainTool(baseDir);
+    const backend = makeBackend();
+    const tool = createRetainTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     await tool.execute(
@@ -62,12 +69,17 @@ describe("retain tool", () => {
       ctx,
     );
 
-    const memory = loadMemory("/test/project", baseDir);
-    expect(memory).toEqual({ build: "pnpm build" });
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toMatchObject([
+      { key: "build", value: "pnpm build", scope: "project" },
+    ]);
   });
 
   it("returns confirmation with key name", async () => {
-    const tool = createRetainTool(baseDir);
+    const tool = createRetainTool(makeBackend());
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -84,7 +96,7 @@ describe("retain tool", () => {
   });
 
   it("rejects empty key", async () => {
-    const tool = createRetainTool(baseDir);
+    const tool = createRetainTool(makeBackend());
     const ctx = { cwd: "/test/project" } as any;
 
     const result = await tool.execute(
@@ -101,7 +113,8 @@ describe("retain tool", () => {
   });
 
   it("handles keys with special characters", async () => {
-    const tool = createRetainTool(baseDir);
+    const backend = makeBackend();
+    const tool = createRetainTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     await tool.execute(
@@ -112,12 +125,18 @@ describe("retain tool", () => {
       ctx,
     );
 
-    const memory = loadMemory("/test/project", baseDir);
-    expect(memory["reflection-2026-06-07T14:30:00.000Z"]).toBe("some learning");
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { query: "learning" },
+    });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.key).toBe("reflection-2026-06-07T14:30:00.000Z");
+    expect(entries[0]!.value).toBe("some learning");
   });
 
   it("handles empty value", async () => {
-    const tool = createRetainTool(baseDir);
+    const backend = makeBackend();
+    const tool = createRetainTool(backend);
     const ctx = { cwd: "/test/project" } as any;
 
     await tool.execute(
@@ -128,13 +147,19 @@ describe("retain tool", () => {
       ctx,
     );
 
-    const memory = loadMemory("/test/project", baseDir);
-    expect(memory).toEqual({ "empty-value": "" });
+    const entries = await backend.recall({
+      cwd: "/test/project",
+      options: { list: true },
+    });
+    expect(entries).toMatchObject([
+      { key: "empty-value", value: "", scope: "project" },
+    ]);
   });
 
   describe("global scope", () => {
-    it("writes to global.json when scope is global", async () => {
-      const tool = createRetainTool(baseDir);
+    it("writes to global scope when scope is global", async () => {
+      const backend = makeBackend();
+      const tool = createRetainTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -145,15 +170,32 @@ describe("retain tool", () => {
         ctx,
       );
 
-      const globalMem = loadGlobalMemory(baseDir);
-      expect(globalMem).toEqual({ "user:editor": "vscode" });
-      // Project memory should be unaffected
-      const projectMem = loadMemory("/test/project", baseDir);
-      expect(projectMem).toEqual({});
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        key: "user:editor",
+        value: "vscode",
+        scope: "global",
+      });
+
+      // Verify it's visible from a different project cwd
+      const otherEntries = await backend.recall({
+        cwd: "/other/project",
+        options: { list: true },
+      });
+      expect(otherEntries).toHaveLength(1);
+      expect(otherEntries[0]).toMatchObject({
+        key: "user:editor",
+        value: "vscode",
+        scope: "global",
+      });
     });
 
     it("returns confirmation with (global) label", async () => {
-      const tool = createRetainTool(baseDir);
+      const tool = createRetainTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
@@ -170,7 +212,8 @@ describe("retain tool", () => {
     });
 
     it("defaults to project scope when scope is omitted", async () => {
-      const tool = createRetainTool(baseDir);
+      const backend = makeBackend();
+      const tool = createRetainTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -181,16 +224,33 @@ describe("retain tool", () => {
         ctx,
       );
 
-      const projectMem = loadMemory("/test/project", baseDir);
-      expect(projectMem).toEqual({ build: "pnpm build" });
-      const globalMem = loadGlobalMemory(baseDir);
-      expect(globalMem).toEqual({});
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        key: "build",
+        value: "pnpm build",
+        scope: "project",
+      });
+
+      // Should not be visible from a different project
+      const otherEntries = await backend.recall({
+        cwd: "/other/project",
+        options: { list: true },
+      });
+      const projectKeys = otherEntries
+        .filter((e) => e.scope === "project")
+        .map((e) => e.key);
+      expect(projectKeys).not.toContain("build");
     });
   });
 
   describe("TTL", () => {
-    it("stores TTL metadata alongside the memory entry", async () => {
-      const tool = createRetainTool(baseDir);
+    it("stores entry with TTL (visible before expiry)", async () => {
+      const backend = makeBackend();
+      const tool = createRetainTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -201,18 +261,21 @@ describe("retain tool", () => {
         ctx,
       );
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({ "temp-key": "temp-value" });
-
-      const meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta["temp-key"]).toBeDefined();
-      expect(new Date(meta["temp-key"]!.expiresAt).getTime()).toBeGreaterThan(
-        Date.now(),
-      );
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        key: "temp-key",
+        value: "temp-value",
+        scope: "project",
+      });
     });
 
     it("entry with ttlSeconds: 0 expires immediately", async () => {
-      const tool = createRetainTool(baseDir);
+      const backend = makeBackend();
+      const tool = createRetainTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       await tool.execute(
@@ -226,13 +289,16 @@ describe("retain tool", () => {
       // Wait for expiry
       await new Promise((r) => setTimeout(r, 20));
 
-      // loadMemory filters expired
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({});
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toHaveLength(0);
     });
 
-    it("overwriting with TTL clears previous meta and sets new meta", async () => {
-      const tool = createRetainTool(baseDir);
+    it("overwriting with TTL then without TTL clears expiry", async () => {
+      const backend = makeBackend();
+      const tool = createRetainTool(backend);
       const ctx = { cwd: "/test/project" } as any;
 
       // First write with TTL
@@ -243,8 +309,6 @@ describe("retain tool", () => {
         undefined,
         ctx,
       );
-      let meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta.key).toBeDefined();
 
       // Overwrite without TTL
       await tool.execute(
@@ -254,15 +318,18 @@ describe("retain tool", () => {
         undefined,
         ctx,
       );
-      meta = loadMemoryMeta("/test/project", baseDir);
-      expect(meta.key).toBeUndefined();
 
-      const memory = loadMemory("/test/project", baseDir);
-      expect(memory).toEqual({ key: "v2" });
+      const entries = await backend.recall({
+        cwd: "/test/project",
+        options: { list: true },
+      });
+      expect(entries).toMatchObject([
+        { key: "key", value: "v2", scope: "project" },
+      ]);
     });
 
     it("retain with ttlSeconds shows expiry in confirmation", async () => {
-      const tool = createRetainTool(baseDir);
+      const tool = createRetainTool(makeBackend());
       const ctx = { cwd: "/test/project" } as any;
 
       const result = await tool.execute(
