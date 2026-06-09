@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Box, TruncatedText } from "@earendil-works/pi-tui";
+import { Box } from "@earendil-works/pi-tui";
+import { BgSafeTruncatedText } from "@mammothb/pi-shared";
 import { AskComponent } from "./lib/component.js";
 import { createAskKeybindings } from "./lib/keybindings.js";
 import { validateUniqueQuestions } from "./lib/validate.js";
@@ -101,7 +102,7 @@ Use this tool when you need to:
     renderCall(args, theme) {
       const questions = (args.questions ?? []) as QuestionT[];
       const topics = questions.map((q) => q.header).join(", ");
-      return new TruncatedText(
+      return new BgSafeTruncatedText(
         theme.fg("toolTitle", theme.bold("ask user ")) +
           theme.fg("muted", topics),
       );
@@ -112,19 +113,20 @@ Use this tool when you need to:
 
       if (!details) {
         const t = result.content[0];
-        return new TruncatedText(t?.type === "text" ? t.text : "", 0, 0);
+        return new BgSafeTruncatedText(t?.type === "text" ? t.text : "", 0, 0);
       }
 
       if (details.cancelled) {
-        return new TruncatedText(theme.fg("warning", "Cancelled"), 0, 0);
+        return new BgSafeTruncatedText(theme.fg("warning", "Cancelled"), 0, 0);
       }
 
-      // One TruncatedText per question — each line item truncated independently
+      // One TruncatedText per question — each truncated independently.
+      // BgSafeTruncatedText preserves background color across the ellipsis.
       const box = new Box(0, 0);
       for (const q of details.questions) {
         const answer = details.answers[q.question] ?? "(no answer)";
         box.addChild(
-          new TruncatedText(
+          new BgSafeTruncatedText(
             theme.fg("success", "✓ ") +
               theme.fg("accent", `${q.header}: `) +
               theme.fg("text", answer),

@@ -9,6 +9,16 @@ import {
   type QuestionState,
 } from "./state.js";
 
+/** Truncate plain text with ellipsis, preserving character boundaries. */
+function truncateText(text: string, maxWidth: number): string {
+  if (text.length <= maxWidth) {
+    return text;
+  }
+  const ELLIPSIS = "...";
+  const keep = maxWidth - ELLIPSIS.length;
+  return keep > 0 ? text.slice(0, keep) + ELLIPSIS : text.slice(0, maxWidth);
+}
+
 // ── Top-level render ─────────────────────────────────────────────────────────
 
 /**
@@ -92,7 +102,7 @@ export function renderTabBar(
       continue;
     }
     const isActive = i === activeTab;
-    const header = truncateToWidth(q.header, 12);
+    const header = truncateText(q.header, 12);
     const label = ` ${header} `;
 
     let styled: string;
@@ -179,7 +189,7 @@ export function renderQuestionBody(
       // Preview of saved text below
       if (hasFreeText) {
         const indent = " ".repeat(q.multi ? 9 : 7);
-        const preview = truncateToWidth(
+        const preview = truncateText(
           state.freeTextValue ?? "",
           width - indent.length,
         );
@@ -267,12 +277,12 @@ export function renderSubmitTab(
     const answer = getAnswerText(q, state);
     if (answer !== null) {
       add(
-        theme.fg("muted", ` ${truncateToWidth(q.header, 12)}: `) +
+        theme.fg("muted", ` ${truncateText(q.header, 12)}: `) +
           theme.fg("text", answer),
       );
     } else {
       add(
-        theme.fg("dim", ` ${truncateToWidth(q.header, 12)}: `) +
+        theme.fg("dim", ` ${truncateText(q.header, 12)}: `) +
           theme.fg("warning", "—"),
       );
     }
@@ -284,7 +294,7 @@ export function renderSubmitTab(
   } else {
     const missing = questions
       .filter((_, i) => !states[i]?.confirmed)
-      .map((q) => truncateToWidth(q.header, 12))
+      .map((q) => truncateText(q.header, 12))
       .join(", ");
     add(theme.fg("warning", ` Still needed: ${missing}`));
   }

@@ -1,3 +1,4 @@
+export { BgSafeTruncatedText } from "./src/bg-safe-truncated-text.js";
 export { expandTilde } from "./src/expand-tilde.js";
 export {
   extractTextContent,
