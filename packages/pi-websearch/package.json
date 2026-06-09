@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-websearch",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "description": "A pi extension that adds a websearch tool for searching the web",
   "keywords": [
     "pi-package"
