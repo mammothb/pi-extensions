@@ -54,6 +54,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-permissions",
+          root: "./packages/pi-permissions",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

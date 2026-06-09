@@ -1,6 +1,6 @@
-import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { createCompactMemoryTool } from "./src/compact-memory.js";
 import { FileSystemBackend } from "./src/lib/backends/filesystem.js";
 import { createMemoryEditTool } from "./src/memory-edit.js";
@@ -21,7 +21,7 @@ const REFLECTION_INSTRUCTION = [
 
 export default function (pi: ExtensionAPI) {
   const backend = new FileSystemBackend({
-    baseDir: path.join(os.homedir(), ".pi", "agent"),
+    baseDir: getAgentDir(),
   });
 
   pi.registerTool(createRetainTool(backend));

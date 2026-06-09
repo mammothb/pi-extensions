@@ -1,0 +1,25 @@
+{
+  "name": "@mammothb/pi-permissions",
+  "version": "0.0.1",
+  "description": "Permission enforcement extension for pi — gates tool calls, bash commands (via arbiter executable), and file paths",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}

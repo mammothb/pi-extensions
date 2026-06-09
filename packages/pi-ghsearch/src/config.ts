@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { loadPiConfig } from "@mammothb/pi-shared";
 
 export interface GhSearchConfig {
   /**
@@ -51,29 +49,6 @@ export const DEFAULT_CONFIG: GhSearchConfig = {
   },
 };
 
-async function tryReadJson(
-  path: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const raw = await readFile(path, "utf-8");
-    return JSON.parse(raw);
-  } catch (err: unknown) {
-    // File not found — no config to load, not an error
-    if (
-      err instanceof Error &&
-      "code" in err &&
-      (err as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      return null;
-    }
-    // Parse error — warn and fall back
-    console.warn(
-      `pi-ghsearch: failed to parse config at ${path}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
-}
-
 function mergeConfig(
   base: GhSearchConfig,
   overrides: Record<string, unknown>,
@@ -103,39 +78,16 @@ function mergeConfig(
 }
 
 /**
- * Load config from two locations (project overrides global, global overrides defaults).
- * Returns the merged config. Logs warnings on parse errors, proceeds with defaults.
+ * Load config from JSON files. Project config (`.pi/pi-ghsearch.json`)
+ * overrides global config (`~/.pi/agent/pi-ghsearch.json`).
  *
- * @param cwd - Current working directory (for project-level config)
- * @param home - Home directory (for global config). Defaults to homedir().
+ * Returns the default config if no config files exist.
  */
-export async function loadConfig(
-  cwd: string,
-  home?: string,
-): Promise<GhSearchConfig> {
-  let config: GhSearchConfig = {
-    ...DEFAULT_CONFIG,
-    defaults: { ...DEFAULT_CONFIG.defaults },
-  };
-
-  // Load global config (~/.pi/agent/pi-ghsearch.json)
-  const globalPath = join(
-    home ?? homedir(),
-    ".pi",
-    "agent",
+export function loadConfig(cwd: string): GhSearchConfig {
+  return loadPiConfig(
     "pi-ghsearch.json",
+    cwd,
+    { ...DEFAULT_CONFIG, defaults: { ...DEFAULT_CONFIG.defaults } },
+    mergeConfig,
   );
-  const globalConfig = await tryReadJson(globalPath);
-  if (globalConfig) {
-    config = mergeConfig(config, globalConfig);
-  }
-
-  // Load project config (<cwd>/.pi/pi-ghsearch.json) — overrides global
-  const projectPath = join(cwd, ".pi", "pi-ghsearch.json");
-  const projectConfig = await tryReadJson(projectPath);
-  if (projectConfig) {
-    config = mergeConfig(config, projectConfig);
-  }
-
-  return config;
 }

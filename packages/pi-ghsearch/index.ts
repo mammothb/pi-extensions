@@ -5,7 +5,7 @@ import { createGhFetchTool } from "./src/gh-fetch.js";
 import { createGhSearchTool } from "./src/gh-search.js";
 
 export default async function (pi: ExtensionAPI) {
-  const config = await loadConfig(process.cwd());
+  const config = loadConfig(process.cwd());
 
   pi.registerTool(createGhSearchTool(pi, config));
   pi.registerTool(createGhAuthStatusTool(pi, config));

@@ -192,10 +192,17 @@ export function checkShutdownHealth(dir: string): ShutdownHealth {
   if (existsSync(dir)) {
     for (const entry of readdirSync(dir)) {
       const match = entry.match(/^shutdown-(\d+)\.pid$/);
-      if (!match) continue;
+      if (!match) {
+        continue;
+      }
+
+      const pidStr = match[1];
+      if (!pidStr) {
+        continue;
+      }
 
       pids.push(entry);
-      const pid = parseInt(match[1], 10);
+      const pid = parseInt(pidStr, 10);
       if (isProcessAlive(pid)) {
         stillRunning++;
       } else {

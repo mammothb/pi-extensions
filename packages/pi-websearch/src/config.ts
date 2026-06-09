@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { loadPiConfig } from "@mammothb/pi-shared";
 
 export interface WebsearchConfig {
   /** Which provider to use. */
@@ -62,23 +60,35 @@ export const DEFAULT_CONFIG: WebsearchConfig = {
  */
 function mergeConfigs(
   base: WebsearchConfig,
-  override: Partial<WebsearchConfig>,
+  override: Record<string, unknown>,
 ): WebsearchConfig {
   const merged = { ...base };
 
-  if (override.provider !== undefined) {
+  if (
+    typeof override.provider === "string" &&
+    (override.provider === "exa-mcp" || override.provider === "searxng")
+  ) {
     merged.provider = override.provider;
   }
-  if (override.exaMcp) {
-    merged.exaMcp = { ...base.exaMcp, ...override.exaMcp };
+  if (override.exaMcp && typeof override.exaMcp === "object") {
+    merged.exaMcp = {
+      ...base.exaMcp,
+      ...(override.exaMcp as Record<string, unknown>),
+    };
   }
-  if (override.searxng) {
-    merged.searxng = { ...base.searxng, ...override.searxng };
+  if (override.searxng && typeof override.searxng === "object") {
+    merged.searxng = {
+      ...base.searxng,
+      ...(override.searxng as Record<string, unknown>),
+    };
   }
-  if (override.defaults) {
-    merged.defaults = { ...base.defaults, ...override.defaults };
+  if (override.defaults && typeof override.defaults === "object") {
+    merged.defaults = {
+      ...base.defaults,
+      ...(override.defaults as Record<string, unknown>),
+    };
   }
-  if (override.timeoutMs !== undefined) {
+  if (typeof override.timeoutMs === "number") {
     merged.timeoutMs = override.timeoutMs;
   }
 
@@ -92,37 +102,5 @@ function mergeConfigs(
  * Returns the default config if no config files exist.
  */
 export function loadConfig(cwd: string): WebsearchConfig {
-  const globalPath = join(getAgentDir(), "pi-websearch.json");
-  const projectPath = join(cwd, ".pi", "pi-websearch.json");
-
-  let global: Partial<WebsearchConfig> | undefined;
-  let project: Partial<WebsearchConfig> | undefined;
-
-  if (existsSync(globalPath)) {
-    try {
-      global = JSON.parse(readFileSync(globalPath, "utf-8"));
-    } catch (err) {
-      console.error(`Failed to load global config from ${globalPath}: ${err}`);
-    }
-  }
-
-  if (existsSync(projectPath)) {
-    try {
-      project = JSON.parse(readFileSync(projectPath, "utf-8"));
-    } catch (err) {
-      console.error(
-        `Failed to load project config from ${projectPath}: ${err}`,
-      );
-    }
-  }
-
-  let config = DEFAULT_CONFIG;
-  if (global) {
-    config = mergeConfigs(config, global);
-  }
-  if (project) {
-    config = mergeConfigs(config, project);
-  }
-
-  return config;
+  return loadPiConfig("pi-websearch.json", cwd, DEFAULT_CONFIG, mergeConfigs);
 }
