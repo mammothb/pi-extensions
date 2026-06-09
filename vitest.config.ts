@@ -42,6 +42,13 @@ export default defineConfig({
       },
       {
         test: {
+          name: "pi-ask",
+          root: "./packages/pi-ask",
+          include: ["test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "pi-memory",
           root: "./packages/pi-memory",
           include: ["test/**/*.test.ts"],

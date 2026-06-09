@@ -65,9 +65,9 @@ If a theme author wants to improve contrast further, they can brighten
 
 ### Tests
 
-The vitest workspace (`vitest.config.ts`) covers `pi-ghsearch`, `pi-webfetch`,
-and `pi-websearch`. `pi-toast` has no tests and is not yet in the workspace —
-add it when writing tests.
+The vitest workspace (`vitest.config.ts`) covers all packages with tests:
+`pi-ask`, `pi-eval`, `pi-ghsearch`, `pi-memory`, `pi-toast`, `pi-webfetch`,
+and `pi-websearch`.
 
 ## Packages
 
@@ -76,8 +76,12 @@ independently under the `@mammothb/` scope.
 
 | Package | Description |
 | --- | --- |
+| `@mammothb/pi-ask` | Interactive user prompting with a structured TUI form (1–4 questions) |
+| `@mammothb/pi-eval` | Execute JavaScript and Python code in isolated subprocesses |
 | `@mammothb/pi-ghsearch` | Typed GitHub search, fetch, and auth-status tools via the `gh` CLI |
+| `@mammothb/pi-memory` | Persistent agent memory across sessions |
 | `@mammothb/pi-toast` | Desktop toast notifications on agent events (tmux-aware) |
+| `@mammothb/pi-tokyonight-storm` | Tokyo Night Storm theme — colors corrected to match folke/tokyonight.nvim |
 | `@mammothb/pi-webfetch` | Fetch and convert web content to markdown/text/html |
 | `@mammothb/pi-websearch` | Web search via SearXNG or Exa MCP |
 

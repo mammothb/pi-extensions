@@ -39,6 +39,24 @@ importers:
         specifier: 4.1.7
         version: 4.1.7(@types/node@25.9.1)(@vitest/coverage-v8@4.1.7)(vite@8.0.16(@types/node@25.9.1)(jiti@2.7.0)(yaml@2.9.0))
 
+  packages/pi-ask:
+    dependencies:
+      '@earendil-works/pi-ai':
+        specifier: '*'
+        version: 0.78.1(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.78.1(ws@8.21.0)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: '*'
+        version: 0.78.1
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
+      typebox:
+        specifier: '*'
+        version: 1.2.0
+
   packages/pi-eval:
     dependencies:
       '@earendil-works/pi-ai':
