@@ -1,19 +1,19 @@
 # pi-ask
 
-A [pi](https://pi.dev) extension that adds an `ask` tool for interactive
+A [pi](https://pi.dev) extension that adds an `AskUserQuestion` tool for interactive
 user prompting during agent execution. When the LLM needs user input —
 preferences, clarifications, implementation decisions — it can ask 1–4
 structured questions with a TUI form instead of plain-text back-and-forth.
 
 ## Usage
 
-Once installed, the LLM can call the `ask` tool to present the user with a
+Once installed, the LLM can call the `AskUserQuestion` tool to present the user with a
 tabbed form. Each question gets its own tab; a final **Submit** tab sends all
 answers back to the agent.
 
 ### Tool parameters
 
-The `ask` tool accepts an object with a `questions` array (1–4 questions):
+The `AskUserQuestion` tool accepts an object with a `questions` array (1–4 questions):
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ response and the agent sees `"User cancelled"`.
 
 ## Requirements
 
-- **pi** with interactive mode — the `ask` tool requires `ctx.hasUI` to be
+- **pi** with interactive mode — the `AskUserQuestion` tool requires `ctx.hasUI` to be
   true (aborts with an error in non-interactive/headless mode).
 
 ## Development

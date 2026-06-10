@@ -10,7 +10,7 @@ describe("createAskTool", () => {
   const tool = createAskTool();
 
   it("has name 'ask'", () => {
-    expect(tool.name).toBe("ask");
+    expect(tool.name).toBe("AskUserQuestion");
   });
 
   it("has a description", () => {
