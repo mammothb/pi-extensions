@@ -1,5 +1,34 @@
 # @mammothb/pi-ask
 
+## 2.0.0
+
+### Major Changes
+
+- 11b514d: Renamed tool from `ask` to `AskUserQuestion` to improve trigger rate with interview/grill-style skills. Prompt improvements: changed framing from "before proceeding" to "during execution", added vocabulary bridge guideline, moved anti-plain-text rule to first position, and simplified recommendation mechanism.
+
+### Patch Changes
+
+- c1a4358: Naming consistency pass across all packages:
+
+  - `IEditorAdapter` → `EditorAdapter` (drop lone `I` prefix)
+  - `QuestionT`/`ResultT`/`OptionT` → `Question`/`AskResult`/`Option` (drop `T` suffix on types; schema values use `Schema` suffix)
+  - `GhSearchParamsT` → `GhSearchParams`, `GhSearchParams` → `GhSearchParamsSchema`
+  - `AskParams` → `AskParamsSchema`
+  - `private` fields → `#` private fields in `AskComponent` and `ApprovalCache`
+  - `onOther` → `isOnOther` (boolean prefix convention)
+  - `mergeConfigs` → `mergeConfig` (singular)
+  - `err` → `err` in all catch blocks, `error` → `err` in webfetch/providers
+  - `filepath` → `filePath` (camelCase)
+  - `allOptions` → `getOptions` (misleading name: not a predicate)
+  - `backend.remember()` → `backend.retain()`, `RememberParams` → `RetainParams`
+  - `checkShutdownHealth` → `inspectShutdownState`, `ShutdownHealth` → `ShutdownState`
+  - `InputContext` → `InputDeps`
+  - `context` → `ctx` in all `renderCall`/`renderResult` signatures
+
+- Updated dependencies [c1a4358]
+- Updated dependencies [c1a4358]
+  - @mammothb/pi-shared@1.2.1
+
 ## 1.0.1
 
 ### Patch Changes

@@ -1,5 +1,27 @@
 # @mammothb/pi-shared
 
+## 1.2.1
+
+### Patch Changes
+
+- c1a4358: Fixed a `noControlCharactersInRegex` lint error in `BgSafeTruncatedText` by extracting the ANSI escape character into a constant and building the regex dynamically with `new RegExp()` instead of embedding `\x1b` in a regex literal.
+- c1a4358: Naming consistency pass across all packages:
+
+  - `IEditorAdapter` → `EditorAdapter` (drop lone `I` prefix)
+  - `QuestionT`/`ResultT`/`OptionT` → `Question`/`AskResult`/`Option` (drop `T` suffix on types; schema values use `Schema` suffix)
+  - `GhSearchParamsT` → `GhSearchParams`, `GhSearchParams` → `GhSearchParamsSchema`
+  - `AskParams` → `AskParamsSchema`
+  - `private` fields → `#` private fields in `AskComponent` and `ApprovalCache`
+  - `onOther` → `isOnOther` (boolean prefix convention)
+  - `mergeConfigs` → `mergeConfig` (singular)
+  - `err` → `err` in all catch blocks, `error` → `err` in webfetch/providers
+  - `filepath` → `filePath` (camelCase)
+  - `allOptions` → `getOptions` (misleading name: not a predicate)
+  - `backend.remember()` → `backend.retain()`, `RememberParams` → `RetainParams`
+  - `checkShutdownHealth` → `inspectShutdownState`, `ShutdownHealth` → `ShutdownState`
+  - `InputContext` → `InputDeps`
+  - `context` → `ctx` in all `renderCall`/`renderResult` signatures
+
 ## 1.2.0
 
 ### Minor Changes

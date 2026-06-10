@@ -1,5 +1,34 @@
 # pi-eval
 
+## 2.1.0
+
+### Minor Changes
+
+- bc1fd07: Added optional `cwd` parameter to the `eval` tool — models can now specify a working directory for subprocess execution. When omitted, defaults to the agent's current working directory (backward compatible). The `cwd` also affects config loading (`.pi/pi-eval.json`), matching the mental model of "run this code in that directory."
+
+### Patch Changes
+
+- c1a4358: Naming consistency pass across all packages:
+
+  - `IEditorAdapter` → `EditorAdapter` (drop lone `I` prefix)
+  - `QuestionT`/`ResultT`/`OptionT` → `Question`/`AskResult`/`Option` (drop `T` suffix on types; schema values use `Schema` suffix)
+  - `GhSearchParamsT` → `GhSearchParams`, `GhSearchParams` → `GhSearchParamsSchema`
+  - `AskParams` → `AskParamsSchema`
+  - `private` fields → `#` private fields in `AskComponent` and `ApprovalCache`
+  - `onOther` → `isOnOther` (boolean prefix convention)
+  - `mergeConfigs` → `mergeConfig` (singular)
+  - `err` → `err` in all catch blocks, `error` → `err` in webfetch/providers
+  - `filepath` → `filePath` (camelCase)
+  - `allOptions` → `getOptions` (misleading name: not a predicate)
+  - `backend.remember()` → `backend.retain()`, `RememberParams` → `RetainParams`
+  - `checkShutdownHealth` → `inspectShutdownState`, `ShutdownHealth` → `ShutdownState`
+  - `InputContext` → `InputDeps`
+  - `context` → `ctx` in all `renderCall`/`renderResult` signatures
+
+- Updated dependencies [c1a4358]
+- Updated dependencies [c1a4358]
+  - @mammothb/pi-shared@1.2.1
+
 ## 2.0.3
 
 ### Patch Changes
