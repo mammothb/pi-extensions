@@ -42,7 +42,7 @@ export function createRetainTool(
       "Keep values concise (under 2000 chars). Use compact_memory to find and summarize oversized entries.",
     ],
     parameters: Parameters,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const parts: string[] = [theme.fg("toolTitle", theme.bold("retain"))];
       const keyPreview =
         args.key.length > 50 ? `${args.key.slice(0, 50)}…` : args.key;
@@ -55,8 +55,8 @@ export function createRetainTool(
       }
       return new Text(parts.join(" "), 0, 0);
     },
-    renderResult(_result, _options, theme, context) {
-      if (context.isError) {
+    renderResult(_result, _options, theme, ctx) {
+      if (ctx.isError) {
         return renderError("Failed to retain", theme);
       }
       return new Text(theme.fg("success", "Retained"), 0, 0);
@@ -74,7 +74,7 @@ export function createRetainTool(
       const effectiveScope = scope ?? "project";
       const ttlNote = ttlSeconds != null ? ` (expires in ${ttlSeconds}s)` : "";
 
-      await backend.remember({
+      await backend.retain({
         scope: effectiveScope,
         cwd: ctx.cwd,
         key,

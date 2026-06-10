@@ -32,7 +32,7 @@ export interface RecallOptions {
 }
 
 /** Parameters for storing a memory entry. */
-export interface RememberParams {
+export interface RetainParams {
   scope: MemoryScope;
   /** Current working directory (backend may hash internally for project isolation). */
   cwd: string;
@@ -56,7 +56,7 @@ export interface RememberParams {
  */
 export interface MemoryBackend {
   /** Store a memory entry. Overwrites if key already exists. */
-  remember(params: RememberParams): Promise<void>;
+  retain(params: RetainParams): Promise<void>;
 
   /**
    * Recall memories.

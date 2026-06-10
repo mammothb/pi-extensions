@@ -1,0 +1,16 @@
+# prek configuration for pi-extensions monorepo
+# See CONTRIBUTING.md for development conventions.
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "check-merge-conflict" },
+  { id = "detect-private-key" },
+  { id = "check-added-large-files", args = ["--maxkb=1024"] },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "biome", name = "biome", language = "system", entry = "pnpm run fix", files = "\\.(ts|tsx|js|jsx|json|jsonc)$", pass_filenames = false },
+]

@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./src/config";
 import {
-  checkShutdownHealth,
   getInstancesDir,
+  inspectShutdownState,
   registerInstance,
   unregisterInstance,
 } from "./src/lib/searxng-manager";
@@ -21,7 +21,7 @@ function setupSearxng(scriptPath: string | undefined): {
   const instancesDir = getInstancesDir();
 
   // Check for unclean shutdowns from previous sessions
-  const health = checkShutdownHealth(instancesDir);
+  const health = inspectShutdownState(instancesDir);
   if (health.uncleanCount > 0) {
     console.warn(
       `pi-websearch: ${health.uncleanCount} unclean shutdown(s) detected. ` +

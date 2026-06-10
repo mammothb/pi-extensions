@@ -50,7 +50,7 @@ export function createReflectTool(
       "Keep values concise (under 2000 chars). Use compact_memory to find and summarize oversized entries.",
     ],
     parameters: Parameters,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const parts: string[] = [theme.fg("toolTitle", theme.bold("reflect"))];
       const keyPreview = args.key
         ? args.key.length > 40
@@ -66,8 +66,8 @@ export function createReflectTool(
       }
       return new Text(parts.join(" "), 0, 0);
     },
-    renderResult(_result, _options, theme, context) {
-      if (context.isError) {
+    renderResult(_result, _options, theme, ctx) {
+      if (ctx.isError) {
         return renderError("Failed to reflect", theme);
       }
       return new Text(theme.fg("success", "Reflected"), 0, 0);
@@ -91,7 +91,7 @@ export function createReflectTool(
       const effectiveScope = scope ?? "project";
       const ttlNote = ttlSeconds != null ? ` (expires in ${ttlSeconds}s)` : "";
 
-      await backend.remember({
+      await backend.retain({
         scope: effectiveScope,
         cwd: ctx.cwd,
         key: effectiveKey,

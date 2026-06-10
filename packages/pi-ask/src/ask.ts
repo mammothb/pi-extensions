@@ -4,10 +4,10 @@ import { BgSafeTruncatedText } from "@mammothb/pi-shared";
 import { AskComponent } from "./lib/component.js";
 import { createAskKeybindings } from "./lib/keybindings.js";
 import { validateUniqueQuestions } from "./lib/validate.js";
-import type { QuestionT, ResultT } from "./schema.js";
-import { AskParams as AskParamsSchema } from "./schema.js";
+import type { AskResult, Question } from "./schema.js";
+import { AskParamsSchema } from "./schema.js";
 
-function formatAnswersAsText(result: ResultT): string {
+function formatAnswersAsText(result: AskResult): string {
   return result.questions
     .map((q) => {
       const answer = result.answers[q.question];
@@ -20,7 +20,7 @@ function formatAnswersAsText(result: ResultT): string {
 
 export function createAskTool(): ToolDefinition<
   typeof AskParamsSchema,
-  ResultT
+  AskResult
 > {
   return {
     name: "AskUserQuestion",
@@ -73,7 +73,7 @@ export function createAskTool(): ToolDefinition<
         };
       }
 
-      const result = await ctx.ui.custom<ResultT | null>(
+      const result = await ctx.ui.custom<AskResult | null>(
         (tui, theme, kb, done) =>
           new AskComponent(
             params.questions,
@@ -101,7 +101,7 @@ export function createAskTool(): ToolDefinition<
     },
 
     renderCall(args, theme) {
-      const questions = (args.questions ?? []) as QuestionT[];
+      const questions = (args.questions ?? []) as Question[];
       const topics = questions.map((q) => q.header).join(", ");
       return new BgSafeTruncatedText(
         theme.fg("toolTitle", theme.bold("ask user ")) +
@@ -110,7 +110,7 @@ export function createAskTool(): ToolDefinition<
     },
 
     renderResult(result, _options, theme) {
-      const details = result.details as ResultT | undefined;
+      const details = result.details as AskResult | undefined;
 
       if (!details) {
         const t = result.content[0];

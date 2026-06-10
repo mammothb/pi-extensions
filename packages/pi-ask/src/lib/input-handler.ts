@@ -3,21 +3,21 @@ import {
   type KeybindingsManager,
   matchesKey,
 } from "@earendil-works/pi-tui";
-import type { QuestionT } from "../schema.js";
-import type { IEditorAdapter } from "./editor-adapter.js";
-import { allOptions, type QuestionState } from "./state.js";
+import type { Question } from "../schema.js";
+import type { EditorAdapter } from "./editor-adapter.js";
+import { getOptions, type QuestionState } from "./state.js";
 
 /**
  * Callbacks that the input handler uses to signal state changes.
  * The component wires these to state mutations + render invalidation.
  */
-export interface InputContext {
-  questions: QuestionT[];
+export interface InputDeps {
+  questions: Question[];
   states: QuestionState[];
   activeTab: number;
   isSingle: boolean;
   totalTabs: number;
-  editor: IEditorAdapter | null;
+  editor: EditorAdapter | null;
   kb: KeybindingsManager;
 
   // State mutation callbacks
@@ -39,7 +39,7 @@ export interface InputContext {
  * Dispatch a key event against the current UI state.
  * Returns true if the key was consumed.
  */
-export function handleInput(data: string, ctx: InputContext): boolean {
+export function handleInput(data: string, ctx: InputDeps): boolean {
   // Submit tab (only for multi-question; activeTab === questions.length)
   if (!ctx.isSingle && ctx.activeTab === ctx.questions.length) {
     return handleSubmitTabInput(data, ctx);
@@ -60,7 +60,7 @@ export function handleInput(data: string, ctx: InputContext): boolean {
 
 // ── Submit tab ───────────────────────────────────────────────────────────────
 
-function handleSubmitTabInput(data: string, ctx: InputContext): boolean {
+function handleSubmitTabInput(data: string, ctx: InputDeps): boolean {
   if (matchesKey(data, Key.enter)) {
     // allConfirmed check is done by the caller; the Submit tab's Enter
     // callback is wired so the component only calls onSubmit when allConfirmed.
@@ -86,8 +86,8 @@ function handleSubmitTabInput(data: string, ctx: InputContext): boolean {
 
 function handleEditModeInput(
   data: string,
-  ctx: InputContext,
-  q: QuestionT,
+  ctx: InputDeps,
+  q: Question,
 ): boolean {
   if (matchesKey(data, Key.escape)) {
     ctx.onExitEditMode(false);
@@ -128,9 +128,9 @@ function handleEditModeInput(
 
 function handleQuestionTabInput(
   data: string,
-  ctx: InputContext,
+  ctx: InputDeps,
   state: QuestionState,
-  q: QuestionT,
+  q: Question,
 ): boolean {
   // Global keys
   if (matchesKey(data, Key.escape)) {
@@ -162,11 +162,11 @@ function handleQuestionTabInput(
     return true;
   }
 
-  const opts = allOptions(q);
-  const onOther = state.cursorIndex === opts.length - 1;
+  const opts = getOptions(q);
+  const isOnOther = state.cursorIndex === opts.length - 1;
 
   // "Type your own answer..." actions
-  if (onOther) {
+  if (isOnOther) {
     if (matchesKey(data, Key.space) || matchesKey(data, Key.tab)) {
       ctx.onEnterEditMode();
       return true;
@@ -179,7 +179,7 @@ function handleQuestionTabInput(
   }
 
   // Multi-select actions
-  if (q.multi && !onOther) {
+  if (q.multi && !isOnOther) {
     if (matchesKey(data, Key.space)) {
       ctx.onToggleSelected(state.cursorIndex);
       return true;
@@ -193,7 +193,7 @@ function handleQuestionTabInput(
   }
 
   // Single-select action
-  if (!q.multi && !onOther) {
+  if (!q.multi && !isOnOther) {
     if (matchesKey(data, Key.enter) || matchesKey(data, Key.space)) {
       ctx.onSelectOption(state.cursorIndex);
       ctx.onConfirmAndAdvance();

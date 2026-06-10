@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { OptionT, QuestionT } from "../src/schema.js";
+import type { Option, Question } from "../src/schema.js";
 
 /**
  * Create a mock Theme that wraps styled text in tags so rendering
@@ -19,7 +19,7 @@ export function createMockTheme(): Theme {
 }
 
 /** A minimal, valid single-select question. */
-export function makeQuestion(overrides?: Partial<QuestionT>): QuestionT {
+export function makeQuestion(overrides?: Partial<Question>): Question {
   return {
     header: "Q1",
     question: "What is your preference?",
@@ -34,12 +34,12 @@ export function makeQuestion(overrides?: Partial<QuestionT>): QuestionT {
 }
 
 /** A minimal, valid multi-select question. */
-export function makeMultiQuestion(overrides?: Partial<QuestionT>): QuestionT {
+export function makeMultiQuestion(overrides?: Partial<Question>): Question {
   return makeQuestion({ header: "Multi", multi: true, ...overrides });
 }
 
 /** Two single-select questions for wizard tests. */
-export function makeTwoQuestions(): QuestionT[] {
+export function makeTwoQuestions(): Question[] {
   return [
     makeQuestion({ header: "First", question: "First question?" }),
     makeQuestion({
@@ -51,6 +51,6 @@ export function makeTwoQuestions(): QuestionT[] {
 }
 
 /** An option with a description. */
-export function optionWithDesc(label: string, description: string): OptionT {
+export function optionWithDesc(label: string, description: string): Option {
   return { label, description };
 }

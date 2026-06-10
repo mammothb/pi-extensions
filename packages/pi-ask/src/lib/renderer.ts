@@ -1,11 +1,11 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { QuestionT } from "../schema.js";
-import type { IEditorAdapter } from "./editor-adapter.js";
+import type { Question } from "../schema.js";
+import type { EditorAdapter } from "./editor-adapter.js";
 import {
   allConfirmed,
-  allOptions,
   getAnswerText,
+  getOptions,
   type QuestionState,
 } from "./state.js";
 
@@ -26,13 +26,13 @@ function truncateText(text: string, maxWidth: number): string {
  * Pure function — same inputs always produce the same string[].
  */
 export function renderAskComponent(
-  questions: QuestionT[],
+  questions: Question[],
   states: QuestionState[],
   activeTab: number,
   isSingle: boolean,
   theme: Theme,
   width: number,
-  editor?: IEditorAdapter,
+  editor?: EditorAdapter,
 ): string[] {
   if (questions.length === 0) {
     return [];
@@ -87,7 +87,7 @@ export function renderAskComponent(
 // ── Tab bar ──────────────────────────────────────────────────────────────────
 
 export function renderTabBar(
-  questions: QuestionT[],
+  questions: Question[],
   states: QuestionState[],
   activeTab: number,
   theme: Theme,
@@ -135,16 +135,16 @@ export function renderTabBar(
 // ── Question body ────────────────────────────────────────────────────────────
 
 export function renderQuestionBody(
-  q: QuestionT,
+  q: Question,
   state: QuestionState,
   isSingle: boolean,
   theme: Theme,
   width: number,
-  editor?: IEditorAdapter,
+  editor?: EditorAdapter,
 ): string[] {
   const lines: string[] = [];
   const add = (s: string) => lines.push(s);
-  const opts = allOptions(q);
+  const opts = getOptions(q);
 
   // Question text (word-wrapped)
   const wrapped = wrapTextWithAnsi(theme.fg("text", q.question), width - 2);
@@ -234,10 +234,10 @@ export function renderQuestionBody(
   if (state.inEditMode) {
     add(theme.fg("dim", " Enter submit · Esc back"));
   } else {
-    const onOther = state.cursorIndex === opts.length - 1;
+    const isOnOther = state.cursorIndex === opts.length - 1;
     const tabHint = isSingle ? "" : " · ←→/hl switch tabs";
     let actionHint: string;
-    if (onOther) {
+    if (isOnOther) {
       actionHint = "Space/Tab open editor";
     } else if (q.multi) {
       actionHint = "Space toggle · Enter confirm";
@@ -255,7 +255,7 @@ export function renderQuestionBody(
 // ── Submit tab ───────────────────────────────────────────────────────────────
 
 export function renderSubmitTab(
-  questions: QuestionT[],
+  questions: Question[],
   states: QuestionState[],
   theme: Theme,
   _width: number,

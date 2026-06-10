@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { createCompactMemoryTool } from "./src/compact-memory.js";

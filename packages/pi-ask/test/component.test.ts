@@ -5,7 +5,7 @@ import {
   createAskKeybindings,
   PI_ASK_KEYBINDINGS,
 } from "../src/lib/keybindings.js";
-import type { ResultT } from "../src/schema.js";
+import type { AskResult } from "../src/schema.js";
 import {
   createMockTheme,
   makeMultiQuestion,
@@ -38,7 +38,7 @@ function newComponent(
     kb?: KeybindingsManager;
   },
 ) {
-  const done = vi.fn<(result: ResultT | null) => void>();
+  const done = vi.fn<(result: AskResult | null) => void>();
   const component = new AskComponent(
     questions,
     stubTui(),

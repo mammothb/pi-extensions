@@ -63,7 +63,7 @@ export function createRecallTool(
       "Results include both project and global memory. (global) entries are shared across all projects; (project) entries override global with the same key.",
     ],
     parameters: Parameters,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const badge = args.list
         ? theme.fg("syntaxKeyword", "(list)")
         : args.query
@@ -78,8 +78,8 @@ export function createRecallTool(
         0,
       );
     },
-    renderResult(result, _options, theme, context) {
-      if (context.isError) {
+    renderResult(result, _options, theme, ctx) {
+      if (ctx.isError) {
         return renderError("Recall failed", theme);
       }
 

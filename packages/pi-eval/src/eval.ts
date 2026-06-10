@@ -134,7 +134,7 @@ export function createEvalTool(): ToolDefinition<
     promptSnippet:
       "Execute JavaScript or Python code in an isolated subprocess",
     parameters: Parameters,
-    renderCall(args, theme, context) {
+    renderCall(args, theme, ctx) {
       const badge = args.language === "javascript" ? "(js)" : "(py)";
       const badgeColored = theme.fg("syntaxKeyword", badge);
 
@@ -152,13 +152,13 @@ export function createEvalTool(): ToolDefinition<
 
       // Show cwd hint when it differs from the agent's cwd
       let cwdHint = "";
-      if (args.cwd != null && args.cwd !== context.cwd) {
+      if (args.cwd != null && args.cwd !== ctx.cwd) {
         cwdHint = theme.fg("muted", ` (cwd: ${args.cwd})`);
       }
 
       const text =
-        context.lastComponent instanceof Text
-          ? context.lastComponent
+        ctx.lastComponent instanceof Text
+          ? ctx.lastComponent
           : new Text("", 0, 0);
       text.setText(
         theme.fg("toolTitle", theme.bold("eval")) +
@@ -170,9 +170,9 @@ export function createEvalTool(): ToolDefinition<
       );
       return text;
     },
-    renderResult(result, options, theme, context) {
+    renderResult(result, options, theme, ctx) {
       // Phase 5: Running state
-      if (options.isPartial && !context.isError) {
+      if (options.isPartial && !ctx.isError) {
         return new Text(theme.fg("muted", "evaluating..."), 0, 0);
       }
 
@@ -181,7 +181,7 @@ export function createEvalTool(): ToolDefinition<
 
       const parsed = parseOutput(rawText);
       const isError =
-        context.isError ||
+        ctx.isError ||
         (details?.exitCode != null && details.exitCode !== 0) ||
         details?.exitSignal != null;
       const expandKey = getExpandKey();

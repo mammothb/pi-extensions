@@ -36,7 +36,10 @@ describe("runBashArbiter", () => {
       "#!/bin/bash\necho 'destructive git operation' >&2\nexit 1\n",
     );
 
-    const result = await runBashArbiter("git push --force origin main", arbiter);
+    const result = await runBashArbiter(
+      "git push --force origin main",
+      arbiter,
+    );
     expect(result.action).toBe("deny");
     expect(result.reason).toContain("destructive git operation");
   });

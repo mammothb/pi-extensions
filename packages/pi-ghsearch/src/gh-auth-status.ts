@@ -36,18 +36,18 @@ export function createGhAuthStatusTool(
       "Do not call gh_auth_status proactively before every gh_search — only when you suspect auth issues.",
     ],
     parameters: GhAuthStatusParams,
-    renderCall(_args, theme, _context) {
+    renderCall(_args, theme, _ctx) {
       return new Text(
         theme.fg("toolTitle", theme.bold("gh_auth_status")),
         0,
         0,
       );
     },
-    renderResult(result, _options, theme, context) {
+    renderResult(result, _options, theme, ctx) {
       const details = result.details as GhAuthStatusDetails | undefined;
       const raw = firstTextBlock(result);
 
-      if (context.isError) {
+      if (ctx.isError) {
         return renderError(raw, theme);
       }
 

@@ -1,8 +1,8 @@
 import { KeybindingsManager } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { handleInput, type InputContext } from "../src/lib/input-handler.js";
+import { handleInput, type InputDeps } from "../src/lib/input-handler.js";
 import { PI_ASK_KEYBINDINGS } from "../src/lib/keybindings.js";
-import { allOptions, createInitialStates } from "../src/lib/state.js";
+import { createInitialStates, getOptions } from "../src/lib/state.js";
 import { makeMultiQuestion, makeQuestion } from "./_helpers.js";
 
 // Raw terminal escape sequences for letter keys used in hjkl
@@ -29,7 +29,7 @@ function makeKb(): KeybindingsManager {
   return new KeybindingsManager(PI_ASK_KEYBINDINGS);
 }
 
-function makeCtx(overrides: Partial<InputContext> = {}): InputContext {
+function makeCtx(overrides: Partial<InputDeps> = {}): InputDeps {
   const questions = overrides.questions ?? [makeQuestion()];
   const states = overrides.states ?? createInitialStates(questions);
   return {
@@ -222,7 +222,7 @@ describe("handleInput — question tab", () => {
   it("enters edit mode on Space when cursor on Other", () => {
     const q = makeQuestion();
     const [state] = createInitialStates([q]);
-    state.cursorIndex = allOptions(q).length - 1; // on "Other"
+    state.cursorIndex = getOptions(q).length - 1; // on "Other"
     const ctx = makeCtx({ questions: [q], states: [state] });
     handleInput(RAW.space, ctx);
     expect(ctx.onEnterEditMode).toHaveBeenCalled();
@@ -231,7 +231,7 @@ describe("handleInput — question tab", () => {
   it("enters edit mode on Tab when cursor on Other", () => {
     const q = makeQuestion();
     const [state] = createInitialStates([q]);
-    state.cursorIndex = allOptions(q).length - 1;
+    state.cursorIndex = getOptions(q).length - 1;
     const ctx = makeCtx({ questions: [q], states: [state] });
     handleInput(RAW.tab, ctx);
     expect(ctx.onEnterEditMode).toHaveBeenCalled();
@@ -240,7 +240,7 @@ describe("handleInput — question tab", () => {
   it("confirms on Enter when cursor on Other with saved free-text", () => {
     const q = makeQuestion();
     const [state] = createInitialStates([q]);
-    state.cursorIndex = allOptions(q).length - 1;
+    state.cursorIndex = getOptions(q).length - 1;
     state.freeTextValue = "saved";
     const ctx = makeCtx({ questions: [q], states: [state] });
     handleInput(RAW.enter, ctx);

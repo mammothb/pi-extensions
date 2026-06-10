@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ApprovalCache } from "../../src/lib/approval-cache.js";
 
 describe("ApprovalCache", () => {

@@ -8,10 +8,12 @@ import { TruncatedText } from "@earendil-works/pi-tui";
  * replaces the full reset with \x1b[39m (reset foreground only), so the
  * ellipsis still appears unstyled while background colors survive intact.
  */
+const ESC = "\x1b";
+const RESET_ALL = new RegExp(`${ESC}\\[0m`, "g");
+const RESET_FG = `${ESC}[39m`;
+
 export class BgSafeTruncatedText extends TruncatedText {
   render(width: number): string[] {
-    return super.render(width).map((line) =>
-      line.replace(/\x1b\[0m/g, "\x1b[39m"),
-    );
+    return super.render(width).map((line) => line.replace(RESET_ALL, RESET_FG));
   }
 }

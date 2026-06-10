@@ -6,6 +6,7 @@
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome check .",
+    "fix": "biome check --write .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

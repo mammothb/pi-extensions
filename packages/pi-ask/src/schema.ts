@@ -28,7 +28,7 @@ const QuestionSchema = Type.Object({
   ),
 });
 
-export const AskParams = Type.Object({
+export const AskParamsSchema = Type.Object({
   questions: Type.Array(QuestionSchema, {
     minItems: 1,
     maxItems: 4,
@@ -36,8 +36,8 @@ export const AskParams = Type.Object({
   }),
 });
 
-export type OptionT = Static<typeof OptionSchema>;
-export type QuestionT = Static<typeof QuestionSchema>;
+export type Option = Static<typeof OptionSchema>;
+export type Question = Static<typeof QuestionSchema>;
 
 const ResultSchema = Type.Object({
   // Pass-through so renderResult has headers + option descriptions without
@@ -52,4 +52,4 @@ const ResultSchema = Type.Object({
   cancelled: Type.Boolean(),
 });
 
-export type ResultT = Static<typeof ResultSchema>;
+export type AskResult = Static<typeof ResultSchema>;

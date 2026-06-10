@@ -1,10 +1,10 @@
-import type { QuestionT } from "../schema.js";
+import type { Question } from "../schema.js";
 
 /**
  * Returns an error message if question texts or option labels are not unique,
  * or null if validation passes.
  */
-export function validateUniqueQuestions(questions: QuestionT[]): string | null {
+export function validateUniqueQuestions(questions: Question[]): string | null {
   const seen = new Set<string>();
   for (const q of questions) {
     if (seen.has(q.question)) {

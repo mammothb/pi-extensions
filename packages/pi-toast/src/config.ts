@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG: ToastConfig = {
   path: undefined,
 };
 
-function mergeConfigs(
+function mergeConfig(
   base: ToastConfig,
   override: Record<string, unknown>,
 ): ToastConfig {
@@ -31,5 +31,5 @@ function mergeConfigs(
  * Returns the default config if no config files exist.
  */
 export function loadConfig(cwd: string): ToastConfig {
-  return loadPiConfig("pi-toast.json", cwd, DEFAULT_CONFIG, mergeConfigs);
+  return loadPiConfig("pi-toast.json", cwd, DEFAULT_CONFIG, mergeConfig);
 }

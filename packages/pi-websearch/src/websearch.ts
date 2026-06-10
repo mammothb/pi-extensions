@@ -128,12 +128,12 @@ Usage notes:${usageNotes}
           theme.fg("muted", `"${args.query}"`),
       );
     },
-    renderResult: (result, options, theme, context) => {
+    renderResult: (result, options, theme, ctx) => {
       if (options.isPartial) {
         return new Text(theme.fg("warning", "Searching..."));
       }
 
-      if (context.isError) {
+      if (ctx.isError) {
         return renderError(extractTextContent(result), theme);
       }
 

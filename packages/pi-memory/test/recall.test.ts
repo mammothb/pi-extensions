@@ -29,13 +29,13 @@ describe("recall tool", () => {
 
   it("returns exact key match with highest score", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "build",
       value: "pnpm build",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "test",
@@ -63,19 +63,19 @@ describe("recall tool", () => {
 
   it("returns keyword-matched results for a partial query", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "build-command",
       value: "pnpm run build",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "test-framework",
       value: "vitest",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "preferred-formatter",
@@ -101,7 +101,7 @@ describe("recall tool", () => {
 
   it('returns "No relevant memory found" for no-match queries', async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "foo",
@@ -126,19 +126,19 @@ describe("recall tool", () => {
 
   it("returns all keys in list mode", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "a",
       value: "value a",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "b",
       value: "value b",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "c",
@@ -193,13 +193,13 @@ describe("recall tool", () => {
 
   it("scores key matches higher than value matches", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "format",
       value: "biome",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "tool-preference",
@@ -226,31 +226,31 @@ describe("recall tool", () => {
 
   describe("namespace filtering", () => {
     async function seedNamespaceData(backend: FileSystemBackend) {
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "project:build-command",
         value: "pnpm run build",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "project:test-framework",
         value: "vitest",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "user:editor",
         value: "vscode",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "user:prefers-tabs",
         value: "true",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "convention:error-handling",
@@ -392,13 +392,13 @@ describe("recall tool", () => {
   describe("global memory merging", () => {
     it("includes global entries alongside project entries", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:editor",
         value: "vscode",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "project:build",
@@ -425,13 +425,13 @@ describe("recall tool", () => {
 
     it("project entries override global entries with the same key", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:editor",
         value: "global-vscode",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "user:editor",
@@ -459,7 +459,7 @@ describe("recall tool", () => {
 
     it("global entries show (global) label when no project override", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:theme",
@@ -484,7 +484,7 @@ describe("recall tool", () => {
 
     it("global entries are visible across different project cwds", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:editor",
@@ -513,7 +513,7 @@ describe("recall tool", () => {
     it("does not return expired entries in search mode", async () => {
       const backend = makeBackend();
       // Store a permanent entry
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "permanent",
@@ -522,7 +522,7 @@ describe("recall tool", () => {
       // Store an entry with past-expiry TTL using direct file write
       // (backend.remember with negative TTL would set future expiry,
       //  so we write an already-expired entry via a short TTL + wait)
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "ephemeral",
@@ -549,13 +549,13 @@ describe("recall tool", () => {
 
     it("does not return expired entries in list mode", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "keep",
         value: "yes",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "stale",

@@ -28,13 +28,13 @@ export function createCompactMemoryTool(
       "Helps keep memory concise and context-efficient.",
     promptSnippet: "Find oversized memory entries that should be summarized",
     promptGuidelines: [
-      "Use compact_memory when you suspect memory values are growing too large and wasting context.",
+      "Use compact_memory when you suspect memory values are growing too large and wasting ctx.",
       "The tool returns entries exceeding the threshold. Summarize each one and call retain with a concise version.",
       "Aim for summaries under 2-3 sentences. The goal is context efficiency, not perfect preservation.",
       "Skip entries that cannot be meaningfully shortened (e.g., exact commands, small code snippets).",
     ],
     parameters: Parameters,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const threshold = args.threshold ?? DEFAULT_THRESHOLD;
       return new Text(
         `${theme.fg("toolTitle", theme.bold("compact_memory"))}  ${theme.fg("muted", `threshold: ${threshold} chars`)}`,
@@ -42,8 +42,8 @@ export function createCompactMemoryTool(
         0,
       );
     },
-    renderResult(result, _options, theme, context) {
-      if (context.isError) {
+    renderResult(result, _options, theme, ctx) {
+      if (ctx.isError) {
         return renderError("Compaction check failed", theme);
       }
 

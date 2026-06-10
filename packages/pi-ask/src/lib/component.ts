@@ -4,12 +4,11 @@ import type {
   KeybindingsManager,
   TUI,
 } from "@earendil-works/pi-tui";
-import type { QuestionT, ResultT } from "../schema.js";
-import { createEditorAdapter, type IEditorAdapter } from "./editor-adapter.js";
-import { handleInput, type InputContext } from "./input-handler.js";
+import type { AskResult, Question } from "../schema.js";
+import { createEditorAdapter, type EditorAdapter } from "./editor-adapter.js";
+import { handleInput, type InputDeps } from "./input-handler.js";
 import { renderAskComponent } from "./renderer.js";
 import {
-  allOptions,
   allConfirmed as allQuestionsConfirmed,
   autoConfirmIfAnswered,
   buildResult,
@@ -18,6 +17,7 @@ import {
   createInitialStates,
   enterEditMode,
   exitEditMode,
+  getOptions,
   moveCursor,
   type QuestionState,
   selectOption,
@@ -27,9 +27,9 @@ import {
 /** Narrow the active tab's state+question pair, handling the Submit-tab case. */
 function activePair(
   states: QuestionState[],
-  questions: QuestionT[],
+  questions: Question[],
   activeTab: number,
-): { state: QuestionState; q: QuestionT } | null {
+): { state: QuestionState; q: Question } | null {
   const state = states[activeTab];
   const q = questions[activeTab];
   if (!state || !q) {
@@ -39,37 +39,37 @@ function activePair(
 }
 
 export class AskComponent implements Component {
-  private questions: QuestionT[];
-  private theme: Theme;
-  private tui: TUI;
-  private kb: KeybindingsManager;
-  private editor: IEditorAdapter;
-  private done: (result: ResultT | null) => void;
+  #questions: Question[];
+  #theme: Theme;
+  #tui: TUI;
+  #kb: KeybindingsManager;
+  #editor: EditorAdapter;
+  #done: (result: AskResult | null) => void;
 
-  private states: QuestionState[];
-  private activeTab = 0;
-  private resolved = false;
+  #states: QuestionState[];
+  #activeTab = 0;
+  #resolved = false;
 
   // Render cache
-  private cachedWidth?: number;
-  private cachedLines?: string[];
+  #cachedWidth?: number;
+  #cachedLines?: string[];
 
   constructor(
-    questions: QuestionT[],
+    questions: Question[],
     tui: TUI,
     theme: Theme,
-    done: (result: ResultT | null) => void,
+    done: (result: AskResult | null) => void,
     kb: KeybindingsManager,
   ) {
-    this.questions = questions;
-    this.tui = tui;
-    this.theme = theme;
-    this.done = done;
-    this.kb = kb;
-    this.states = createInitialStates(questions);
-    this.editor = createEditorAdapter(tui, theme, () => {
+    this.#questions = questions;
+    this.#tui = tui;
+    this.#theme = theme;
+    this.#done = done;
+    this.#kb = kb;
+    this.#states = createInitialStates(questions);
+    this.#editor = createEditorAdapter(tui, theme, () => {
       this.invalidate();
-      this.tui.requestRender();
+      this.#tui.requestRender();
     });
 
     this.invalidate();
@@ -78,125 +78,125 @@ export class AskComponent implements Component {
   // ── Public Component interface ──────────────────────────────────────────
 
   invalidate(): void {
-    this.cachedWidth = undefined;
-    this.cachedLines = undefined;
+    this.#cachedWidth = undefined;
+    this.#cachedLines = undefined;
   }
 
   render(width: number): string[] {
-    if (this.cachedWidth === width && this.cachedLines) {
-      return this.cachedLines;
+    if (this.#cachedWidth === width && this.#cachedLines) {
+      return this.#cachedLines;
     }
 
-    if (this.questions.length === 0) {
+    if (this.#questions.length === 0) {
       return [];
     }
 
     const lines = renderAskComponent(
-      this.questions,
-      this.states,
-      this.activeTab,
-      this.questions.length === 1,
-      this.theme,
+      this.#questions,
+      this.#states,
+      this.#activeTab,
+      this.#questions.length === 1,
+      this.#theme,
       width,
-      this.editor,
+      this.#editor,
     );
 
-    this.cachedWidth = width;
-    this.cachedLines = lines;
+    this.#cachedWidth = width;
+    this.#cachedLines = lines;
     return lines;
   }
 
   handleInput(data: string): void {
-    if (this.resolved) {
+    if (this.#resolved) {
       return;
     }
 
     // Submit-tab Enter must only submit when all questions are confirmed.
     // The input handler fires onSubmit for any Enter on the Submit tab,
     // so wrap it with a guard.
-    const ctx: InputContext = {
-      questions: this.questions,
-      states: this.states,
-      activeTab: this.activeTab,
-      isSingle: this.questions.length === 1,
-      totalTabs: this.questions.length + 1,
-      editor: this.editor,
-      kb: this.kb,
+    const ctx: InputDeps = {
+      questions: this.#questions,
+      states: this.#states,
+      activeTab: this.#activeTab,
+      isSingle: this.#questions.length === 1,
+      totalTabs: this.#questions.length + 1,
+      editor: this.#editor,
+      kb: this.#kb,
 
       onMoveCursor: (delta) => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
-        moveCursor(pair.state, delta, allOptions(pair.q).length);
+        moveCursor(pair.state, delta, getOptions(pair.q).length);
         this.invalidate();
-        this.tui.requestRender();
+        this.#tui.requestRender();
       },
 
       onToggleSelected: (index) => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
         toggleSelected(pair.state, index);
         this.invalidate();
-        this.tui.requestRender();
+        this.#tui.requestRender();
       },
 
       onSelectOption: (index) => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
         selectOption(pair.state, index);
       },
 
       onEnterEditMode: () => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
-        enterEditMode(pair.state, this.editor);
+        enterEditMode(pair.state, this.#editor);
         this.invalidate();
-        this.tui.requestRender();
+        this.#tui.requestRender();
       },
 
       onExitEditMode: (save) => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
-        exitEditMode(pair.state, this.editor, save);
+        exitEditMode(pair.state, this.#editor, save);
         this.invalidate();
       },
 
       onClearFreeTextAndUnconfirmIfNeeded: () => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
         clearFreeTextAndUnconfirmIfNeeded(pair.state, pair.q);
       },
 
       onAutoConfirmIfAnswered: () => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
         autoConfirmIfAnswered(pair.state, pair.q);
       },
 
       onConfirmAndAdvance: () => {
-        const pair = activePair(this.states, this.questions, this.activeTab);
+        const pair = activePair(this.#states, this.#questions, this.#activeTab);
         if (!pair) return;
         confirm(pair.state);
-        this.advance();
+        this.#advance();
       },
 
       onChangeTab: (newTab) => {
-        this.activeTab = newTab;
+        this.#activeTab = newTab;
         this.invalidate();
-        this.tui.requestRender();
+        this.#tui.requestRender();
       },
 
       onSubmit: () => {
-        if (allQuestionsConfirmed(this.states)) {
-          this.submit();
+        if (allQuestionsConfirmed(this.#states)) {
+          this.#submit();
         }
       },
 
       onCancel: () => {
-        this.cancel();
+        this.#cancel();
       },
 
       onRequestRender: () => {
-        this.tui.requestRender();
+        this.#tui.requestRender();
       },
     };
 
@@ -205,27 +205,27 @@ export class AskComponent implements Component {
 
   // ── Private ─────────────────────────────────────────────────────────────
 
-  private advance(): void {
-    if (this.questions.length === 1) {
-      this.submit();
+  #advance(): void {
+    if (this.#questions.length === 1) {
+      this.#submit();
       return;
     }
-    if (this.activeTab < this.questions.length - 1) {
-      this.activeTab++;
+    if (this.#activeTab < this.#questions.length - 1) {
+      this.#activeTab++;
     } else {
-      this.activeTab = this.questions.length; // Submit tab
+      this.#activeTab = this.#questions.length; // Submit tab
     }
     this.invalidate();
-    this.tui.requestRender();
+    this.#tui.requestRender();
   }
 
-  private submit(): void {
-    this.resolved = true;
-    this.done(buildResult(this.questions, this.states));
+  #submit(): void {
+    this.#resolved = true;
+    this.#done(buildResult(this.#questions, this.#states));
   }
 
-  private cancel(): void {
-    this.resolved = true;
-    this.done(null);
+  #cancel(): void {
+    this.#resolved = true;
+    this.#done(null);
   }
 }

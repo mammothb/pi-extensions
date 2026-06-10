@@ -45,7 +45,7 @@ export function createGhFetchTool(
       "Do not use gh_fetch for URLs that are not from github.com, gist.github.com, or api.github.com.",
     ],
     parameters: GhFetchParams,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const url = args.url;
       let shortUrl = url;
       try {
@@ -71,11 +71,11 @@ export function createGhFetchTool(
 
       return new Text(text, 0, 0);
     },
-    renderResult(result, { expanded }, theme, context) {
+    renderResult(result, { expanded }, theme, ctx) {
       const details = result.details as GhFetchDetails | undefined;
       const rawText = firstTextBlock(result);
 
-      if (context.isError) {
+      if (ctx.isError) {
         return renderError(rawText, theme);
       }
 

@@ -1,5 +1,5 @@
-import type { OptionT, QuestionT, ResultT } from "../schema.js";
-import type { IEditorAdapter } from "./editor-adapter.js";
+import type { AskResult, Option, Question } from "../schema.js";
+import type { EditorAdapter } from "./editor-adapter.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,11 +18,11 @@ export interface QuestionState {
   inEditMode: boolean;
 }
 
-export type DisplayOption = OptionT & { isOther?: true };
+export type DisplayOption = Option & { isOther?: true };
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
-export function createInitialStates(questions: QuestionT[]): QuestionState[] {
+export function createInitialStates(questions: Question[]): QuestionState[] {
   return questions.map(() => ({
     cursorIndex: 0,
     selectedIndex: null,
@@ -35,7 +35,7 @@ export function createInitialStates(questions: QuestionT[]): QuestionState[] {
 
 // ── Derived helpers (pure) ───────────────────────────────────────────────────
 
-export function allOptions(q: QuestionT): DisplayOption[] {
+export function getOptions(q: Question): DisplayOption[] {
   return [
     ...q.options,
     { label: "Type your own answer...", isOther: true as const },
@@ -51,7 +51,7 @@ export function allConfirmed(states: QuestionState[]): boolean {
  * Returns null when the question is unconfirmed.
  */
 export function getAnswerText(
-  q: QuestionT,
+  q: Question,
   state: QuestionState,
 ): string | null {
   if (!state.confirmed) return null;
@@ -101,7 +101,7 @@ export function selectOption(state: QuestionState, index: number): void {
 
 export function enterEditMode(
   state: QuestionState,
-  editor: IEditorAdapter,
+  editor: EditorAdapter,
 ): void {
   state.inEditMode = true;
   if (state.freeTextValue !== null) {
@@ -113,7 +113,7 @@ export function enterEditMode(
 
 export function exitEditMode(
   state: QuestionState,
-  editor: IEditorAdapter,
+  editor: EditorAdapter,
   save: boolean,
 ): void {
   if (save) {
@@ -128,10 +128,7 @@ export function exitEditMode(
   state.inEditMode = false;
 }
 
-export function autoConfirmIfAnswered(
-  state: QuestionState,
-  q: QuestionT,
-): void {
+export function autoConfirmIfAnswered(state: QuestionState, q: Question): void {
   if (state.confirmed) return;
   if (q.multi) {
     if (state.selectedIndices.size > 0 || state.freeTextValue !== null) {
@@ -154,7 +151,7 @@ export function confirm(state: QuestionState): void {
  */
 export function clearFreeTextAndUnconfirmIfNeeded(
   state: QuestionState,
-  q: QuestionT,
+  q: Question,
 ): void {
   state.freeTextValue = null;
   if (q.multi) {
@@ -169,9 +166,9 @@ export function clearFreeTextAndUnconfirmIfNeeded(
 // ── Result builder (pure) ────────────────────────────────────────────────────
 
 export function buildResult(
-  questions: QuestionT[],
+  questions: Question[],
   states: QuestionState[],
-): ResultT {
+): AskResult {
   const answers: Record<string, string> = {};
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];

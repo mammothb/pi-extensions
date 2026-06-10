@@ -7,13 +7,13 @@ import type {
   ToolCallEventResult,
   WriteToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
-import {
-  promptPermission,
-  type ConfirmFn,
-  type DialogDetails,
-} from "./lib/dialog.js";
 import { checkBash, checkPath, checkTool } from "./engine.js";
 import type { ApprovalCache } from "./lib/approval-cache.js";
+import {
+  type ConfirmFn,
+  type DialogDetails,
+  promptPermission,
+} from "./lib/dialog.js";
 import type { ResolvedConfig } from "./lib/types.js";
 
 /**

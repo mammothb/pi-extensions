@@ -5,7 +5,7 @@ import { Editor, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
  * Minimal interface for the inline text editor, so the component can be
  * tested with a stub instead of a real pi TUI Editor.
  */
-export interface IEditorAdapter {
+export interface EditorAdapter {
   getText(): string;
   setText(text: string): void;
   handleInput(data: string): void;
@@ -21,7 +21,7 @@ export function createEditorAdapter(
   tui: TUI,
   theme: Theme,
   onChange: () => void,
-): IEditorAdapter {
+): EditorAdapter {
   const editorTheme: EditorTheme = {
     borderColor: (s) => theme.fg("muted", s),
     selectList: {

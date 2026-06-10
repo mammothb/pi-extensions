@@ -5,7 +5,7 @@ import {
   renderSubmitTab,
   renderTabBar,
 } from "../src/lib/renderer.js";
-import { allOptions, createInitialStates } from "../src/lib/state.js";
+import { createInitialStates, getOptions } from "../src/lib/state.js";
 import {
   createMockTheme,
   makeMultiQuestion,
@@ -166,7 +166,7 @@ describe("renderQuestionBody", () => {
     const q = makeQuestion();
     const [state] = createInitialStates([q]);
     state.freeTextValue = "my custom answer";
-    state.cursorIndex = allOptions(q).length - 1; // cursor on "other"
+    state.cursorIndex = getOptions(q).length - 1; // cursor on "other"
 
     const lines = renderQuestionBody(q, state, true, theme, 80);
     expect(lines.join("")).toContain("my custom answer");

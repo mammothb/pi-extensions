@@ -22,7 +22,7 @@ export function getInstancesDir(): string {
 }
 
 /** Result of a shutdown health check. */
-export interface ShutdownHealth {
+export interface ShutdownState {
   /** Number of PID files whose process is dead (unclean shutdown). */
   uncleanCount: number;
   /** Number of PID files whose process is still alive (shutdown in progress). */
@@ -82,7 +82,7 @@ export async function runScript(
  * @param opts.shutdownPidDir When set, the command is wrapped in a bash script
  *   that creates a `shutdown-<pid>.pid` file before running the command and
  *   removes it on exit. Enables cross-session health checks via
- *   {@link checkShutdownHealth}.
+ *   {@link inspectShutdownState}.
  */
 export function runScript(
   command: "up" | "down",
@@ -184,7 +184,7 @@ export function runScript(
  * `cleanup()` after reporting to prevent false positives on the
  * next startup.
  */
-export function checkShutdownHealth(dir: string): ShutdownHealth {
+export function inspectShutdownState(dir: string): ShutdownState {
   const pids: string[] = [];
   let uncleanCount = 0;
   let stillRunning = 0;
@@ -284,6 +284,6 @@ export async function unregisterInstance(scriptPath?: string): Promise<void> {
 
   // No more live instances — shut down SearXNG.
   // Use detached mode with PID tracking so unclean shutdowns are detected
-  // on the next startup via checkShutdownHealth().
+  // on the next startup via inspectShutdownState().
   runScript("down", scriptPath, { detached: true, shutdownPidDir: dir });
 }

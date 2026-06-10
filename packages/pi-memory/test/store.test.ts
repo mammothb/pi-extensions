@@ -42,7 +42,7 @@ describe("FileSystemBackend", () => {
   describe("remember / recall (project scope)", () => {
     it("stores and recalls a single entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "build-command",
@@ -117,13 +117,13 @@ describe("FileSystemBackend", () => {
 
     it("overwrites existing entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/cwd",
         key: "old",
         value: "data",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/cwd",
         key: "old",
@@ -139,13 +139,13 @@ describe("FileSystemBackend", () => {
 
     it("project entries are isolated by cwd", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/project-a",
         key: "build",
         value: "make",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/project-b",
         key: "build",
@@ -169,7 +169,7 @@ describe("FileSystemBackend", () => {
   describe("remember / recall (global scope)", () => {
     it("stores and recalls a global entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:editor",
@@ -196,7 +196,7 @@ describe("FileSystemBackend", () => {
 
     it("global entries are visible from any project cwd", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "user:theme",
@@ -229,13 +229,13 @@ describe("FileSystemBackend", () => {
   describe("merge: project overrides global", () => {
     it("project entry with same key overrides global", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "theme",
         value: "global-dark",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "theme",
@@ -258,7 +258,7 @@ describe("FileSystemBackend", () => {
   describe("forget", () => {
     it("deletes an existing project entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "delete-me",
@@ -290,7 +290,7 @@ describe("FileSystemBackend", () => {
 
     it("deletes an existing global entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "gone-global",
@@ -314,7 +314,7 @@ describe("FileSystemBackend", () => {
   describe("rename", () => {
     it("renames an existing project entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/project",
         key: "old-name",
@@ -350,7 +350,7 @@ describe("FileSystemBackend", () => {
 
     it("renames an existing global entry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/project",
         key: "old-global",
@@ -434,13 +434,13 @@ describe("FileSystemBackend", () => {
   describe("TTL", () => {
     it("recall filters out expired entries", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ttl",
         key: "permanent",
         value: "keep",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ttl",
         key: "ephemeral",
@@ -461,7 +461,7 @@ describe("FileSystemBackend", () => {
 
     it("recall keeps entries with future expiry", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ttl",
         key: "temp",
@@ -479,7 +479,7 @@ describe("FileSystemBackend", () => {
 
     it("recall handles entries without meta (no expiry)", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ttl",
         key: "plain",
@@ -495,13 +495,13 @@ describe("FileSystemBackend", () => {
 
     it("global memory also supports TTL filtering", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/ttl",
         key: "perm",
         value: "keep",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "global",
         cwd: "/test/ttl",
         key: "temp",
@@ -524,13 +524,13 @@ describe("FileSystemBackend", () => {
   describe("search", () => {
     it("returns scored results for keyword query", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/search",
         key: "build-command",
         value: "pnpm run build",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/search",
         key: "test-command",
@@ -548,13 +548,13 @@ describe("FileSystemBackend", () => {
 
     it("key matches score higher than value matches", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/search",
         key: "format",
         value: "biome",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/search",
         key: "tool-pref",
@@ -572,7 +572,7 @@ describe("FileSystemBackend", () => {
 
     it("returns empty array for no-match query", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/search",
         key: "foo",
@@ -589,7 +589,7 @@ describe("FileSystemBackend", () => {
     it("respects limit option", async () => {
       const backend = makeBackend();
       for (let i = 0; i < 10; i++) {
-        await backend.remember({
+        await backend.retain({
           scope: "project",
           cwd: "/test/search",
           key: `test-${i}`,
@@ -608,19 +608,19 @@ describe("FileSystemBackend", () => {
   describe("namespace filtering", () => {
     it("filters entries by namespace prefix", async () => {
       const backend = makeBackend();
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ns",
         key: "project:build",
         value: "pnpm build",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ns",
         key: "project:test",
         value: "vitest",
       });
-      await backend.remember({
+      await backend.retain({
         scope: "project",
         cwd: "/test/ns",
         key: "user:editor",

@@ -58,7 +58,7 @@ export const DEFAULT_CONFIG: WebsearchConfig = {
  * Deep-merge two configs. Arrays and primitives from `override` replace those
  * in `base`. Objects are merged recursively.
  */
-function mergeConfigs(
+function mergeConfig(
   base: WebsearchConfig,
   override: Record<string, unknown>,
 ): WebsearchConfig {
@@ -102,5 +102,5 @@ function mergeConfigs(
  * Returns the default config if no config files exist.
  */
 export function loadConfig(cwd: string): WebsearchConfig {
-  return loadPiConfig("pi-websearch.json", cwd, DEFAULT_CONFIG, mergeConfigs);
+  return loadPiConfig("pi-websearch.json", cwd, DEFAULT_CONFIG, mergeConfig);
 }

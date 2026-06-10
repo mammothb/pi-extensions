@@ -343,7 +343,7 @@ Usage notes:
         }
       }
     },
-    renderResult(result, options, theme, _context) {
+    renderResult(result, options, theme, _ctx) {
       const details = result.details;
 
       if (options.isPartial && !details.url) {

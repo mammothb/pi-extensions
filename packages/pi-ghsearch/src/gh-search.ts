@@ -28,7 +28,7 @@ const DEFAULT_FIELDS: Record<string, string> = {
   // code search does not support --json; raw output is returned instead
 };
 
-const GhSearchParams = Type.Object({
+const GhSearchParamsSchema = Type.Object({
   scope: StringEnum(SEARCH_SCOPES, {
     description: "Search scope: repos, issues, prs, code, or commits.",
   }),
@@ -83,7 +83,7 @@ const GhSearchParams = Type.Object({
   ),
 });
 
-type GhSearchParamsT = Static<typeof GhSearchParams>;
+type GhSearchParams = Static<typeof GhSearchParamsSchema>;
 
 function addOptionalFlag(
   args: string[],
@@ -146,7 +146,7 @@ function formatFirstItem(
 export function createGhSearchTool(
   pi: ExtensionAPI,
   config: GhSearchConfig,
-): ToolDefinition<typeof GhSearchParams, GhSearchDetails> {
+): ToolDefinition<typeof GhSearchParamsSchema, GhSearchDetails> {
   return {
     name: "gh_search",
     label: "GitHub Search",
@@ -163,23 +163,23 @@ export function createGhSearchTool(
       "For broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.",
       "Use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.",
     ],
-    parameters: GhSearchParams,
-    renderCall(args, theme, _context) {
+    parameters: GhSearchParamsSchema,
+    renderCall(args, theme, _ctx) {
       const text =
         `${theme.fg("toolTitle", theme.bold("gh_search"))} ` +
         `${theme.fg("muted", args.scope)} ` +
         `${theme.fg("muted", args.query)}`;
       return new Text(text, 0, 0);
     },
-    renderResult(result, { expanded }, theme, context) {
+    renderResult(result, { expanded }, theme, ctx) {
       const details = result.details as GhSearchDetails | undefined;
-      const scope: string = context.args?.scope ?? "results";
+      const scope: string = ctx.args?.scope ?? "results";
       const isCode = scope === "code";
       const parsed = details?.parsed;
       const rawText = firstTextBlock(result);
 
       // Handle errors
-      if (context.isError) {
+      if (ctx.isError) {
         return renderError(rawText, theme);
       }
 
@@ -238,7 +238,7 @@ export function createGhSearchTool(
     },
     execute: async (
       _toolCallId,
-      params: GhSearchParamsT,
+      params: GhSearchParams,
       _signal,
       _onUpdate,
       ctx,

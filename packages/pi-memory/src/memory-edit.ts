@@ -28,7 +28,7 @@ export function createMemoryEditTool(
       "Deleting a key is permanent (the value is removed from disk).",
     ],
     parameters: Parameters,
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, _ctx) {
       const action = theme.fg("syntaxKeyword", args.action);
       const keyPreview =
         args.key.length > 40 ? `${args.key.slice(0, 40)}…` : args.key;
@@ -38,8 +38,8 @@ export function createMemoryEditTool(
         0,
       );
     },
-    renderResult(_result, _options, theme, context) {
-      if (context.isError) {
+    renderResult(_result, _options, theme, ctx) {
+      if (ctx.isError) {
         return renderError("Edit failed", theme);
       }
       return new Text(theme.fg("success", "Done"), 0, 0);

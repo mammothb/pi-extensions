@@ -75,8 +75,8 @@ function createChild(behavior: {
 // Now import the module under test
 import { expandTilde } from "@mammothb/pi-shared";
 import {
-  checkShutdownHealth,
   cleanStaleLocks,
+  inspectShutdownState,
   isProcessAlive,
   registerInstance,
   runScript,
@@ -460,10 +460,10 @@ describe("runScript", () => {
 });
 
 // ---------------------------------------------------------------------------
-// checkShutdownHealth
+// inspectShutdownState
 // ---------------------------------------------------------------------------
 
-describe("checkShutdownHealth", () => {
+describe("inspectShutdownState", () => {
   let instancesDir: string;
 
   beforeEach(() => {
@@ -472,14 +472,14 @@ describe("checkShutdownHealth", () => {
   });
 
   it("returns {0,0} with a no-op cleanup when the directory does not exist", () => {
-    const result = checkShutdownHealth(join(tmpDir, "nonexistent"));
+    const result = inspectShutdownState(join(tmpDir, "nonexistent"));
 
     expect(result).toMatchObject({ uncleanCount: 0, stillRunning: 0 });
     expect(() => result.cleanup()).not.toThrow();
   });
 
   it("returns {0,0} when the directory is empty", () => {
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 0, stillRunning: 0 });
   });
@@ -491,7 +491,7 @@ describe("checkShutdownHealth", () => {
       String(process.pid),
     );
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 0, stillRunning: 0 });
   });
@@ -499,7 +499,7 @@ describe("checkShutdownHealth", () => {
   it("detects an unclean shutdown (dead PID)", () => {
     writeFileSync(join(instancesDir, "shutdown-9999999.pid"), "9999999");
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 1, stillRunning: 0 });
   });
@@ -510,7 +510,7 @@ describe("checkShutdownHealth", () => {
       String(process.pid),
     );
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 0, stillRunning: 1 });
   });
@@ -523,7 +523,7 @@ describe("checkShutdownHealth", () => {
       String(process.pid),
     );
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 2, stillRunning: 1 });
   });
@@ -534,7 +534,7 @@ describe("checkShutdownHealth", () => {
     writeFileSync(join(instancesDir, "shutdown-.pid"), "");
     writeFileSync(join(instancesDir, "12345.lock"), "12345");
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
 
     expect(result).toMatchObject({ uncleanCount: 0, stillRunning: 0 });
   });
@@ -545,7 +545,7 @@ describe("checkShutdownHealth", () => {
     writeFileSync(file1, "12345");
     writeFileSync(file2, "67890");
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
     result.cleanup();
 
     expect(existsSync(file1)).toBe(false);
@@ -558,7 +558,7 @@ describe("checkShutdownHealth", () => {
     writeFileSync(lockFile, "12345");
     writeFileSync(shutdownFile, "12345");
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
     result.cleanup();
 
     expect(existsSync(lockFile)).toBe(true);
@@ -569,7 +569,7 @@ describe("checkShutdownHealth", () => {
     const otherFile = join(instancesDir, "README.txt");
     writeFileSync(otherFile, "hello");
 
-    const result = checkShutdownHealth(instancesDir);
+    const result = inspectShutdownState(instancesDir);
     result.cleanup();
 
     expect(existsSync(otherFile)).toBe(true);

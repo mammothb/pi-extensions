@@ -7,7 +7,7 @@ import type {
   MemoryScope,
   RecallEntry,
   RecallOptions,
-  RememberParams,
+  RetainParams,
 } from "../backend.js";
 
 // ── Search ───────────────────────────────────────────────────
@@ -106,7 +106,7 @@ export class FileSystemBackend implements MemoryBackend {
 
   // ── Public interface ───────────────────────────────────────
 
-  async remember(params: RememberParams): Promise<void> {
+  async retain(params: RetainParams): Promise<void> {
     const { scope, cwd, key, value, ttlSeconds } = params;
 
     if (scope === "global") {

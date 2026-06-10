@@ -31,13 +31,13 @@ describe("compact_memory tool", () => {
 
   it("reports no compaction needed when all entries are under threshold", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "short",
       value: "brief",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "alsoShort",
@@ -56,13 +56,13 @@ describe("compact_memory tool", () => {
   it("surfaces entries exceeding the default threshold (2000 chars)", async () => {
     const longValue = "x".repeat(2500);
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "short",
       value: "brief",
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "long",
@@ -84,13 +84,13 @@ describe("compact_memory tool", () => {
 
   it("respects a custom threshold", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "big",
       value: "x".repeat(500),
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "small",
@@ -115,19 +115,19 @@ describe("compact_memory tool", () => {
 
   it("sorts oversized entries by length (largest first)", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "medium",
       value: "m".repeat(2100),
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "large",
       value: "L".repeat(3000),
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "small",
@@ -148,7 +148,7 @@ describe("compact_memory tool", () => {
   it("includes the full value of oversized entries", async () => {
     const value = "Important content that is really long.\n".repeat(100);
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "big",
@@ -166,13 +166,13 @@ describe("compact_memory tool", () => {
 
   it("shows the correct oversized char count", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "first",
       value: "a".repeat(2100),
     });
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "second",
@@ -191,7 +191,7 @@ describe("compact_memory tool", () => {
 
   it("returns usage instructions in the output", async () => {
     const backend = makeBackend();
-    await backend.remember({
+    await backend.retain({
       scope: "project",
       cwd: "/test/project",
       key: "long",
