@@ -77,7 +77,7 @@ export function createWebsearchTool(
   const usageNotes = provider.usageNotes;
 
   return {
-    name: "websearch",
+    name: "WebSearch",
     label: "Web Search",
     description: `- Search the web using the session's web search provider - performs real-time web searches and can scrape content from specific URLs.
 - Provides up-to-date information for current events and recent data.
@@ -89,7 +89,7 @@ Usage notes:${usageNotes}
   - Configurable context length for optimal LLM integration`,
     promptSnippet: "Search the web",
     promptGuidelines: [
-      "Use websearch to find current information, documentation, or answers that require up-to-date web data. Always cite sources from search results.",
+      "Use WebSearch to find current information, documentation, or answers that require up-to-date web data. Always cite sources from search results.",
       `The current year is ${year}. You MUST use this year when searching for recent information or current events.\n- Example: If the current year is ${year} and the user asks for "latest AI news", search for "AI news ${year}", NOT "AI news ${year - 1}"`,
     ],
     parameters: WebsearchParameters,
@@ -124,7 +124,7 @@ Usage notes:${usageNotes}
     },
     renderCall: (args, theme, _ctx) => {
       return new Text(
-        theme.fg("toolTitle", theme.bold("websearch ")) +
+        theme.fg("toolTitle", theme.bold("WebSearch ")) +
           theme.fg("muted", `"${args.query}"`),
       );
     },

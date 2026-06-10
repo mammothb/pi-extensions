@@ -208,7 +208,7 @@ describe("renderCall", () => {
     const lines = result.render(80);
     const joined = lines.join("");
     expect(joined).toContain("hello world");
-    expect(joined).toContain("websearch");
+    expect(joined).toContain("WebSearch");
   });
 });
 

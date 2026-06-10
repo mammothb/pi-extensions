@@ -1,6 +1,6 @@
 # pi-websearch
 
-A [pi](https://pi.dev) extension that adds a `websearch` tool for searching
+A [pi](https://pi.dev) extension that adds a `WebSearch` tool for searching
 the web via a configurable provider.
 
 ## Providers
@@ -14,7 +14,7 @@ Two search backends are supported, configured via the `provider` option:
 
 ## Usage
 
-Once installed, the LLM can call the `websearch` tool to search the web for
+Once installed, the LLM can call the `WebSearch` tool to search the web for
 current information, cite sources, and scrape specific URLs.
 
 ### Tool parameters

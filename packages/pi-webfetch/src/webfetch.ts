@@ -214,7 +214,7 @@ export function createWebfetchTool(): ToolDefinition<
   WebfetchDetails
 > {
   return {
-    name: "webfetch",
+    name: "WebFetch",
     label: "Web Fetch",
     description: `- Fetches content from a specified URL
 - Takes a URL and optional format as input

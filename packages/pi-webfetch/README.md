@@ -1,11 +1,11 @@
 # pi-webfetch
 
-A [pi](https://pi.dev) extension that adds a `webfetch` tool for fetching and
+A [pi](https://pi.dev) extension that adds a `WebFetch` tool for fetching and
 converting web content.
 
 ## Usage
 
-Once installed, the LLM can call the `webfetch` tool to fetch content from URLs
+Once installed, the LLM can call the `WebFetch` tool to fetch content from URLs
 and convert it to **markdown** (default), **text**, or **html**.
 
 ### Tool parameters

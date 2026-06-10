@@ -1,7 +1,7 @@
 {
   "name": "@mammothb/pi-webfetch",
   "version": "1.0.2",
-  "description": "A pi extension that adds a webfetch tool for fetching and converting web content",
+  "description": "A pi extension that adds a WebFetch tool for fetching and converting web content",
   "keywords": [
     "pi-package"
   ],

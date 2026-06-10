@@ -68,7 +68,7 @@
     "query": "what does the npm page for express look like? show me the latest version and description",
     "tool": "gh_search",
     "should_trigger": false,
-    "should_use": "websearch or webfetch",
+    "should_use": "WebSearch or WebFetch",
     "rationale": "User wants npm registry info, not GitHub search. Near-miss: 'express' is a popular GitHub repo too"
   },
   {

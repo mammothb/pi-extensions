@@ -68,7 +68,7 @@ export default function (pi: ExtensionAPI) {
       const providerDetail =
         config.provider === "searxng" ? config.searxng.url : config.exaMcp.url;
       ctx.ui.notify(
-        `websearch: provider ${config.provider} (${providerDetail})`,
+        `WebSearch: provider ${config.provider} (${providerDetail})`,
         "info",
       );
     }

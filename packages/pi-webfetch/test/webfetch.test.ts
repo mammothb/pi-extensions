@@ -13,8 +13,8 @@ const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
 describe("createWebfetchTool — tool definition shape", () => {
   const tool = createWebfetchTool();
 
-  it('has name "webfetch"', () => {
-    expect(tool.name).toBe("webfetch");
+  it('has name "WebFetch"', () => {
+    expect(tool.name).toBe("WebFetch");
   });
 
   it("has label and promptSnippet", () => {
