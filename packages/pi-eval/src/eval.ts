@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { extractTextContent, getExpandKey } from "@mammothb/pi-shared";
@@ -7,6 +9,7 @@ import { executeJavaScript } from "./lib/javascript.js";
 import { executePython } from "./lib/python.js";
 import {
   EvalCancelledError,
+  EvalCwdNotFoundError,
   type EvalDetails,
   EvalUnsupportedLanguageError,
 } from "./lib/types.js";
@@ -16,6 +19,12 @@ export const TIMEOUT_MS = 30_000;
 const Parameters = Type.Object({
   language: Type.Union([Type.Literal("javascript"), Type.Literal("python")]),
   code: Type.String({ description: "Code to execute" }),
+  cwd: Type.Optional(
+    Type.String({
+      description:
+        "Working directory for the subprocess (default: agent's cwd)",
+    }),
+  ),
 });
 
 const PREVIEW_LINES = 5;
@@ -120,6 +129,7 @@ export function createEvalTool(): ToolDefinition<
 - Each call is a fresh subprocess — no state persists between calls
 - 30-second timeout; press Escape to cancel a running evaluation
 - Working directory is the agent's current working directory (like bash)
+- Set cwd to specify a working directory for the subprocess (default: agent's cwd)
 - Set pythonPath or nodeModulesPath in ~/.pi/agent/pi-eval.json (global) or .pi/pi-eval.json (project) to configure the runtime for all eval calls`,
     promptSnippet:
       "Execute JavaScript or Python code in an isolated subprocess",
@@ -140,6 +150,12 @@ export function createEvalTool(): ToolDefinition<
         preview = theme.fg("toolOutput", display + suffix);
       }
 
+      // Show cwd hint when it differs from the agent's cwd
+      let cwdHint = "";
+      if (args.cwd != null && args.cwd !== context.cwd) {
+        cwdHint = theme.fg("muted", ` (cwd: ${args.cwd})`);
+      }
+
       const text =
         context.lastComponent instanceof Text
           ? context.lastComponent
@@ -149,7 +165,8 @@ export function createEvalTool(): ToolDefinition<
           " " +
           badgeColored +
           "  " +
-          preview,
+          preview +
+          cwdHint,
       );
       return text;
     },
@@ -253,8 +270,29 @@ export function createEvalTool(): ToolDefinition<
       return new Text(parts.join("\n"), 0, 0);
     },
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const { language, code } = params;
-      const config = loadConfig(ctx.cwd);
+      const { language, code, cwd: paramsCwd } = params;
+
+      // Resolve and validate the working directory
+      let effectiveCwd: string;
+      if (paramsCwd != null) {
+        const resolved = isAbsolute(paramsCwd)
+          ? paramsCwd
+          : resolve(ctx.cwd, paramsCwd);
+        try {
+          const s = await stat(resolved);
+          if (!s.isDirectory()) {
+            throw new EvalCwdNotFoundError(resolved, "not a directory");
+          }
+        } catch (err) {
+          if (err instanceof EvalCwdNotFoundError) throw err;
+          throw new EvalCwdNotFoundError(resolved);
+        }
+        effectiveCwd = resolved;
+      } else {
+        effectiveCwd = ctx.cwd;
+      }
+
+      const config = loadConfig(effectiveCwd);
 
       // Validate language (belt-and-suspenders: TypeBox schema already constrains it,
       // but a raw API call could bypass validation)
@@ -286,7 +324,7 @@ export function createEvalTool(): ToolDefinition<
           config.pythonPath,
           signal,
           timeoutSignal,
-          ctx.cwd,
+          effectiveCwd,
         );
       }
 
@@ -296,7 +334,7 @@ export function createEvalTool(): ToolDefinition<
         config.nodeModulesPath,
         signal,
         timeoutSignal,
-        ctx.cwd,
+        effectiveCwd,
       );
     },
   };

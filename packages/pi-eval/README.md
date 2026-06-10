@@ -15,6 +15,7 @@ between calls.
 | ---------- | ------ | ----------- | ----------- |
 | `language` | string | _(required)_ | Programming language: `"javascript"` or `"python"` |
 | `code`     | string | _(required)_ | Code to execute |
+| `cwd`      | string | agent's cwd  | Working directory for the subprocess |
 
 ### Runtime configuration
 

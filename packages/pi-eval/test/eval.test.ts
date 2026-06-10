@@ -9,6 +9,7 @@ import { createEvalTool } from "../src/eval.js";
 import {
   EvalBinaryNotFoundError,
   EvalCancelledError,
+  EvalCwdNotFoundError,
   EvalTimeoutError,
   EvalToolError,
   EvalUnsupportedLanguageError,
@@ -551,5 +552,173 @@ describe("eval — nodeModulesPath via config", () => {
       mockContext(cwd),
     );
     expect(text(r)).toContain("typebox");
+  });
+});
+
+describe("eval — cwd parameter", () => {
+  it("cwd not provided → subprocess runs in ctx.cwd", async () => {
+    const r = await tool.execute(
+      "cwd1",
+      {
+        language: "javascript",
+        code: "console.log(process.cwd());",
+      },
+      undefined,
+      undefined,
+      mockContext(cwd),
+    );
+    expect(text(r)).toContain(cwd);
+  });
+
+  it("cwd pointing to a different directory → subprocess runs there", async () => {
+    const tmpDir = join(
+      tmpdir(),
+      `pi-eval-cwd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(tmpDir, { recursive: true });
+    try {
+      const r = await tool.execute(
+        "cwd2",
+        {
+          language: "javascript",
+          code: "console.log(process.cwd());",
+          cwd: tmpDir,
+        },
+        undefined,
+        undefined,
+        mockContext(cwd),
+      );
+      expect(text(r)).toContain(tmpDir);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("relative cwd resolves against ctx.cwd", async () => {
+    const r = await tool.execute(
+      "cwd3",
+      {
+        language: "javascript",
+        code: "console.log(process.cwd());",
+        cwd: ".",
+      },
+      undefined,
+      undefined,
+      mockContext(cwd),
+    );
+    expect(text(r)).toContain(cwd);
+  });
+
+  it("nonexistent cwd throws EvalCwdNotFoundError", async () => {
+    await expect(
+      tool.execute(
+        "cwd4",
+        {
+          language: "javascript",
+          code: 'console.log("nope");',
+          cwd: "/nonexistent/dir/xyz",
+        },
+        undefined,
+        undefined,
+        mockContext(cwd),
+      ),
+    ).rejects.toThrow(EvalCwdNotFoundError);
+  });
+
+  it("cwd that is a file not a directory throws", async () => {
+    const tmpFile = join(
+      tmpdir(),
+      `pi-eval-cwd-file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    writeFileSync(tmpFile, "not a dir", "utf-8");
+    try {
+      await expect(
+        tool.execute(
+          "cwd5",
+          {
+            language: "javascript",
+            code: 'console.log("nope");',
+            cwd: tmpFile,
+          },
+          undefined,
+          undefined,
+          mockContext(cwd),
+        ),
+      ).rejects.toThrow(EvalCwdNotFoundError);
+    } finally {
+      rmSync(tmpFile, { force: true });
+    }
+  });
+
+  it("Python respects cwd parameter", async () => {
+    if (!(await hasPython3())) return;
+    const tmpDir = join(
+      tmpdir(),
+      `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(tmpDir, { recursive: true });
+    try {
+      const r = await tool.execute(
+        "cwd6",
+        {
+          language: "python",
+          code: "import os; print(os.getcwd())",
+          cwd: tmpDir,
+        },
+        undefined,
+        undefined,
+        mockContext(cwd),
+      );
+      expect(text(r)).toContain(tmpDir);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("config loads from the cwd directory", async () => {
+    // Create a temp project dir with its own .pi/pi-eval.json
+    const tmpDir = join(
+      tmpdir(),
+      `pi-eval-cwd-config-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const agentDir = join(tmpDir, "agent");
+    mkdirSync(agentDir, { recursive: true });
+    const prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    // Check if we have a local node_modules to test against
+    const { access } = await import("node:fs/promises");
+    let hasModules = false;
+    try {
+      await access(`${cwd}/node_modules/typebox`, 1);
+      hasModules = true;
+    } catch {
+      // no local node_modules
+    }
+
+    try {
+      if (hasModules) {
+        writeFileSync(
+          join(agentDir, "pi-eval.json"),
+          JSON.stringify({ nodeModulesPath: "./node_modules" }, null, 2),
+        );
+        // Use cwd to point to the actual project dir that has node_modules
+        const r = await tool.execute(
+          "cwd7",
+          {
+            language: "javascript",
+            code: "const pkg = require('typebox/package.json'); console.log(pkg.name);",
+            cwd,
+          },
+          undefined,
+          undefined,
+          mockContext(cwd),
+        );
+        expect(text(r)).toContain("typebox");
+      }
+    } finally {
+      process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

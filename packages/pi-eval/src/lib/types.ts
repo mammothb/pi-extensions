@@ -44,6 +44,16 @@ export class EvalUnsupportedLanguageError extends EvalToolError {
   }
 }
 
+export class EvalCwdNotFoundError extends EvalToolError {
+  constructor(cwd: string, reason?: string) {
+    const detail = reason ? `: ${reason}` : "";
+    super(
+      `cwd does not exist or is not a directory: ${cwd}${detail}`,
+      "CWD_NOT_FOUND",
+    );
+  }
+}
+
 export interface SubprocessResult {
   stdout: string;
   stderr: string;
