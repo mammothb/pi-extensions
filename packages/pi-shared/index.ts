@@ -1,4 +1,8 @@
 export { BgSafeTruncatedText } from "./src/bg-safe-truncated-text.js";
+export type {
+  AskPromptPayload,
+  PermissionPromptPayload,
+} from "./src/events.js";
 export { expandTilde } from "./src/expand-tilde.js";
 export {
   extractTextContent,

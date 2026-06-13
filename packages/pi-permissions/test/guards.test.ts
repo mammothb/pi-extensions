@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerGuards } from "../src/guards.js";
 import { ApprovalCache } from "../src/lib/approval-cache.js";
 import type { ResolvedConfig } from "../src/lib/types.js";
@@ -32,6 +32,7 @@ function createMockPi(hasUI = true) {
   };
 
   const pi = {
+    events: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown) {
       handlers.push({ event, handler });
     },
@@ -227,6 +228,99 @@ describe("registerGuards", () => {
       expect(result).toBeDefined();
       expect(result!.block).toBe(true);
       expect(result!.reason).toContain("Permission denied");
+    });
+  });
+
+  describe("event emission", () => {
+    it("emits <toolName>_permission:prompt when dialog is shown (tool guard)", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi();
+      registerGuards(pi as any, config(), store);
+
+      await dispatchToolCall("eval", { code: "1+1" });
+
+      expect(pi.events.emit).toHaveBeenCalledWith("eval_permission:prompt", {
+        toolName: "eval",
+        category: "tool",
+        summary: "",
+        reason: expect.any(String),
+      });
+    });
+
+    it("emits <toolName>_permission:prompt when dialog is shown (path guard)", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi();
+      registerGuards(
+        pi as any,
+        config({ paths: { "src/**": "ask" }, tools: { write: "allow" } }),
+        store,
+      );
+
+      await dispatchToolCall("write", {
+        path: "src/index.ts",
+        content: "// code",
+      });
+
+      expect(pi.events.emit).toHaveBeenCalledWith("write_permission:prompt", {
+        toolName: "write",
+        category: "path",
+        summary: "src/index.ts",
+        reason: undefined,
+      });
+    });
+
+    it("emits <toolName>_permission:prompt when dialog is shown (bash guard)", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi();
+      registerGuards(pi as any, config({ tools: { bash: "allow" } }), store);
+
+      await dispatchToolCall("bash", { command: "git status" });
+
+      expect(pi.events.emit).toHaveBeenCalledWith("bash_permission:prompt", {
+        toolName: "bash",
+        category: "bash",
+        summary: "git status",
+        reason: expect.any(String),
+      });
+    });
+
+    it("does not emit when cached decision exists", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi();
+      registerGuards(pi as any, config(), store);
+
+      // First call: emits (dialog shown)
+      await dispatchToolCall("eval", { code: "1+1" });
+      expect(pi.events.emit).toHaveBeenCalledTimes(1);
+
+      (pi.events.emit as ReturnType<typeof vi.fn>).mockClear();
+
+      // Second call: uses session store, no dialog → no emit
+      await dispatchToolCall("eval", { code: "2+2" });
+      expect(pi.events.emit).not.toHaveBeenCalled();
+    });
+
+    it("does not emit in headless mode", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi(false); // no UI
+      registerGuards(pi as any, config(), store);
+
+      await dispatchToolCall("eval", { code: "1+1" });
+
+      expect(pi.events.emit).not.toHaveBeenCalled();
+    });
+
+    it("does not emit on deny rules", async () => {
+      const store = new ApprovalCache();
+      const { pi, dispatchToolCall } = createMockPi();
+      registerGuards(pi as any, config({ tools: { write: "deny" } }), store);
+
+      await dispatchToolCall("write", {
+        path: "test.txt",
+        content: "hi",
+      });
+
+      expect(pi.events.emit).not.toHaveBeenCalled();
     });
   });
 });

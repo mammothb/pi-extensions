@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { describe, expect, it, vi } from "vitest";
 import { createAskTool } from "../src/ask.js";
 import {
   createMockTheme,
@@ -6,8 +7,16 @@ import {
   makeQuestion,
 } from "./_helpers.js";
 
+/** Create a minimal mock pi with an events spy. */
+function mockPi(): ExtensionAPI {
+  return {
+    events: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
+  } as unknown as ExtensionAPI;
+}
+
 describe("createAskTool", () => {
-  const tool = createAskTool();
+  const pi = mockPi();
+  const tool = createAskTool(pi);
 
   it("has name 'ask'", () => {
     expect(tool.name).toBe("AskUserQuestion");
@@ -174,6 +183,144 @@ describe("createAskTool", () => {
       if (result.content[0]?.type === "text") {
         expect(result.content[0].text).toContain("Option A, Option C");
       }
+    });
+  });
+
+  describe("execute — emits AskUserQuestion:prompt", () => {
+    it("emits before showing UI on success path", async () => {
+      pi.events.emit = vi.fn(); // reset spy from earlier tests
+      const q = makeQuestion();
+      const ctx = {
+        hasUI: true,
+        ui: {
+          custom: () =>
+            Promise.resolve({
+              questions: [q],
+              answers: { [q.question]: "Option A" },
+              cancelled: false,
+            }),
+        },
+      };
+      await tool.execute(
+        "call-1",
+        { questions: [q] },
+        undefined,
+        undefined,
+        ctx as never,
+      );
+
+      expect(pi.events.emit).toHaveBeenCalledExactlyOnceWith(
+        "AskUserQuestion:prompt",
+        { questions: [q] },
+      );
+    });
+
+    it("emits for multi-question payload", async () => {
+      pi.events.emit = vi.fn(); // reset spy
+      const q1 = makeQuestion({ header: "A", question: "First?" });
+      const q2 = makeQuestion({ header: "B", question: "Second?" });
+      const ctx = {
+        hasUI: true,
+        ui: {
+          custom: () =>
+            Promise.resolve({
+              questions: [q1, q2],
+              answers: {},
+              cancelled: false,
+            }),
+        },
+      };
+      await tool.execute(
+        "call-1",
+        { questions: [q1, q2] },
+        undefined,
+        undefined,
+        ctx as never,
+      );
+
+      expect(pi.events.emit).toHaveBeenCalledWith("AskUserQuestion:prompt", {
+        questions: [q1, q2],
+      });
+    });
+
+    it("does not emit when questions array is empty", async () => {
+      const ctx = {
+        hasUI: true,
+        ui: { custom: () => Promise.resolve(null) },
+      };
+      pi.events.emit = vi.fn(); // reset spy
+
+      await tool.execute(
+        "call-1",
+        { questions: [] },
+        undefined,
+        undefined,
+        ctx as never,
+      );
+
+      expect(pi.events.emit).not.toHaveBeenCalled();
+    });
+
+    it("does not emit when ctx.hasUI is false", async () => {
+      const ctx = {
+        hasUI: false,
+        abort: () => {},
+      };
+      pi.events.emit = vi.fn(); // reset spy
+
+      await expect(
+        tool.execute(
+          "call-1",
+          { questions: [makeQuestion()] },
+          undefined,
+          undefined,
+          ctx as never,
+        ),
+      ).rejects.toThrow("interactive mode");
+
+      expect(pi.events.emit).not.toHaveBeenCalled();
+    });
+
+    it("does not emit on validation error (duplicate questions)", async () => {
+      const ctx = {
+        hasUI: true,
+        ui: { custom: () => Promise.resolve(null) },
+      };
+      pi.events.emit = vi.fn(); // reset spy
+
+      await tool.execute(
+        "call-1",
+        {
+          questions: [
+            makeQuestion({ question: "Same?" }),
+            makeQuestion({ question: "Same?" }),
+          ],
+        },
+        undefined,
+        undefined,
+        ctx as never,
+      );
+
+      expect(pi.events.emit).not.toHaveBeenCalled();
+    });
+
+    it("still emits when user cancels the UI", async () => {
+      // Emit happens before the UI call, so cancellation should not suppress it
+      const ctx = {
+        hasUI: true,
+        ui: { custom: () => Promise.resolve(null) },
+      };
+      pi.events.emit = vi.fn(); // reset spy
+
+      await tool.execute(
+        "call-1",
+        { questions: [makeQuestion()] },
+        undefined,
+        undefined,
+        ctx as never,
+      );
+
+      expect(pi.events.emit).toHaveBeenCalled();
     });
   });
 

@@ -1,5 +1,9 @@
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import { Box } from "@earendil-works/pi-tui";
+import type { AskPromptPayload } from "@mammothb/pi-shared";
 import { BgSafeTruncatedText } from "@mammothb/pi-shared";
 import { AskComponent } from "./lib/component.js";
 import { createAskKeybindings } from "./lib/keybindings.js";
@@ -18,10 +22,9 @@ function formatAnswersAsText(result: AskResult): string {
     .join("\n");
 }
 
-export function createAskTool(): ToolDefinition<
-  typeof AskParamsSchema,
-  AskResult
-> {
+export function createAskTool(
+  pi: ExtensionAPI,
+): ToolDefinition<typeof AskParamsSchema, AskResult> {
   return {
     name: "AskUserQuestion",
     label: "Ask",
@@ -72,6 +75,9 @@ export function createAskTool(): ToolDefinition<
           },
         };
       }
+
+      const payload: AskPromptPayload = { questions: params.questions };
+      pi.events.emit("AskUserQuestion:prompt", payload);
 
       const result = await ctx.ui.custom<AskResult | null>(
         (tui, theme, kb, done) =>

@@ -1,6 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  AskPromptPayload,
+  PermissionPromptPayload,
+} from "@mammothb/pi-shared";
 import { loadConfig } from "./src/config.js";
 import { extractPreview } from "./src/preview.js";
 
@@ -49,9 +53,48 @@ export default async function toastExtension(pi: ExtensionAPI) {
     return;
   }
 
+  const sessionLabel = await getSessionLabel();
+
+  // ── agent end (existing) ────────────────────────────────────────────
+
   pi.on("agent_end", async (event) => {
-    const sessionLabel = await getSessionLabel();
-    const fullTitle = `Agent finished ${sessionLabel}`;
-    await sendToast(path, fullTitle, extractPreview(event.messages));
+    await sendToast(
+      path,
+      `Agent finished ${sessionLabel}`,
+      extractPreview(event.messages),
+    );
   });
+
+  // ── ask prompt ──────────────────────────────────────────────────────
+
+  pi.events.on("AskUserQuestion:prompt", (data) => {
+    const { questions } = data as AskPromptPayload;
+    const headers = questions.map((q) => q.header).join(", ");
+    const label =
+      questions.length > 1 ? ` (${questions.length} questions)` : "";
+    sendToast(path, `pi-ask: Question ${sessionLabel}`, `${headers}${label}`);
+  });
+
+  // ── permission prompts ─────────────────────────────────────────────
+
+  const onPermissionPrompt = (data: unknown) => {
+    const { toolName, summary, reason } = data as PermissionPromptPayload;
+    const body = reason
+      ? `[${toolName}] ${summary} — ${reason}`
+      : `[${toolName}] ${summary}`;
+    sendToast(path, `pi-perms: Permission Required ${sessionLabel}`, body);
+  };
+
+  const PERMISSION_TOOLS = [
+    "bash",
+    "read",
+    "write",
+    "edit",
+    "grep",
+    "find",
+    "ls",
+  ];
+  for (const tool of PERMISSION_TOOLS) {
+    pi.events.on(`${tool}_permission:prompt`, onPermissionPrompt);
+  }
 }

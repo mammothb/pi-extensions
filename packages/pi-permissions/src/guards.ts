@@ -7,6 +7,7 @@ import type {
   ToolCallEventResult,
   WriteToolCallEvent,
 } from "@earendil-works/pi-coding-agent";
+import type { PermissionPromptPayload } from "@mammothb/pi-shared";
 import { checkBash, checkPath, checkTool } from "./engine.js";
 import type { ApprovalCache } from "./lib/approval-cache.js";
 import {
@@ -49,6 +50,8 @@ async function handleAsk(
   store: ApprovalCache,
   storeKey: string,
   details: DialogDetails,
+  pi: ExtensionAPI,
+  hasUI: boolean,
 ): Promise<ToolCallEventResult | undefined> {
   // Check session store first
   const stored = store.get(storeKey);
@@ -57,6 +60,17 @@ async function handleAsk(
   }
   if (stored === "allow") {
     return; // proceed
+  }
+
+  // Emit before showing the permission dialog (only when UI is available)
+  if (hasUI) {
+    const payload: PermissionPromptPayload = {
+      toolName: details.toolName,
+      category: details.category,
+      summary: details.summary,
+      reason: details.reason,
+    };
+    pi.events.emit(`${details.toolName}_permission:prompt`, payload);
   }
 
   // Prompt the user via the shared dialog module
@@ -144,8 +158,12 @@ export function registerGuards(
           store,
           makeSessionKey(toolName, targetPath),
           details,
+          pi,
+          ctx.hasUI,
         );
-        if (block) return block;
+        if (block) {
+          return block;
+        }
       }
     } else {
       // --- Non-path-bearing tools: only the tool guard applies ---
@@ -171,8 +189,12 @@ export function registerGuards(
           store,
           makeSessionKey(toolName),
           details,
+          pi,
+          ctx.hasUI,
         );
-        if (block) return block;
+        if (block) {
+          return block;
+        }
       }
     }
 
@@ -201,8 +223,12 @@ export function registerGuards(
           store,
           makeSessionKey("bash", command),
           details,
+          pi,
+          ctx.hasUI,
         );
-        if (block) return block;
+        if (block) {
+          return block;
+        }
       }
     }
   });
