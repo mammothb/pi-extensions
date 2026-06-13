@@ -1,5 +1,12 @@
 # pi-eval
 
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies [0905aa1]
+  - @mammothb/pi-shared@1.3.0
+
 ## 2.1.0
 
 ### Minor Changes

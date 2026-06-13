@@ -1,5 +1,12 @@
 # @mammothb/pi-websearch
 
+## 4.0.1
+
+### Patch Changes
+
+- Updated dependencies [0905aa1]
+  - @mammothb/pi-shared@1.3.0
+
 ## 4.0.0
 
 ### Major Changes

@@ -1,5 +1,12 @@
 # @mammothb/pi-memory
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [0905aa1]
+  - @mammothb/pi-shared@1.3.0
+
 ## 0.3.2
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @mammothb/pi-webfetch
 
+## 2.0.1
+
+### Patch Changes
+
+- Updated dependencies [0905aa1]
+  - @mammothb/pi-shared@1.3.0
+
 ## 2.0.0
 
 ### Major Changes

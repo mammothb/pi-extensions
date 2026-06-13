@@ -1,5 +1,16 @@
 # @mammothb/pi-toast
 
+## 2.1.0
+
+### Minor Changes
+
+- 0905aa1: Add desktop toast notifications for AskUserQuestion prompts and permission dialogs. Extensions now emit events on `pi.events` so `pi-toast` can listen and notify; shared types defined in `pi-shared`.
+
+### Patch Changes
+
+- Updated dependencies [0905aa1]
+  - @mammothb/pi-shared@1.3.0
+
 ## 2.0.2
 
 ### Patch Changes

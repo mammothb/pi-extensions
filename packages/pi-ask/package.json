@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-ask",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A pi extension that adds an ask tool for interactive user prompting during execution",
   "keywords": [
     "pi-package"
