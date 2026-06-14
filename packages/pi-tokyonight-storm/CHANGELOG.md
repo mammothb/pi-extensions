@@ -1,5 +1,11 @@
 # @mammothb/pi-tokyonight-storm
 
+## 0.2.0
+
+### Minor Changes
+
+- a7b74f1: Changed thinking text color from muted to dim for improved visibility of inner monologue text.
+
 ## 0.1.1
 
 ### Patch Changes
