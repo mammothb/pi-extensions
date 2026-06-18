@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-mermaid",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Pi skill that teaches the LLM to write Mermaid diagram syntax",
   "keywords": [
     "pi-package"
