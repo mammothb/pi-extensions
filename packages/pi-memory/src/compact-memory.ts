@@ -29,9 +29,9 @@ export function createCompactMemoryTool(
     promptSnippet: "Find oversized memory entries that should be summarized",
     promptGuidelines: [
       "Use compact_memory when you suspect memory values are growing too large and wasting ctx.",
-      "The tool returns entries exceeding the threshold. Summarize each one and call retain with a concise version.",
-      "Aim for summaries under 2-3 sentences. The goal is context efficiency, not perfect preservation.",
-      "Skip entries that cannot be meaningfully shortened (e.g., exact commands, small code snippets).",
+      "compact_memory returns entries exceeding the threshold — summarize each and call retain with a concise version.",
+      "compact_memory: aim for summaries under 2-3 sentences. The goal is context efficiency, not perfect preservation.",
+      "compact_memory: skip entries that cannot be meaningfully shortened (e.g., exact commands, small code snippets).",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

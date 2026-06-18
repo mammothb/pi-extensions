@@ -25,7 +25,7 @@ export function createMemoryEditTool(
     promptGuidelines: [
       "Use memory_edit to clean up stale or incorrect memory entries.",
       "To update a value, use retain instead — it overwrites the existing key.",
-      "Deleting a key is permanent (the value is removed from disk).",
+      "memory_edit: deleting a key is permanent (the value is removed from disk).",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

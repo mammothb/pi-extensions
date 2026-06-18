@@ -90,7 +90,7 @@ Usage notes:${usageNotes}
     promptSnippet: "Search the web",
     promptGuidelines: [
       "Use WebSearch to find current information, documentation, or answers that require up-to-date web data. Always cite sources from search results.",
-      `The current year is ${year}. You MUST use this year when searching for recent information or current events.\n- Example: If the current year is ${year} and the user asks for "latest AI news", search for "AI news ${year}", NOT "AI news ${year - 1}"`,
+      `WebSearch: the current year is ${year}. Use this year when searching for recent information or current events.`,
     ],
     parameters: WebsearchParameters,
     execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {

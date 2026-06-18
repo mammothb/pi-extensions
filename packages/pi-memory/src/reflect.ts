@@ -43,11 +43,11 @@ export function createReflectTool(
     promptSnippet: "Store a conversation reflection in persistent memory",
     promptGuidelines: [
       "Use reflect to capture learnings from the current conversation — conventions discovered, user preferences observed, or mistakes to avoid.",
-      "If you know a good descriptive key, provide it with a namespace prefix (e.g. 'convention:error-handling', 'user:prefers-tabs'). Otherwise leave key empty for an auto-generated timestamp key.",
-      "Reflections are stored in the same memory as retain and can be found with recall. Use namespace: 'reflection-' to find all reflection entries.",
-      'Use scope: "global" for observations that apply across all projects (e.g. coding style preferences).',
-      "Use ttlSeconds for time-sensitive observations that will become stale (e.g. 'this dependency is on version X' when it may be updated soon).",
-      "Keep values concise (under 2000 chars). Use compact_memory to find and summarize oversized entries.",
+      "reflect: if you know a descriptive key, provide it with a namespace prefix (e.g. 'convention:error-handling'). Otherwise leave key empty for auto-generated timestamp.",
+      "Reflections are stored alongside retain entries and found with recall. Use namespace 'reflection-' to find all reflections.",
+      'reflect: use scope "global" for observations that apply across all projects.',
+      "reflect: use ttlSeconds for time-sensitive observations that will become stale.",
+      "Keep reflected values concise (under 2000 chars). Use compact_memory to find oversized entries.",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

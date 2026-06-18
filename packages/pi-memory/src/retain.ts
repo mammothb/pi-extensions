@@ -35,11 +35,11 @@ export function createRetainTool(
     promptSnippet: "Store a key-value pair in persistent memory",
     promptGuidelines: [
       "Use retain to remember project conventions, user preferences, build commands, and other durable facts.",
-      "Use descriptive, consistent key names with namespace prefixes so recall can filter them: 'project:' for build commands and structure, 'user:' for personal preferences, 'convention:' for coding patterns.",
-      "Overwrite a key by retaining with the same key name.",
-      'Use scope: "global" for user preferences that apply across all projects (editor, language, formatting style). Default scope is "project".',
-      "Use ttlSeconds for observations that may become stale (e.g. 'this branch is 2 weeks old' — set TTL to expire around when it may no longer be true).",
-      "Keep values concise (under 2000 chars). Use compact_memory to find and summarize oversized entries.",
+      "retain: use descriptive, consistent key names with namespace prefixes so recall can filter them: 'project:', 'user:', 'convention:'.",
+      "retain: overwrite a key by calling retain with the same key name.",
+      'retain: use scope "global" for preferences that apply across all projects. Default scope is "project".',
+      "retain: use ttlSeconds for observations that may become stale.",
+      "Keep retained values concise (under 2000 chars). Use compact_memory to find oversized entries.",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

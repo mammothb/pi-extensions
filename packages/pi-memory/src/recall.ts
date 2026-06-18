@@ -56,11 +56,10 @@ export function createRecallTool(
     promptSnippet: "Search or list persistent memory by keyword",
     promptGuidelines: [
       "Use recall to find previously retained facts, conventions, and reflections.",
-      "The query matches against both keys and values, with key matches ranked higher.",
-      "Use list: true to see all stored entries.",
-      "Use the namespace parameter to filter by key prefix — e.g. namespace: 'project:' shows only project-level conventions.",
-      "Common namespaces: 'project:' (build commands, structure), 'user:' (preferences), 'convention:' (coding patterns), 'reflection-' (conversation learnings).",
-      "Results include both project and global memory. (global) entries are shared across all projects; (project) entries override global with the same key.",
+      "recall: the query matches against both keys and values, with key matches ranked higher.",
+      "recall: use list: true to see all stored entries.",
+      "recall: use the namespace parameter to filter by key prefix (e.g. 'project:', 'user:', 'convention:', 'reflection-').",
+      "recall results include both project and global memory. (project) entries override (global) with the same key.",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

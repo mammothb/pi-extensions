@@ -34,17 +34,15 @@ export function createAskTool(
 3. Get decisions on implementation choices as you work
 4. Offer choices to the user about what direction to take
     `,
-    promptSnippet:
-      "Ask the user questions during execution to gather preferences, clarify instructions, get decisions, or offer choices",
+    promptSnippet: "Ask the user questions with a structured interactive UI",
     promptGuidelines: [
-      "Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI. If a question can be answered with 2-4 concrete options, use ask.",
-      "If a skill or instruction says 'interview', 'ask the user', 'grill', 'gather requirements', 'clarify', or 'what should I use', call the ask tool — do not output questions as plain text.",
-      "Use ask when you need user input on preferences, requirements, implementation decisions.",
-      'Each question must have 2-4 options. Users can always select "Other" to type a free-text answer, so do not include an "Other" option yourself.',
-      "Option labels should be concise (1-5 words).",
-      "Set multi: true when more than one option can validly apply at the same time.",
-      "The header field is a short label (max 12 characters) used in the tab bar when showing multiple questions.",
-      'Set recommended: <index> to mark a default option with "(Recommended)" (0-based index).',
+      "Use AskUserQuestion instead of asking questions in plain text — it provides a structured, interactive UI. Prefer it whenever a question can be answered with 2-4 concrete options.",
+      "If a skill or instruction says 'interview', 'ask the user', 'grill', 'gather requirements', 'clarify', or 'what should I use', call AskUserQuestion — do not output questions as plain text.",
+      'AskUserQuestion: each question must have 2-4 options. An "Other" free-text answer is always available, so do not include an explicit "Other" option yourself.',
+      "AskUserQuestion: option labels should be concise (1-5 words).",
+      "AskUserQuestion: set multi: true when more than one option can validly apply at the same time.",
+      "AskUserQuestion: the header field is a short label (max 12 characters) displayed in the tab bar.",
+      'AskUserQuestion: set recommended: <index> to mark a default option with "(Recommended)" (0-based index).',
     ],
     parameters: AskParamsSchema,
 

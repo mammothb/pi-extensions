@@ -156,11 +156,10 @@ export function createGhSearchTool(
       "and automatic truncation. Supports filters: owner, repo, language, state, author, assignee, " +
       "labels, sort, jq. Code scope returns raw text; all others return JSON. " +
       `Output truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; full output spills to temp file.`,
-    promptSnippet:
-      "Search GitHub repos, issues, PRs, code, and commits via gh search. Use instead of raw bash gh search.",
+    promptSnippet: "Search GitHub repos, issues, PRs, code, and commits",
     promptGuidelines: [
-      "Code search uses separate rate limits. Always quote the full query string to avoid shell escaping issues.",
-      "For broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.",
+      "gh_search: code scope uses separate rate limits — always quote the full query string to avoid shell escaping issues.",
+      "gh_search: for broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.",
       "Use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.",
     ],
     parameters: GhSearchParamsSchema,

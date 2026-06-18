@@ -37,11 +37,10 @@ export function createGhFetchTool(
       "converts web URLs to REST endpoints automatically. Returns pretty-printed JSON for API responses, " +
       "raw text otherwise. Use instead of raw `gh api` commands. " +
       `Truncated to ${DEFAULT_MAX_LINES} lines/${formatSize(DEFAULT_MAX_BYTES)}; full output saved to temp file.`,
-    promptSnippet:
-      "Fetch GitHub URL content via gh api. Use after gh_search to read full item content.",
+    promptSnippet: "Fetch full GitHub resource details by URL",
     promptGuidelines: [
-      "File contents from the GitHub Contents API are automatically decoded inline. The response includes both metadata JSON and the decoded file text — no separate base64 decode step is needed.",
-      "Large responses are truncated; the full output path is in result details. Use bash read to access it if needed.",
+      "gh_fetch: file contents from the GitHub Contents API are automatically decoded inline — no separate base64 decode step is needed.",
+      "gh_fetch: large responses are truncated; the full output path is in result details. Use bash read to access it if needed.",
       "Do not use gh_fetch for URLs that are not from github.com, gist.github.com, or api.github.com.",
     ],
     parameters: GhFetchParams,

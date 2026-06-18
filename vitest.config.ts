@@ -61,6 +61,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-mermaid",
+          root: "./packages/pi-mermaid",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

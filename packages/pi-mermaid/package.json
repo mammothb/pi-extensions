@@ -1,0 +1,20 @@
+{
+  "name": "@mammothb/pi-mermaid",
+  "version": "0.0.1",
+  "description": "Pi skill that teaches the LLM to write Mermaid diagram syntax",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "skills"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  },
+  "dependencies": {
+    "mermaid": "catalog:"
+  }
+}

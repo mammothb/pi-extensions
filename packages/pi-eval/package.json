@@ -19,7 +19,7 @@
     "@mammothb/pi-shared": "workspace:*"
   },
   "devDependencies": {
-    "typebox": "^1.2.0"
+    "typebox": "catalog:"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

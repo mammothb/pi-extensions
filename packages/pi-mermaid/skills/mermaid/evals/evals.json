@@ -1,0 +1,61 @@
+{
+  "skill_name": "mermaid",
+  "evals": [
+    {
+      "id": 1,
+      "name": "user-registration-flowchart",
+      "prompt": "I need a flowchart for our user registration process. The user fills out a form, we validate the email format, then send a verification email. If the email bounces, we flag the account. If verified, they set a password and we create the account. If the password is too weak, they stay on the password screen.",
+      "expected_output": "Mermaid flowchart with decision nodes for email bounce and password strength checks. Semantic node IDs. No validation status in output.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "microservices-topology",
+      "prompt": "We're building an e-commerce platform. Draw the service architecture. We have a React SPA and mobile app hitting an API Gateway (Kong), which routes to Auth Service, Product Service, Order Service, and Payment Service. All services share a PostgreSQL database through a read replica. The Order Service publishes to RabbitMQ and a Notification Service consumes from it. Use subgraphs to show the frontend, API, services, and data layers.",
+      "expected_output": "Mermaid flowchart with subgraphs for layered architecture. Multiple node shapes including database cylinder. Semantic service names as node IDs. No validation status in output.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "oauth2-sequence",
+      "prompt": "Create a sequence diagram for the OAuth 2.0 authorization code flow. We have a User (actor), our SPA client, the Authorization Server, and the Resource Server. Show the full redirect, consent, code exchange, and token flow.",
+      "expected_output": "Mermaid sequence diagram with actor for User, participants declared at top. HTTP-style message labels. No validation status in output.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "edit-add-error-handling",
+      "prompt": "Edit the diagram in /tmp/payment-flow.mmd — add error handling after Process Payment. If the payment fails, show an error to the user and offer to retry. If it succeeds, continue as before.",
+      "expected_output": "Edited Mermaid source that preserves existing nodes and adds error/failure path with decision diamond. Uses edit scripts or direct text edit of the file. No validation status in output.",
+      "files": ["/tmp/payment-flow.mmd"]
+    },
+    {
+      "id": 5,
+      "name": "decline-gantt",
+      "prompt": "I need a Gantt chart showing our Q3 project timeline. We have design phase (2 weeks), backend development (4 weeks), frontend (3 weeks), testing (2 weeks).",
+      "expected_output": "Graceful decline message stating only flowchart and sequence diagrams are supported. No mermaid code block. Suggests mermaid.live or alternative.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "event-driven-pubsub",
+      "prompt": "Diagram how our event-driven order processing works. When an order is placed, the Order Service publishes an OrderPlaced event to Kafka. Three consumers react: Inventory Service reserves stock, Billing Service creates an invoice, and Notification Service sends an email. Show what happens if inventory reservation fails.",
+      "expected_output": "Mermaid sequence diagram with participants for Kafka and all services. Uses alt/else block for inventory failure case. Async message arrows. No validation status in output.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "implicit-trigger-feature-planning",
+      "prompt": "I'm planning a 'save for later' feature for our e-commerce app. Here's the flow I'm thinking: the user clicks a bookmark icon on a product card. If they're not logged in, we prompt them to log in first. After login (or if already logged in), we save the product to their saved items in the database. We also check if the product goes out of stock during their session — if it does, we move it to an 'unavailable' section and send them an email. If it comes back in stock, we move it back and notify them. Can you help me think through this and document the plan?",
+      "expected_output": "Response includes a Mermaid diagram as part of the plan documentation. LLM autonomously chose mermaid over ASCII art. No validation status in output.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "name": "file-output-login-flow",
+      "prompt": "Write a mermaid flowchart for a login flow with OTP verification to /tmp/login-otp.mmd. The user enters their email, we send a one-time code, they enter it, and if valid they're logged in. If invalid, they can request a new code or go back to email entry.",
+      "expected_output": "File /tmp/login-otp.mmd exists with valid mermaid flowchart source (no ```mermaid wrapper). Also displays the diagram in chat. No validation status in output.",
+      "files": []
+    }
+  ]
+}

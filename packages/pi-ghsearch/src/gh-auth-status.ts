@@ -29,8 +29,7 @@ export function createGhAuthStatusTool(
       "Use to diagnose failed gh_search/gh_fetch calls. " +
       "Returns hostname and username on success; diagnostic output when not authenticated. " +
       "Supports --hostname for GHE and --active for active account only.",
-    promptSnippet:
-      "Check gh authentication status. Use when gh_search or gh_fetch fails.",
+    promptSnippet: "Check GitHub CLI authentication status",
     promptGuidelines: [
       "On session start, if gh_auth_status reports 'not authenticated', tell the user to run `gh auth login`.",
       "Do not call gh_auth_status proactively before every gh_search — only when you suspect auth issues.",
