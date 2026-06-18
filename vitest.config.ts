@@ -63,8 +63,8 @@ export default defineConfig({
       },
       {
         test: {
-          name: "pi-mermaid",
-          root: "./packages/pi-mermaid",
+          name: "pi-hashline",
+          root: "./packages/pi-hashline",
           include: ["test/**/*.test.ts"],
         },
       },

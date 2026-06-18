@@ -1,0 +1,27 @@
+{
+  "name": "@mammothb/pi-hashline",
+  "version": "0.1.0",
+  "description": "Hashline anchoring for pi — content-addressed read/edit with stale-edit protection",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "dependencies": {
+    "diff": "^8.0.0"
+  }
+}
