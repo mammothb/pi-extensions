@@ -10,7 +10,6 @@
  */
 
 import * as path from "node:path";
-
 import { parsePatch } from "./parser.js";
 import { Tokenizer } from "./tokenizer.js";
 import type { Edit, SplitOptions } from "./types.js";

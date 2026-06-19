@@ -60,8 +60,8 @@ describe("normalizeToLF", () => {
     expect(normalizeToLF("hello\r\nworld")).toBe("hello\nworld");
   });
 
-  it("converts standalone CR to LF", () => {
-    expect(normalizeToLF("hello\rworld")).toBe("hello\nworld");
+  it("preserves standalone CR (intentional carriage return)", () => {
+    expect(normalizeToLF("hello\rworld")).toBe("hello\rworld");
   });
 
   it("leaves LF unchanged", () => {

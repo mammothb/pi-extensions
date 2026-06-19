@@ -14,8 +14,8 @@ import type { Anchor, Cursor, Edit, ParsedRange } from "./types.js";
 
 // ─── Warning / error message constants ───────────────────────────────
 
-const BARE_BODY_AUTO_PIPED_WARNING =
-  "Auto-prefixed bare body row(s) with `+`. Body rows must be `+TEXT` literal lines.";
+const BARE_BODY_ROW =
+  "Bare body row; prefix with `+` for literal text (e.g. +TEXT). Body rows must be `+TEXT` literal lines.";
 
 const EMPTY_REPLACE =
   "`replace N..M:` needs at least one `+TEXT` body row. To delete lines, use `delete N..M`.";
@@ -371,15 +371,10 @@ function feedToken(state: ParseState, token: Token): void {
         throw new Error(`line ${token.lineNum}: ${MINUS_ROW_REJECTED}`);
       }
 
-      // Auto-pipe bare body rows
-      if (!state.warnings.includes(BARE_BODY_AUTO_PIPED_WARNING)) {
-        state.warnings.push(BARE_BODY_AUTO_PIPED_WARNING);
-      }
-      state.pending.payloads.push({
-        text: token.text,
-        lineNum: token.lineNum,
-      });
-      return;
+      // Reject bare body rows — must be prefixed with +
+      throw new Error(
+        `line ${token.lineNum}: ${BARE_BODY_ROW} Got ${JSON.stringify(token.text)}.`,
+      );
     }
   }
 }

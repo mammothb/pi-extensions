@@ -257,6 +257,7 @@ export function createGrepTool(
 
       // 2. Read each matching file to compute hashes (parallel, limited concurrency).
       const fileResults: GrepFileResult[] = [];
+      const rgByAbsPath = new Map<string, RgFile>();
       let totalMatches = 0;
 
       // Process files in batches to limit concurrent I/O.
@@ -265,6 +266,7 @@ export function createGrepTool(
         const batchResults = await Promise.all(
           batch.map(async (rgFile) => {
             const absPath = resolve(ctx.cwd, rgFile.path);
+            rgByAbsPath.set(absPath, rgFile);
             try {
               await access(absPath, constants.R_OK);
               const rawContent = await readFile(absPath, "utf-8");
@@ -312,10 +314,8 @@ export function createGrepTool(
         if (fr === undefined) {
           continue;
         }
-        const rgFile = rgFiles.find(
-          (f) => f.path.endsWith(fr.path) || fr.path.endsWith(f.path),
-        );
-
+        const absPath = resolve(ctx.cwd, fr.path);
+        const rgFile = rgByAbsPath.get(absPath);
         parts.push(fr.header);
 
         if (rgFile !== undefined) {

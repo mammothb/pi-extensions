@@ -322,6 +322,6 @@ describe("E2E happy path", () => {
     );
 
     const text = (r.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/^¶stateless\.ts#[0-9A-F]{4}\n/);
+    expect(text).toMatch(/^¶stateless\.ts#[0-9A-F]{6}\n/);
   });
 });

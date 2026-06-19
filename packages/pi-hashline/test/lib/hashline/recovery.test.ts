@@ -56,7 +56,7 @@ describe("tryRecover", () => {
       snapshots,
       "/f.ts",
       current,
-      "FFFF",
+      "FFFF00",
       edits,
       collectAnchorLines(2, 2),
     );

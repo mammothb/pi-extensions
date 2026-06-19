@@ -22,6 +22,11 @@
     "typebox": "*"
   },
   "dependencies": {
-    "diff": "catalog:"
+    "diff": "catalog:",
+    "tree-sitter": "catalog:",
+    "tree-sitter-javascript": "catalog:",
+    "tree-sitter-python": "catalog:",
+    "tree-sitter-typescript": "catalog:",
+    "tree-sitter-yaml": "catalog:"
   }
 }

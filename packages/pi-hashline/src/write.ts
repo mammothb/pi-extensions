@@ -5,6 +5,10 @@
  * agent can immediately `edit` the newly created file with a hashline tag.
  * The result includes a `\u00b6PATH#TAG` header matching the read tool output
  * format.
+ *
+ * Auto-strips hashline display prefixes when the model accidentally copies
+ * `\u00b6PATH#HASH` headers and `LINE:` prefixes from read output into write
+ * content.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -16,6 +20,7 @@ import {
   formatNumberedLines,
 } from "./lib/hashline/format.js";
 import { normalizeToLF } from "./lib/hashline/normalize.js";
+import { stripHashlinePrefixes } from "./lib/hashline/prefixes.js";
 import type { SnapshotStore } from "./lib/hashline/snapshots.js";
 import { WriteSchema, type WriteToolDetails } from "./schema.js";
 
@@ -32,6 +37,39 @@ function resolveDisplayPath(rawPath: string, cwd: string): string {
     // Fall through.
   }
   return resolved;
+}
+
+// -- Prefix stripping ---------------------------------------------------
+
+const LOOSE_HASHLINE_HEADER_RE = /^\s*¶\S+#[^\t\r\n]*\s*$/;
+
+function stripWriteContent(content: string): {
+  text: string;
+  stripped: boolean;
+} {
+  const lines = content.split("\n");
+  const cleaned = stripHashlinePrefixes(lines);
+  if (cleaned !== lines) {
+    return { text: cleaned.join("\n"), stripped: true };
+  }
+
+  const headerIndex = lines.findIndex((l) => l.trim().length > 0);
+  if (
+    headerIndex === -1 ||
+    !LOOSE_HASHLINE_HEADER_RE.test(lines[headerIndex] ?? "")
+  ) {
+    return { text: content, stripped: false };
+  }
+
+  const withoutHeader = [
+    ...lines.slice(0, headerIndex),
+    ...lines.slice(headerIndex + 1),
+  ];
+  const cleanedWithout = stripHashlinePrefixes(withoutHeader);
+  if (cleanedWithout === withoutHeader) {
+    return { text: content, stripped: false };
+  }
+  return { text: cleanedWithout.join("\n"), stripped: true };
 }
 
 // -- Tool creator -------------------------------------------------------
@@ -58,16 +96,20 @@ export function createWriteTool(
       const absPath = resolve(ctx.cwd, rawPath);
       const displayPath = resolveDisplayPath(rawPath, ctx.cwd);
 
+      // Strip hashline display prefixes if present.
+      const { text: stripped, stripped: wasStripped } =
+        stripWriteContent(content);
+
       // Create parent directories.
       await mkdir(dirname(absPath), { recursive: true });
 
-      // Write content to disk.
-      await writeFile(absPath, content, "utf-8");
+      // Write stripped content to disk.
+      await writeFile(absPath, stripped, "utf-8");
 
       // Normalize to LF for consistent hashing.
-      const normalized = normalizeToLF(content);
+      const normalized = normalizeToLF(stripped);
 
-      // Compute hash and record snapshot.
+      // Compute hash and record snapshot from stripped content.
       const fileHash = computeFileHash(normalized);
       snapshots.record(absPath, normalized);
 
@@ -82,7 +124,11 @@ export function createWriteTool(
       const totalLines = allLines.length;
 
       // Format output matching read tool format.
-      const output = `${header}\n${formatNumberedLines(allLines.join("\n"), 1)}`;
+      let output = `${header}\n${formatNumberedLines(allLines.join("\n"), 1)}`;
+      if (wasStripped) {
+        output +=
+          "\nNote: auto-stripped hashline display prefixes from content before writing.";
+      }
 
       return {
         content: [{ type: "text", text: output }],

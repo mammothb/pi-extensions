@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createEditTool } from "../src/edit.js";
-import { MismatchError } from "../src/lib/hashline/messages.js";
 import { InMemorySnapshotStore } from "../src/lib/hashline/snapshots.js";
+import { createTreeSitterBlockResolver } from "../src/lib/tree-sitter-block-resolver.js";
 import type { EditToolDetails } from "../src/schema.js";
 
 let testDir: string;
@@ -96,7 +96,7 @@ describe("edit tool (hashline)", () => {
     // Verify response.
     const details = result.details as EditToolDetails;
     expect(details.files).toHaveLength(1);
-    expect(details.files[0]!.fileHash).toMatch(/^[0-9A-F]{4}$/);
+    expect(details.files[0]!.fileHash).toMatch(/^[0-9A-F]{6}$/);
     expect(details.files[0]!.fileHash).not.toBe(tag);
     expect(details.files[0]!.header).toBe(
       `¶foo.ts#${details.files[0]!.fileHash}`,
@@ -145,34 +145,21 @@ describe("edit tool (hashline)", () => {
     const tool = createEditTool(snapshots);
     const ctx = createMockContext(testDir);
 
-    await expect(
-      tool.execute(
-        "id1",
-        { edits: patch("baz.ts", tag, "replace 2..2:", "+new") },
-        undefined,
-        undefined,
-        ctx,
-      ),
-    ).rejects.toThrow(MismatchError);
+    const result = await tool.execute(
+      "id1",
+      { edits: patch("baz.ts", tag, "replace 2..2:", "+new") },
+      undefined,
+      undefined,
+      ctx,
+    );
 
-    try {
-      await tool.execute(
-        "id1",
-        { edits: patch("baz.ts", tag, "replace 2..2:", "+new") },
-        undefined,
-        undefined,
-        ctx,
-      );
-    } catch (err: unknown) {
-      expect(err).toBeInstanceOf(MismatchError);
-      const me = err as MismatchError;
-      expect(me.filePath).toBe("baz.ts");
-      expect(me.expectedTag).toBe(tag);
-      expect(me.message).toMatch(/changed between read and edit/);
-      expect(me.message).toMatch(/Re-read/);
-    }
+    const text = (result.content[0] as { type: "text"; text: string }).text;
+    expect(result.details.files).toHaveLength(0);
+    expect(result.details.changed).toBe(false);
+    expect(text).toMatch(/changed between read and edit/);
+    expect(text).toMatch(/\*2:CHANGED/);
+    expect(text).toMatch(new RegExp(`#${tag}`));
   });
-
   it("rejects missing tag", async () => {
     await writeTestFile("notag.ts", "content\n");
     const tool = createEditTool(snapshots);
@@ -198,7 +185,7 @@ describe("edit tool (hashline)", () => {
     // Need a valid tag so the patch parses. Use a fake tag.
     const result = await tool.execute(
       "id1",
-      { edits: patch("ghost.ts", "A1B2", "replace 1..1:", "+x") },
+      { edits: patch("ghost.ts", "A1B200", "replace 1..1:", "+x") },
       undefined,
       undefined,
       ctx,
@@ -400,7 +387,6 @@ describe("edit tool (hashline)", () => {
     expect(newA.replace(/\r\n/g, "\n")).toBe("A_CHANGED\n");
     expect(newB.replace(/\r\n/g, "\n")).toBe("B_CHANGED\n");
   });
-
   it("multi-section edit is atomic: second failure prevents first write", async () => {
     const absGood = await writeTestFile("good.ts", "good\n");
     const tagGood = snapshotFile(absGood, "good\n");
@@ -410,17 +396,18 @@ describe("edit tool (hashline)", () => {
     const tool = createEditTool(snapshots);
     const ctx = createMockContext(testDir);
 
-    // Second section has a stale tag (wrong hash).
+    // Second section has an unrecognized hash.
     const multiPatch = [
       `¶good.ts#${tagGood}`,
       "replace 1..1:",
       "+CHANGED",
-      "¶bad.ts#FFFF",
+      "¶bad.ts#FFFF00",
       "replace 1..1:",
       "+nope",
       "",
     ].join("\n");
 
+    // Should return error with hashRecognized: false.
     const result = await tool.execute(
       "id1",
       { edits: multiPatch },
@@ -429,9 +416,11 @@ describe("edit tool (hashline)", () => {
       ctx,
     );
 
-    // Should return error (unrecognized hash), not throw.
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/not recorded/);
+    expect(result.details.files).toHaveLength(0);
+    expect(result.details.changed).toBe(false);
+    expect(text).toMatch(/not from this session/);
+    expect(text).toMatch(/never invent the tag/);
 
     // The first file should NOT have been modified (atomic failure).
     const goodContent = await readFile(absGood, "utf-8");
@@ -480,7 +469,7 @@ describe("edit tool (hashline)", () => {
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
     // Should have the new header + numbered lines around line 4.
-    expect(text).toMatch(/^¶preview\.ts#[0-9A-F]{4}\n/m);
+    expect(text).toMatch(/^¶preview\.ts#[0-9A-F]{6}\n/m);
     expect(text).toContain("3:line3");
     expect(text).toContain("4:CHANGED");
     expect(text).toContain("5:line5");
@@ -533,5 +522,95 @@ describe("edit tool (hashline)", () => {
 
     const newContent = await readFile(absPath, "utf-8");
     expect(newContent.replace(/\r\n/g, "\n")).toBe("changed\n");
+  });
+
+  describe("block operations", () => {
+    const blockResolver = createTreeSitterBlockResolver();
+
+    function createTool(): ReturnType<typeof createEditTool> {
+      return createEditTool(snapshots, blockResolver);
+    }
+    it("replace block N: replaces the resolved block", async () => {
+      const code = "// header\nfunction foo() {\n  return 1;\n}\n// footer\n";
+      await writeTestFile("mod.ts", code);
+      const absPath = resolve(testDir, "mod.ts");
+      const tag = snapshotFile(absPath, code);
+      const ctx = createMockContext(testDir);
+
+      const result = await createTool().execute(
+        "b1",
+        {
+          edits: patch(
+            "mod.ts",
+            tag,
+            "replace block 2:",
+            "+function foo() {",
+            "+  return 42;",
+            "+}",
+          ),
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const details = result.details as EditToolDetails;
+      expect(details.files).toHaveLength(1);
+      expect(details.changed).toBe(true);
+
+      const newContent = await readFile(absPath, "utf-8");
+      expect(newContent.replace(/\r\n/g, "\n")).toBe(
+        "// header\nfunction foo() {\n  return 42;\n}\n// footer\n",
+      );
+    });
+
+    it("delete block N removes the resolved block", async () => {
+      const code = "let x = 1;\nif (x > 0) {\n  doWork();\n}\nlet y = 2;\n";
+      await writeTestFile("del.ts", code);
+      const absPath = resolve(testDir, "del.ts");
+      const tag = snapshotFile(absPath, code);
+      const ctx = createMockContext(testDir);
+
+      const result = await createTool().execute(
+        "b2",
+        {
+          edits: patch("del.ts", tag, "delete block 2"),
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const details = result.details as EditToolDetails;
+      expect(details.files).toHaveLength(1);
+      expect(details.changed).toBe(true);
+
+      const newContent = await readFile(absPath, "utf-8");
+      expect(newContent.replace(/\r\n/g, "\n")).toBe(
+        "let x = 1;\nlet y = 2;\n",
+      );
+    });
+
+    it("block edit on unknown language returns error message", async () => {
+      const code = "content line\n";
+      await writeTestFile("file.xyz", code);
+      const absPath = resolve(testDir, "file.xyz");
+      const tag = snapshotFile(absPath, code);
+      const ctx = createMockContext(testDir);
+
+      const result = await createTool().execute(
+        "b3",
+        {
+          edits: patch("file.xyz", tag, "replace block 1:", "+new line"),
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      // Should return an error (no throw — error in content)
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toMatch(/could not resolve/);
+    });
   });
 });

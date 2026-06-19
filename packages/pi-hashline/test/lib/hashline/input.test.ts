@@ -7,7 +7,7 @@ describe("PatchSection", () => {
     it("parses a single section with replace", () => {
       const section = new PatchSection({
         path: "foo.ts",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["replace 1..1:", "+new line"],
       });
 
@@ -18,7 +18,7 @@ describe("PatchSection", () => {
     it("caches parse results", () => {
       const section = new PatchSection({
         path: "foo.ts",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["replace 1..1:", "+line"],
       });
 
@@ -30,7 +30,7 @@ describe("PatchSection", () => {
     it("edits getter returns parsed edits", () => {
       const section = new PatchSection({
         path: "foo.ts",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["delete 3"],
       });
       expect(section.edits).toHaveLength(1);
@@ -40,12 +40,10 @@ describe("PatchSection", () => {
     it("warnings getter returns parse warnings", () => {
       const section = new PatchSection({
         path: "foo.ts",
-        fileHash: "A1B2",
-        diffLines: ["replace 1..1:", "bare row"],
+        fileHash: "A1B200",
+        diffLines: ["replace 1..1:", "+valid body"],
       });
-      expect(
-        section.warnings.some((w) => w.includes("Auto-prefixed bare body")),
-      ).toBe(true);
+      expect(section.warnings).toHaveLength(0);
     });
   });
 
@@ -53,7 +51,7 @@ describe("PatchSection", () => {
     it("true for replace", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["replace 1..1:", "+x"],
       });
       expect(section.hasAnchoredEdit).toBe(true);
@@ -62,7 +60,7 @@ describe("PatchSection", () => {
     it("true for delete", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["delete 3"],
       });
       expect(section.hasAnchoredEdit).toBe(true);
@@ -71,7 +69,7 @@ describe("PatchSection", () => {
     it("false for pure insert head", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["insert head:", "+x"],
       });
       expect(section.hasAnchoredEdit).toBe(false);
@@ -80,7 +78,7 @@ describe("PatchSection", () => {
     it("false for pure insert tail", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["insert tail:", "+x"],
       });
       expect(section.hasAnchoredEdit).toBe(false);
@@ -89,7 +87,7 @@ describe("PatchSection", () => {
     it("true for insert before", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["insert before 5:", "+x"],
       });
       expect(section.hasAnchoredEdit).toBe(true);
@@ -100,7 +98,7 @@ describe("PatchSection", () => {
     it("collects anchor lines from edits", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["replace 5..7:", "+a", "+b", "+c"],
       });
       const lines = section.collectAnchorLines();
@@ -110,7 +108,7 @@ describe("PatchSection", () => {
     it("deduplicates", () => {
       const section = new PatchSection({
         path: "f",
-        fileHash: "A1B2",
+        fileHash: "A1B200",
         diffLines: ["delete 3", "insert before 3:", "+x"],
       });
       const lines = section.collectAnchorLines();
@@ -122,23 +120,23 @@ describe("PatchSection", () => {
 describe("Patch", () => {
   describe("parse", () => {
     it("parses single-section input", () => {
-      const patch = Patch.parse("¶foo.ts#A1B2\nreplace 1..1:\n+new line\n");
+      const patch = Patch.parse("¶foo.ts#A1B200\nreplace 1..1:\n+new line\n");
       expect(patch.sections).toHaveLength(1);
       const s = patch.sections[0]!;
       expect(s.path).toBe("foo.ts");
-      expect(s.fileHash).toBe("A1B2");
+      expect(s.fileHash).toBe("A1B200");
       expect(s.edits).toHaveLength(2);
     });
 
     it("parses multi-section input", () => {
       const patch = Patch.parse(
-        "¶a.ts#AAAA\nreplace 1..1:\n+hello\n¶b.ts#BBBB\ndelete 3\n",
+        "¶a.ts#AAAA00\nreplace 1..1:\n+hello\n¶b.ts#BBBB00\ndelete 3\n",
       );
       expect(patch.sections).toHaveLength(2);
       expect(patch.sections[0]!.path).toBe("a.ts");
-      expect(patch.sections[0]!.fileHash).toBe("AAAA");
+      expect(patch.sections[0]!.fileHash).toBe("AAAA00");
       expect(patch.sections[1]!.path).toBe("b.ts");
-      expect(patch.sections[1]!.fileHash).toBe("BBBB");
+      expect(patch.sections[1]!.fileHash).toBe("BBBB00");
     });
 
     it("rejects input without ¶PATH#TAG header", () => {
@@ -158,7 +156,7 @@ describe("Patch", () => {
     it("silently drops lines before the first header", () => {
       // Lines before first ¶ header are dropped; only one section
       const patch = Patch.parse(
-        "some preamble\n¶foo.ts#A1B2\nreplace 1..1:\n+line\n",
+        "some preamble\n¶foo.ts#A1B200\nreplace 1..1:\n+line\n",
       );
       expect(patch.sections).toHaveLength(1);
       expect(patch.sections[0]!.path).toBe("foo.ts");
@@ -167,7 +165,7 @@ describe("Patch", () => {
     it("sections without ops are excluded", () => {
       // First section has no ops (only blank), second has ops
       const patch = Patch.parse(
-        "¶empty.ts#A1B2\n\n¶real.ts#BBBB\nreplace 1..1:\n+line\n",
+        "¶empty.ts#A1B200\n\n¶real.ts#BBBB00\nreplace 1..1:\n+line\n",
       );
       expect(patch.sections).toHaveLength(1);
       expect(patch.sections[0]!.path).toBe("real.ts");
@@ -181,7 +179,7 @@ describe("Patch", () => {
 
     it("normalizes absolute paths to cwd-relative", () => {
       const patch = Patch.parse(
-        "¶/home/user/project/src/foo.ts#A1B2\nreplace 1..1:\n+line\n",
+        "¶/home/user/project/src/foo.ts#A1B200\nreplace 1..1:\n+line\n",
         { cwd: "/home/user/project" },
       );
       expect(patch.sections[0]!.path).toBe("src/foo.ts");
@@ -190,7 +188,9 @@ describe("Patch", () => {
 
   describe("parseSingle", () => {
     it("returns the first section", () => {
-      const section = Patch.parseSingle("¶foo.ts#A1B2\nreplace 1..1:\n+line\n");
+      const section = Patch.parseSingle(
+        "¶foo.ts#A1B200\nreplace 1..1:\n+line\n",
+      );
       expect(section.path).toBe("foo.ts");
     });
 

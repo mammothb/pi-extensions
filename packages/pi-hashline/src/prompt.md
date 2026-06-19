@@ -20,6 +20,15 @@ insert before N:      Insert body rows immediately before line N.
 insert after N:       Insert body rows immediately after line N.
 insert head:          Insert body rows at the very start of the file.
 insert tail:          Insert body rows at the very end of the file.
+
+replace block N:      Replace the whole syntactic block that BEGINS on line N —
+                      its header line through its closing line — resolved with
+                      tree-sitter at apply time. Body rows below. Point N at the
+                      line that OPENS the construct (the `if`/`function`/`def`/
+                      `{`-bearing line), not a closing `}` or a blank line.
+
+delete block N        Delete the whole syntactic block that BEGINS on line N.
+                      No body, no colon.
 ```
 
 ## Body Rows
@@ -45,11 +54,17 @@ There is NO other body row kind. **Never write `-old` rows or bare context lines
 
 5. **Never format code with this tool.** Use the project's formatter (e.g. `bash: npm run format`) for reordering imports, re-indenting, or mechanical restyling.
 
+6. **Block ops are resolved at apply time.** A `replace block N:` or `delete block N` is resolved by tree-sitter against the current file content — the block's exact line span is determined from the live file, not from pre-edit memory.
+
+7. **Point at the opening line.** `replace block N:` resolves the block that *begins* on line N. Point N at the line that OPENS the construct (the `if`, `function`, `def`, or `{`-bearing line). A closing `}` or a blank line resolves to nothing because no block begins there.
+
+8. **Block resolution is language-aware.** Supported languages: TypeScript (.ts/.tsx), JavaScript (.js/.jsx/.mjs/.cjs), Python (.py/.pyw), YAML (.yaml/.yml), and optionally Bash, JSON, TOML, CSS, HTML, Rust, Go (when installed).
+
 ## Examples
 
 Read returns:
 ```
-¶src/greet.ts#A1B2
+¶src/greet.ts#A1B200
 1:function greet(name: string) {
 2:  console.log("Hello, " + name);
 3:}
@@ -57,35 +72,48 @@ Read returns:
 
 Replace line 2:
 ```
-¶src/greet.ts#A1B2
+¶src/greet.ts#A1B200
 replace 2..2:
 +  console.log(`Hello, ${name}`);
 ```
 
 Insert after line 1:
 ```
-¶src/greet.ts#A1B2
+¶src/greet.ts#A1B200
 insert after 1:
 +  if (!name) name = "world";
 ```
 
 Delete line 2:
 ```
-¶src/greet.ts#A1B2
+¶src/greet.ts#A1B200
 delete 2
 ```
 
 Add header and footer:
 ```
-¶src/greet.ts#A1B2
+¶src/greet.ts#A1B200
 insert head:
 +// Auto-generated
 insert tail:
 +export default greet;
 ```
 
-## Anti-Patterns (WRONG)
+Replace a whole function block (Python):
+```
+¶greet.py#A1B200
+replace block 1:
++def greet(name):
++    print(f"Hello, {name}")
+```
 
+Delete an inner if-statement:
+```
+¶src/module.ts#C3D400
+delete block 2
+```
+
+## Anti-Patterns (WRONG)
 ```
 # WRONG — empty replace to delete. Use delete 4 instead.
 replace 4..4:
@@ -99,6 +127,9 @@ replace 3..3:
     old line
 -   removed line
 +   new line
+
+# WRONG — point at closing delimiter. Point at the line that OPENS the block.
+replace block 3:    ← line 3 is `}` — resolves to nothing
 
 # RIGHT
 replace 3..3:

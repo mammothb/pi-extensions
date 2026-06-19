@@ -242,7 +242,13 @@ function parseHashlineHeader(
   if (!trimmed.startsWith(HL_FILE_PREFIX)) {
     return null;
   }
-  const body = trimmed.slice(HL_FILE_PREFIX.length);
+
+  // Strip all leading ¶ characters (handles model echo like ¶¶).
+  let body = trimmed;
+  while (body.startsWith(HL_FILE_PREFIX)) {
+    body = body.slice(HL_FILE_PREFIX.length);
+  }
+
   const hashIdx = body.lastIndexOf(HL_FILE_HASH_SEP);
 
   let path: string;
@@ -254,7 +260,7 @@ function parseHashlineHeader(
     // Validate hash: exactly HL_FILE_HASH_LENGTH hex chars
     if (
       hashCandidate.length === HL_FILE_HASH_LENGTH &&
-      /^[0-9A-Fa-f]{4}$/.test(hashCandidate)
+      /^[0-9A-Fa-f]{6}$/.test(hashCandidate)
     ) {
       fileHash = hashCandidate.toUpperCase();
     } else {

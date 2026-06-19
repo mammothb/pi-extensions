@@ -106,10 +106,10 @@ export function tryRecover(
   // Strategy 1: structured-patch 3-way merge succeeded.
   if (merged !== false && merged !== currentText) {
     const head = snapshots.head(path);
-    const isExternal = head !== null && head.hash === snapshot.hash;
+    const driftIsExternal = head !== null && head.hash === snapshot.hash;
     return {
       text: merged,
-      warning: isExternal
+      warning: driftIsExternal
         ? RECOVERY_EXTERNAL_WARNING
         : RECOVERY_SESSION_CHAIN_WARNING,
     };
@@ -125,10 +125,10 @@ export function tryRecover(
       const { text: replayed } = applyEdits(currentText, edits);
       if (replayed !== currentText) {
         const head = snapshots.head(path);
-        const isExternal = head !== null && head.hash === snapshot.hash;
+        const driftIsExternal = head !== null && head.hash === snapshot.hash;
         return {
           text: replayed,
-          warning: isExternal
+          warning: driftIsExternal
             ? RECOVERY_EXTERNAL_WARNING
             : RECOVERY_SESSION_REPLAY_WARNING,
         };

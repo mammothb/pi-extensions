@@ -9,22 +9,6 @@ import { HL_FILE_HASH_SEP, HL_FILE_PREFIX } from "./format.js";
 // ─── Error messages ──────────────────────────────────────────────────
 
 /**
- * Build a mismatch error message when the live file's hash doesn't match
- * the tag the edit was authored against.
- */
-export function mismatchMessage(
-  sectionPath: string,
-  expectedTag: string,
-  actualTag: string,
-): string {
-  return (
-    `File "${sectionPath}" changed between read and edit (expected tag #${expectedTag}, ` +
-    `live file has tag #${actualTag}). Re-read the file with the read tool to get ` +
-    `the current tag and anchors, then retry the edit.`
-  );
-}
-
-/**
  * Error when a section has no snapshot tag at all.
  */
 export function missingTagMessage(sectionPath: string): string {
@@ -79,49 +63,15 @@ export const RECOVERY_SESSION_CHAIN_WARNING =
 /** Warning when structured-patch merge refused but anchor-content gate passed. */
 export const RECOVERY_SESSION_REPLAY_WARNING =
   "Recovered by replaying your edits onto the current file content — your previous edit in this session changed line(s) you re-targeted with a stale hash. Verify the diff matches your intent before continuing.";
+// ─── Block resolution messages ────────────────────────────────────────
 
-/** Error when the hash was never recorded in the snapshot store. */
-export function unrecognizedHashMessage(expectedTag: string): string {
+export const BLOCK_RESOLVER_UNAVAILABLE =
+  "`replace block N:` is not available (no block resolver configured). Use `replace N..M:` with an explicit range.";
+
+export function blockUnresolvedMessage(line: number): string {
   return (
-    `Snapshot tag #${expectedTag} was not recorded in this session — it may be from a different session or fabricated. ` +
-    `Re-read the file to get a current tag.`
+    `\`replace block ${line}:\` could not resolve a syntactic block beginning on line ${line}. ` +
+    "The language may be unsupported, the line may be blank or a closing delimiter, " +
+    "or the block may not parse. Use `replace N..M:` with an explicit range."
   );
-}
-
-// ─── MismatchError ───────────────────────────────────────────────────
-
-/** Lines of context shown around each anchor in mismatch diagnostics. */
-export const MISMATCH_CONTEXT = 2;
-
-/**
- * Custom error thrown when tag validation fails.
- * Carries anchor context so renderers can show rich diagnostics.
- */
-export class MismatchError extends Error {
-  /** The file path (display-relative). */
-  readonly filePath: string;
-  /** The tag the edit was authored against. */
-  readonly expectedTag: string;
-  /** The tag of the current live file. */
-  readonly actualTag: string;
-  /** Full text of the live file (for diagnostic rendering). */
-  readonly liveText: string;
-  /** Anchor lines targeted by the edit (1-indexed). */
-  readonly anchorLines: readonly number[];
-
-  constructor(
-    filePath: string,
-    expectedTag: string,
-    actualTag: string,
-    liveText: string,
-    anchorLines: readonly number[],
-  ) {
-    super(mismatchMessage(filePath, expectedTag, actualTag));
-    this.name = "MismatchError";
-    this.filePath = filePath;
-    this.expectedTag = expectedTag;
-    this.actualTag = actualTag;
-    this.liveText = liveText;
-    this.anchorLines = anchorLines;
-  }
 }

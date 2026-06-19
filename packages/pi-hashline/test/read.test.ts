@@ -75,7 +75,7 @@ describe("read tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/^¶foo\.ts#[0-9A-F]{4}\n/);
+    expect(text).toMatch(/^¶foo\.ts#[0-9A-F]{6}\n/);
   });
 
   it("reading the same file twice produces the same tag", async () => {
@@ -248,7 +248,7 @@ describe("read tool (hashline)", () => {
 
     expect(details.totalLines).toBe(3);
     expect(details.totalBytes).toBeGreaterThan(0);
-    expect(details.fileHash).toMatch(/^[0-9A-F]{4}$/);
+    expect(details.fileHash).toMatch(/^[0-9A-F]{6}$/);
     expect(details.header).toBe(`¶details.ts#${details.fileHash}`);
     expect(details.truncated).toBe(false);
   });
@@ -267,7 +267,7 @@ describe("read tool (hashline)", () => {
     );
     const details = result.details as ReadToolDetails;
 
-    expect(details.header).toMatch(/^¶sub\/deep\.ts#[0-9A-F]{4}$/);
+    expect(details.header).toMatch(/^¶sub\/deep\.ts#[0-9A-F]{6}$/);
   });
 
   it("CRLF files are normalized for hashing", async () => {

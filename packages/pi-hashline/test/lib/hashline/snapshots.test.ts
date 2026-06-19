@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { InMemorySnapshotStore } from "../../../src/lib/hashline/snapshots.js";
 
 describe("InMemorySnapshotStore", () => {
-  it("record returns a 4-char uppercase hex tag", () => {
+  it("record returns a 6-char uppercase hex tag", () => {
     const store = new InMemorySnapshotStore();
     const tag = store.record("src/foo.ts", "const x = 42;\n");
-    expect(tag).toHaveLength(4);
-    expect(tag).toMatch(/^[0-9A-F]{4}$/);
+    expect(tag).toHaveLength(6);
+    expect(tag).toMatch(/^[0-9A-F]{6}$/);
   });
 
   it("recording identical content twice returns the same tag (read fusion)", () => {
@@ -52,12 +52,12 @@ describe("InMemorySnapshotStore", () => {
   it("byHash returns null for unknown hash", () => {
     const store = new InMemorySnapshotStore();
     store.record("src/foo.ts", "hello\n");
-    expect(store.byHash("src/foo.ts", "FFFF")).toBeNull();
+    expect(store.byHash("src/foo.ts", "FFFF00")).toBeNull();
   });
 
   it("byHash returns null for unknown path", () => {
     const store = new InMemorySnapshotStore();
-    expect(store.byHash("nonexistent.ts", "A1B2")).toBeNull();
+    expect(store.byHash("nonexistent.ts", "A1B200")).toBeNull();
   });
 
   it("caps versions per path (default 4)", () => {

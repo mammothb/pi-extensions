@@ -49,7 +49,7 @@ export const HL_LINE_RE_RAW = "[1-9]\\d*";
 export const HL_LINE_CAPTURE_RE_RAW = `(${HL_LINE_RE_RAW})`;
 
 /** Number of hex characters in a content-derived file-hash tag. */
-export const HL_FILE_HASH_LENGTH = 4;
+export const HL_FILE_HASH_LENGTH = 6;
 
 /** Canonical uppercase hexadecimal content-hash tag carried by a hashline section header. */
 export const HL_FILE_HASH_RE_RAW = `[0-9A-F]{${HL_FILE_HASH_LENGTH}}`;
@@ -61,7 +61,7 @@ export const HL_FILE_HASH_CAPTURE_RE_RAW = `(${HL_FILE_HASH_RE_RAW})`;
  * Representative file-hash tags for use in user-facing error messages and
  * prompt examples.
  */
-export const HL_FILE_HASH_EXAMPLES = ["1A2B", "3C4D", "9F3E"] as const;
+export const HL_FILE_HASH_EXAMPLES = ["1A2B3C", "4D5E6F", "9F3E1D"] as const;
 
 /** Format a concrete replacement hunk header. */
 export function formatReplaceHeader(start: number, end: number): string {
@@ -97,12 +97,11 @@ export function formatInsertHeader(cursor: Cursor): string {
 function normalizeFileHashText(text: string): string {
   return text.replace(/[ \t\r]+(?=\n|$)/g, "");
 }
-
 /**
  * Compute the content-derived hash tag carried by a hashline section header.
- * The tag is a 4-hex fingerprint of the whole file's normalized text: any read
- * of byte-identical content mints the same tag, and a follow-up edit anchored
- * at any line validates whenever the live file still hashes to it.
+ * The tag is a short hex fingerprint of the whole file's normalized text: any
+ * read of byte-identical content mints the same tag, and a follow-up edit
+ * anchored at any line validates whenever the live file still hashes to it.
  */
 export function computeFileHash(text: string): string {
   const normalized = normalizeFileHashText(text);

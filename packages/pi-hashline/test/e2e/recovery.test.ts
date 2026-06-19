@@ -12,7 +12,6 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createEditTool, type EditToolDetails } from "../../src/edit.js";
-import { MismatchError } from "../../src/lib/hashline/messages.js";
 import { InMemorySnapshotStore } from "../../src/lib/hashline/snapshots.js";
 import { createReadTool } from "../../src/read.js";
 import type { ReadToolDetails } from "../../src/schema.js";
@@ -154,37 +153,22 @@ describe("E2E recovery scenarios", () => {
       "utf-8",
     );
 
-    // 3. Edit that exact line — should throw MismatchError.
-    await expect(
-      edit.execute(
-        "e1",
-        {
-          edits: `¶exact.ts#${tag}\nreplace 2..2:\n+ATTEMPTED_CHANGE\n`,
-        },
-        undefined,
-        undefined,
-        ctx,
-      ),
-    ).rejects.toThrow(MismatchError);
+    // 3. Edit that exact line — should return error.
+    const result = await edit.execute(
+      "e1",
+      {
+        edits: `¶exact.ts#${tag}\nreplace 2..2:\n+ATTEMPTED_CHANGE\n`,
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
 
-    try {
-      await edit.execute(
-        "e1",
-        {
-          edits: `¶exact.ts#${tag}\nreplace 2..2:\n+ATTEMPTED_CHANGE\n`,
-        },
-        undefined,
-        undefined,
-        ctx,
-      );
-    } catch (err: unknown) {
-      expect(err).toBeInstanceOf(MismatchError);
-      const me = err as MismatchError;
-      expect(me.message).toMatch(/changed between read and edit/);
-      expect(me.message).toMatch(/Re-read/);
-      expect(me.filePath).toBe("exact.ts");
-      expect(me.expectedTag).toBe(tag);
-    }
+    const text = (result.content[0] as { type: "text"; text: string }).text;
+    expect(result.details.files).toHaveLength(0);
+    expect(result.details.changed).toBe(false);
+    expect(text).toMatch(/changed between read and edit/);
+    expect(text).toMatch(/\*2:LINE2_EXTERNALLY_CHANGED/);
 
     // 4. File on disk should be UNCHANGED (edit rejected).
     const content = await readFile(resolve(testDir, "exact.ts"), "utf-8");
@@ -343,7 +327,7 @@ describe("E2E recovery scenarios", () => {
       "utf-8",
     );
 
-    // Multi-section edit with unrecognized hash in second section.
+    // Multi-section edit with unrecognized hash in second section — should return error.
     const result = await edit.execute(
       "e1",
       {
@@ -351,7 +335,7 @@ describe("E2E recovery scenarios", () => {
           `¶good.ts#${tagGood}`,
           "replace 1..1:",
           "+SHOULD_NOT_APPLY",
-          "¶bad.ts#FFFF",
+          "¶bad.ts#FFFF00",
           "replace 1..1:",
           "+nope",
           "",
@@ -362,9 +346,10 @@ describe("E2E recovery scenarios", () => {
       ctx,
     );
 
-    // Should return error (unrecognized hash in second section).
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/not recorded/);
+    expect(result.details.files).toHaveLength(0);
+    expect(result.details.changed).toBe(false);
+    expect(text).toMatch(/not from this session/);
 
     // good.ts should be UNCHANGED (atomic — preflight rejected before any writes).
     const contentGood = await readFile(resolve(testDir, "good.ts"), "utf-8");

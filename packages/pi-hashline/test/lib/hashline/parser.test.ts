@@ -159,17 +159,11 @@ describe("parsePatch", () => {
     });
   });
 
-  describe("bare body rows (auto-pipe)", () => {
-    it("unprefixed body rows are auto-piped with warning", () => {
-      const { edits, warnings } = parsePatch("replace 1..1:\nraw text\n");
-      expect(warnings.some((w) => w.includes("Auto-prefixed bare body"))).toBe(
-        true,
+  describe("bare body rows (rejected)", () => {
+    it("unprefixed body rows throw", () => {
+      expect(() => parsePatch("replace 1..1:\nraw text\n")).toThrow(
+        /Bare body row/,
       );
-      expect(edits).toHaveLength(2); // insert + delete
-      expect(edits[0]!.kind).toBe("insert");
-      if (edits[0]!.kind === "insert") {
-        expect(edits[0]!.text).toBe("raw text");
-      }
     });
 
     it("minus rows are rejected", () => {
@@ -252,15 +246,9 @@ describe("parsePatch", () => {
       expect(warnings).toHaveLength(0);
     });
 
-    it("warns once for bare body rows", () => {
-      const { warnings } = parsePatch("replace 1..1:\nbare1\n+bare2\n");
-      // Second line is +-prefixed so only bare1 triggers warning
-      expect(warnings.some((w) => w.includes("Auto-prefixed bare body"))).toBe(
-        true,
-      );
-      // Warning appears only once
-      expect(warnings.filter((w) => w.includes("Auto-prefixed"))).toHaveLength(
-        1,
+    it("throws on bare body rows", () => {
+      expect(() => parsePatch("replace 1..1:\nbare1\n")).toThrow(
+        /Bare body row/,
       );
     });
   });

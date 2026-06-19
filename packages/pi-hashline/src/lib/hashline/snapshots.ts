@@ -58,12 +58,19 @@ export abstract class SnapshotStore {
 
 const DEFAULT_MAX_PATHS = 30;
 const DEFAULT_MAX_VERSIONS_PER_PATH = 4;
+const DEFAULT_MAX_SNAPSHOT_BYTES = 1_048_576; // 1 MiB
 
 export interface InMemorySnapshotStoreOptions {
   /** Maximum number of distinct paths tracked at once (default 30). */
   maxPaths?: number;
   /** Maximum full-file versions retained per path (default 4). Oldest dropped first. */
   maxVersionsPerPath?: number;
+  /**
+   * Maximum size in bytes of a single snapshot's normalized text (default 1 MiB).
+   * Files exceeding this limit still get a hash tag (so tag validation works) but
+   * their full text is not stored — stale-tag recovery will not be available.
+   */
+  maxSnapshotBytes?: number;
 }
 
 /**
@@ -82,12 +89,15 @@ export class InMemorySnapshotStore extends SnapshotStore {
   readonly #versions = new Map<string, Snapshot[]>();
   readonly #maxPaths: number;
   readonly #maxVersionsPerPath: number;
+  readonly #maxSnapshotBytes: number;
 
   constructor(options: InMemorySnapshotStoreOptions = {}) {
     super();
     this.#maxPaths = options.maxPaths ?? DEFAULT_MAX_PATHS;
     this.#maxVersionsPerPath =
       options.maxVersionsPerPath ?? DEFAULT_MAX_VERSIONS_PER_PATH;
+    this.#maxSnapshotBytes =
+      options.maxSnapshotBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES;
   }
 
   head(path: string): Snapshot | null {
@@ -101,6 +111,12 @@ export class InMemorySnapshotStore extends SnapshotStore {
 
   record(path: string, fullText: string): string {
     const hash = computeFileHash(fullText);
+
+    // Skip storage for files exceeding the size cap — hash is still returned
+    // so tag validation works, but recovery won't be available.
+    if (fullText.length > this.#maxSnapshotBytes) {
+      return hash;
+    }
 
     // Refresh LRU recency: delete-then-set moves path to end of insertion order.
     const history = this.#versions.get(path);

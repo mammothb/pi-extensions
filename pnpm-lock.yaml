@@ -18,6 +18,21 @@ catalogs:
     mermaid:
       specifier: 11.0.0
       version: 11.0.0
+    tree-sitter:
+      specifier: 0.22.4
+      version: 0.22.4
+    tree-sitter-javascript:
+      specifier: 0.23.1
+      version: 0.23.1
+    tree-sitter-python:
+      specifier: 0.23.6
+      version: 0.23.6
+    tree-sitter-typescript:
+      specifier: 0.23.2
+      version: 0.23.2
+    tree-sitter-yaml:
+      specifier: 0.5.0
+      version: 0.5.0
     turndown:
       specifier: 7.2.4
       version: 7.2.4
@@ -117,6 +132,21 @@ importers:
       diff:
         specifier: 'catalog:'
         version: 8.0.4
+      tree-sitter:
+        specifier: 'catalog:'
+        version: 0.22.4
+      tree-sitter-javascript:
+        specifier: 'catalog:'
+        version: 0.23.1(tree-sitter@0.22.4)
+      tree-sitter-python:
+        specifier: 'catalog:'
+        version: 0.23.6(tree-sitter@0.22.4)
+      tree-sitter-typescript:
+        specifier: 'catalog:'
+        version: 0.23.2(tree-sitter@0.22.4)
+      tree-sitter-yaml:
+        specifier: 'catalog:'
+        version: 0.5.0
       typebox:
         specifier: '*'
         version: 1.2.0
@@ -1616,10 +1646,17 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
+  nan@2.27.0:
+    resolution: {integrity: sha512-hC+0LidcL3XE4rp1C4H54KujgXKzbfyTngZTwBByQxsOxCEKZT0MPQ4hOKUH2jU1OYstqdDH4onyHPDzcV0XdQ==}
+
   nanoid@3.3.12:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  node-addon-api@8.8.0:
+    resolution: {integrity: sha512-c5Ko1fZJIJmzhFIkhRN76WTq+fC6tWnGy9CXA0fA+XygsWZmEwG8vmbkNqxMyoaa0Tin4djul49NzdVcJJcjeA==}
+    engines: {node: ^18 || ^20 || >= 21}
 
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
@@ -1629,6 +1666,10 @@ packages:
   node-fetch@3.3.2:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
 
   obug@2.1.2:
     resolution: {integrity: sha512-AWGB9WFcRXOQs48Z/udjI5ZcZMHXwX8XPByNpOydgcGsDLIzjGizhoMWJyKAWze7AVW/2W1i+/gPX4YtKe5cyg==}
@@ -1879,6 +1920,36 @@ packages:
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
+
+  tree-sitter-javascript@0.23.1:
+    resolution: {integrity: sha512-/bnhbrTD9frUYHQTiYnPcxyHORIw157ERBa6dqzaKxvR/x3PC4Yzd+D1pZIMS6zNg2v3a8BZ0oK7jHqsQo9fWA==}
+    peerDependencies:
+      tree-sitter: ^0.21.1
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-python@0.23.6:
+    resolution: {integrity: sha512-yIM9z0oxKIxT7bAtPOhgoVl6gTXlmlIhue7liFT4oBPF/lha7Ha4dQBS82Av6hMMRZoVnFJI8M6mL+SwWoLD3A==}
+    peerDependencies:
+      tree-sitter: ^0.22.1
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-typescript@0.23.2:
+    resolution: {integrity: sha512-e04JUUKxTT53/x3Uq1zIL45DoYKVfHH4CZqwgZhPg5qYROl5nQjV+85ruFzFGZxu+QeFVbRTPDRnqL9UbU4VeA==}
+    peerDependencies:
+      tree-sitter: ^0.21.0
+    peerDependenciesMeta:
+      tree-sitter:
+        optional: true
+
+  tree-sitter-yaml@0.5.0:
+    resolution: {integrity: sha512-POJ4ZNXXSWIG/W4Rjuyg36MkUD4d769YRUGKRqN+sVaj/VCo6Dh6Pkssn1Rtewd5kybx+jT1BWMyWN0CijXnMA==}
+
+  tree-sitter@0.22.4:
+    resolution: {integrity: sha512-usbHZP9/oxNsUY65MQUsduGRqDHQOou1cagUSwjhoSYAmSahjQDAVsh9s+SlZkn8X8+O1FULRGwHu7AFP3kjzg==}
 
   ts-algebra@2.0.0:
     resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
@@ -3696,7 +3767,11 @@ snapshots:
 
   ms@2.1.3: {}
 
+  nan@2.27.0: {}
+
   nanoid@3.3.12: {}
+
+  node-addon-api@8.8.0: {}
 
   node-domexception@1.0.0: {}
 
@@ -3705,6 +3780,8 @@ snapshots:
       data-uri-to-buffer: 4.0.1
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
+
+  node-gyp-build@4.8.4: {}
 
   obug@2.1.2: {}
 
@@ -3923,6 +4000,37 @@ snapshots:
   to-regex-range@5.0.1:
     dependencies:
       is-number: 7.0.0
+
+  tree-sitter-javascript@0.23.1(tree-sitter@0.22.4):
+    dependencies:
+      node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.22.4
+
+  tree-sitter-python@0.23.6(tree-sitter@0.22.4):
+    dependencies:
+      node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
+    optionalDependencies:
+      tree-sitter: 0.22.4
+
+  tree-sitter-typescript@0.23.2(tree-sitter@0.22.4):
+    dependencies:
+      node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
+      tree-sitter-javascript: 0.23.1(tree-sitter@0.22.4)
+    optionalDependencies:
+      tree-sitter: 0.22.4
+
+  tree-sitter-yaml@0.5.0:
+    dependencies:
+      nan: 2.27.0
+
+  tree-sitter@0.22.4:
+    dependencies:
+      node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
 
   ts-algebra@2.0.0: {}
 

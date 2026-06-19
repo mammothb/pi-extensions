@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { applyEdits } from "../../../src/lib/hashline/apply.js";
+import { resolveBlockEdits } from "../../../src/lib/hashline/block.js";
 import type { Anchor, Cursor, Edit } from "../../../src/lib/hashline/types.js";
+import { createTreeSitterBlockResolver } from "../../../src/lib/tree-sitter-block-resolver.js";
 
 // ─── Edit constructors ───────────────────────────────────────────────
 
@@ -320,6 +322,121 @@ describe("applyEdits", () => {
     it("works with no trailing newline", () => {
       const result = applyEdits("a\nb\nc", replaceRange(2, 2, ["X"]));
       expect(result.text).toBe("a\nX\nc");
+    });
+  });
+
+  describe("block resolution integration", () => {
+    // Use the real tree-sitter resolver for true end-to-end
+    // resolveBlockEdits → applyEdits pipeline.
+    const resolver = createTreeSitterBlockResolver();
+
+    function resolveAndApply(
+      text: string,
+      path: string,
+      edits: Edit[],
+    ): { text: string; firstChangedLine?: number } {
+      const resolved = resolveBlockEdits(edits, text, path, resolver, {
+        onUnresolved: "throw",
+      });
+      return applyEdits(text, resolved);
+    }
+
+    it("replaces a function block — only the function changes", () => {
+      const code = "// top\nfunction foo() {\n  return 1;\n}\n// bottom\n";
+      const edits: Edit[] = [
+        {
+          kind: "block",
+          anchor: anc(2),
+          payloads: ["function foo() {", "  return 42;", "}"],
+          lineNum: 1,
+          index: 0,
+        },
+      ];
+
+      const result = resolveAndApply(code, "/test.ts", edits);
+
+      expect(result.text).toBe(
+        "// top\nfunction foo() {\n  return 42;\n}\n// bottom\n",
+      );
+      expect(result.firstChangedLine).toBe(2);
+    });
+
+    it("resolves block edit with tree-sitter and applies correctly (Python)", () => {
+      const code =
+        "def outer():\n    def inner():\n        pass\n    return inner\n";
+      // point at outer (line 1)
+      const edits: Edit[] = [
+        {
+          kind: "block",
+          anchor: anc(1),
+          payloads: ["def outer():", "    return None"],
+          lineNum: 1,
+          index: 1,
+        },
+      ];
+
+      const result = resolveAndApply(code, "/test.py", edits);
+
+      expect(result.text).toBe("def outer():\n    return None\n");
+      expect(result.firstChangedLine).toBe(1);
+    });
+
+    it("delete block removes only the inner if-statement", () => {
+      const code = "if (a) {\n  doA();\n}\nif (b) {\n  doB();\n}\n";
+      const edits: Edit[] = [
+        {
+          kind: "block",
+          anchor: anc(1),
+          payloads: [],
+          lineNum: 1,
+          index: 0,
+        },
+      ];
+
+      const result = resolveAndApply(code, "/test.ts", edits);
+
+      // Only the first if-statement is removed
+      expect(result.text).toBe("if (b) {\n  doB();\n}\n");
+      expect(result.firstChangedLine).toBe(1);
+    });
+
+    it("throws when pointing at a closing brace", () => {
+      const code = "if (x) {\n  work();\n}\n";
+      const edits: Edit[] = [
+        {
+          kind: "block",
+          anchor: anc(3), // closing }
+          payloads: ["replacement"],
+          lineNum: 1,
+          index: 0,
+        },
+      ];
+
+      expect(() => resolveAndApply(code, "/test.ts", edits)).toThrow(
+        /could not resolve a syntactic block/,
+      );
+    });
+
+    it("throws resolver-unavailable for unknown extension", () => {
+      const code = "some content\nmore content\n";
+      // Use resolveBlockEdits directly (bypass applyEdits) to test
+      // that block resolution fails for unknown extensions
+      const edits: Edit[] = [
+        {
+          kind: "block",
+          anchor: anc(1),
+          payloads: ["new"],
+          lineNum: 1,
+          index: 0,
+        },
+      ];
+
+      // Unknown extension: resolver returns null → throw
+      expect(() =>
+        resolveBlockEdits(edits, code, "/test.xyz", resolver, {
+          onUnresolved: "throw",
+        }),
+      ).toThrow(/could not resolve/);
     });
   });
 });

@@ -39,11 +39,11 @@ describe("Tokenizer", () => {
 
   describe("file section headers", () => {
     it("parses ¶path#TAG", () => {
-      const t = tokenizer.tokenize("¶src/foo.ts#A1B2");
+      const t = tokenizer.tokenize("¶src/foo.ts#A1B200");
       expect(t.kind).toBe("header");
       if (t.kind === "header") {
         expect(t.path).toBe("src/foo.ts");
-        expect(t.fileHash).toBe("A1B2");
+        expect(t.fileHash).toBe("A1B200");
       }
     });
 
@@ -71,19 +71,19 @@ describe("Tokenizer", () => {
     });
 
     it("hash is case-normalized to uppercase", () => {
-      const t = tokenizer.tokenize("¶foo.ts#a1b2");
+      const t = tokenizer.tokenize("¶foo.ts#a1b200");
       expect(t.kind).toBe("header");
       if (t.kind === "header") {
-        expect(t.fileHash).toBe("A1B2");
+        expect(t.fileHash).toBe("A1B200");
       }
     });
 
     it("trailing whitespace is trimmed", () => {
-      const t = tokenizer.tokenize("¶foo.ts#A1B2  ");
+      const t = tokenizer.tokenize("¶foo.ts#A1B200  ");
       expect(t.kind).toBe("header");
       if (t.kind === "header") {
         expect(t.path).toBe("foo.ts");
-        expect(t.fileHash).toBe("A1B2");
+        expect(t.fileHash).toBe("A1B200");
       }
     });
   });
@@ -251,7 +251,7 @@ describe("Tokenizer", () => {
   describe("tokenizeAll", () => {
     it("tokenizes multi-line input", () => {
       const tokens = tokenizer.tokenizeAll(
-        "¶foo.ts#A1B2\nreplace 1..1:\n+hello",
+        "¶foo.ts#A1B200\nreplace 1..1:\n+hello",
       );
       expect(tokens).toHaveLength(3);
       expect(tokens[0]!.kind).toBe("header");
@@ -261,7 +261,7 @@ describe("Tokenizer", () => {
 
     it("trailing newline produces extra blank token", () => {
       const tokens = tokenizer.tokenizeAll(
-        "¶foo.ts#A1B2\nreplace 1..1:\n+hello\n",
+        "¶foo.ts#A1B200\nreplace 1..1:\n+hello\n",
       );
       expect(tokens).toHaveLength(4);
       expect(tokens[3]!.kind).toBe("blank");
@@ -269,7 +269,7 @@ describe("Tokenizer", () => {
 
     it("handles CRLF line endings", () => {
       const tokens = tokenizer.tokenizeAll(
-        "¶foo.ts#A1B2\r\nreplace 1..1:\r\n+hello",
+        "¶foo.ts#A1B200\r\nreplace 1..1:\r\n+hello",
       );
       expect(tokens).toHaveLength(3);
       expect(tokens[0]!.kind).toBe("header");
@@ -288,11 +288,11 @@ describe("Tokenizer", () => {
       expect(tokenizer.isOp("delete 5")).toBe(true);
       expect(tokenizer.isOp("insert head:")).toBe(true);
       expect(tokenizer.isOp("+payload")).toBe(false);
-      expect(tokenizer.isOp("¶foo.ts#A1B2")).toBe(false);
+      expect(tokenizer.isOp("¶foo.ts#A1B200")).toBe(false);
     });
 
     it("isHeader detects section headers", () => {
-      expect(tokenizer.isHeader("¶foo.ts#A1B2")).toBe(true);
+      expect(tokenizer.isHeader("¶foo.ts#A1B200")).toBe(true);
       expect(tokenizer.isHeader("replace 1..1:")).toBe(false);
     });
 

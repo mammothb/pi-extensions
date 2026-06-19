@@ -14,7 +14,9 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { applyEdits } from "./lib/hashline/apply.js";
+import { resolveBlockEdits } from "./lib/hashline/block.js";
 import {
   computeFileHash,
   formatHashlineHeader,
@@ -23,11 +25,10 @@ import {
 import { Patch, type PatchSection } from "./lib/hashline/input.js";
 import {
   HEADTAIL_DRIFT_WARNING,
-  MismatchError,
   missingTagMessage,
   nonExistentFileMessage,
-  unrecognizedHashMessage,
 } from "./lib/hashline/messages.js";
+import { MismatchError } from "./lib/hashline/mismatch.js";
 import {
   detectLineEnding,
   normalizeToLF,
@@ -35,6 +36,8 @@ import {
 } from "./lib/hashline/normalize.js";
 import { tryRecover } from "./lib/hashline/recovery.js";
 import type { SnapshotStore } from "./lib/hashline/snapshots.js";
+import { Tokenizer } from "./lib/hashline/tokenizer.js";
+import type { BlockResolver, Edit } from "./lib/hashline/types.js";
 import {
   type EditFileResult,
   EditSchema,
@@ -56,6 +59,35 @@ function resolveDisplayPath(rawPath: string, cwd: string): string {
   return resolved;
 }
 
+const TOKENIZER = new Tokenizer();
+/**
+ * Extract file paths from hashline headers in edit input text.
+ * Handles BOM prefix and quoted paths (defensive — `formatHashlineHeader`
+ * never produces quotes). Delegates header detection to the tokenizer.
+ */
+export function parseHashlineHeaders(input: string): string[] {
+  // Strip BOM if present.
+  let text = input;
+  if (text.charCodeAt(0) === 0xfeff) {
+    text = text.slice(1);
+  }
+
+  const paths = new Set<string>();
+  const lines = text.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const token = TOKENIZER.tokenize(rawLine.trimStart());
+    if (token.kind !== "header") continue;
+
+    // Strip optional surrounding quotes (defensive — model may quote paths).
+    const unquoted = token.path.replace(/^["'](.+)["']$/, "$1").trim();
+    if (unquoted.length > 0) {
+      paths.add(unquoted);
+    }
+  }
+
+  return [...paths];
+}
+
 /** Show up to 20 lines around the first changed line. */
 function formatPreview(text: string, firstChangedLine?: number): string {
   if (firstChangedLine === undefined) {
@@ -67,8 +99,22 @@ function formatPreview(text: string, firstChangedLine?: number): string {
   return formatNumberedLines(lines.slice(start, end).join("\n"), start + 1);
 }
 
-// ─── Preflight result ────────────────────────────────────────────────
-
+/** Collect anchor lines from already-resolved concrete edits. */
+function collectResolvedAnchorLines(edits: readonly Edit[]): number[] {
+  const lines = new Set<number>();
+  for (const edit of edits) {
+    if (edit.kind === "delete") {
+      lines.add(edit.anchor.line);
+    } else if (
+      edit.kind === "insert" &&
+      (edit.cursor.kind === "before_anchor" ||
+        edit.cursor.kind === "after_anchor")
+    ) {
+      lines.add(edit.cursor.anchor.line);
+    }
+  }
+  return [...lines].sort((a, b) => a - b);
+}
 interface PreflightEntry {
   section: PatchSection;
   absPath: string;
@@ -76,12 +122,14 @@ interface PreflightEntry {
   normalized: string;
   lineEnding: "\r\n" | "\n";
   liveHash: string;
+  resolvedEdits: readonly Edit[];
 }
 
 // ─── Tool creator ────────────────────────────────────────────────────
 
 export function createEditTool(
   snapshots: SnapshotStore,
+  blockResolver?: BlockResolver,
 ): ToolDefinition<typeof EditSchema, EditToolDetails> {
   return {
     name: "edit",
@@ -89,14 +137,14 @@ export function createEditTool(
     description:
       "Edit files using hashline anchoring. Copy the ¶PATH#TAG header from the read " +
       "tool output and write edit operations (replace, delete, insert) below it. " +
-      "The tag validates you're editing the version you read — stale tags are rejected " +
-      "so you must re-read the file if it changed.",
+      "The tag validates you are editing the version you read — if the file changed " +
+      "since your read, the tool attempts automatic recovery; re-read only on rejection.",
     promptSnippet:
       "Edit files with hashline anchoring — copy ¶PATH#TAG from read/grep/write output",
     promptGuidelines: [
       "Use edit to modify existing files. Copy the ¶PATH#TAG header from your most recent read, grep, or write output — the tag is REQUIRED. Use the write tool to create new files.",
       "After every edit, the file gets a new tag and renumbered lines. Always take the next edit's ¶PATH#TAG and line numbers from the edit response or a fresh read — never reuse old tags.",
-      "On a stale-tag rejection (file changed between read and edit), STOP and re-read the file. Never stack more edits onto stale numbers.",
+      "If the tool returns a stale-tag rejection (automatic recovery failed), STOP and re-read the file. A drift warning means the edit was applied — verify the diff, do not re-read.",
       "Use replace N..M: for changes, delete N..M for removal, insert before/after/head/tail: for additions. Body rows are +TEXT only — no -old rows or bare context lines.",
     ],
     parameters: EditSchema,
@@ -144,6 +192,24 @@ export function createEditTool(
         const normalized = normalizeToLF(rawContent);
         const liveHash = computeFileHash(normalized);
 
+        // Resolve any block edits to concrete inserts+deletes
+        let resolvedEdits: readonly Edit[];
+        try {
+          resolvedEdits = resolveBlockEdits(
+            section.edits,
+            normalized,
+            displayPath,
+            blockResolver,
+            { onUnresolved: "throw" },
+          );
+        } catch (err: unknown) {
+          const message =
+            err instanceof Error ? err.message : "block resolution failed";
+          return {
+            content: [{ type: "text", text: `Edit error: ${message}` }],
+            details: { files: [], changed: false },
+          };
+        }
         // Validate tag.
         if (section.fileHash === undefined) {
           return {
@@ -163,18 +229,19 @@ export function createEditTool(
               normalized,
               lineEnding,
               liveHash,
+              resolvedEdits,
             });
             continue;
           }
 
           // Anchored edits on stale tag: try recovery first.
-          const anchorLines = section.collectAnchorLines();
+          const anchorLines = collectResolvedAnchorLines(resolvedEdits);
           const recovered = tryRecover(
             snapshots,
             absPath,
             normalized,
             section.fileHash,
-            section.edits,
+            resolvedEdits,
             anchorLines,
           );
 
@@ -188,31 +255,25 @@ export function createEditTool(
               normalized: recovered.text,
               lineEnding,
               liveHash: computeFileHash(recovered.text),
+              resolvedEdits,
             });
             continue;
           }
 
-          // Recovery failed.
+          // Recovery failed — return rich diagnostic as structured error.
           const snapshot = snapshots.byHash(absPath, section.fileHash);
-          if (snapshot === null) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: unrecognizedHashMessage(section.fileHash),
-                },
-              ],
-              details: { files: [], changed: false },
-            };
-          }
-
-          throw new MismatchError(
-            displayPath,
-            section.fileHash,
-            liveHash,
-            normalized,
+          const error = new MismatchError({
+            path: displayPath,
+            expectedFileHash: section.fileHash,
+            actualFileHash: liveHash,
+            fileLines: normalized.split("\n"),
             anchorLines,
-          );
+            hashRecognized: snapshot !== null,
+          });
+          return {
+            content: [{ type: "text", text: error.displayMessage }],
+            details: { files: [], changed: false },
+          };
         }
 
         preflight.push({
@@ -222,6 +283,7 @@ export function createEditTool(
           normalized,
           lineEnding,
           liveHash,
+          resolvedEdits,
         });
       }
 
@@ -233,7 +295,7 @@ export function createEditTool(
           text: newText,
           firstChangedLine,
           warnings: applyWarnings,
-        } = applyEdits(pf.normalized, pf.section.edits);
+        } = applyEdits(pf.normalized, pf.resolvedEdits);
 
         // Restore line endings and write.
         const output = restoreLineEndings(newText, pf.lineEnding);
@@ -276,6 +338,90 @@ export function createEditTool(
           changed: fileResults.some((fr) => fr.firstChangedLine !== undefined),
         },
       };
+    },
+
+    renderCall(args, theme, context) {
+      // ── Guard: `args.edits` should always be defined per schema ───
+      if (typeof args.edits !== "string") {
+        return new Text(
+          theme.fg("toolTitle", theme.bold("Edit ")) +
+            theme.fg("dim", "(no input)"),
+          0,
+          0,
+        );
+      }
+
+      // ── Final mode: clean header ───────────────────────────────
+      const paths = parseHashlineHeaders(args.edits);
+      let text = theme.fg("toolTitle", theme.bold("Edit "));
+      const first = paths[0];
+      if (first !== undefined) {
+        text += theme.fg("accent", resolveDisplayPath(first, context.cwd));
+        if (paths.length > 1) {
+          text += theme.fg("dim", ` (+${paths.length - 1} more)`);
+        }
+      }
+      return new Text(text, 0, 0);
+    },
+
+    renderResult(result, _options, theme, context) {
+      const details = result.details;
+      const isReturnedError = details.files.length === 0 && !details.changed;
+      const isError = context.isError || isReturnedError;
+
+      if (isError) {
+        const errorText =
+          result.content[0]?.type === "text"
+            ? result.content[0].text
+            : "Edit failed";
+        const paths =
+          details.files.length > 0
+            ? details.files.map((f) => f.path)
+            : parseHashlineHeaders(context.args.edits);
+        const firstPath = paths.length > 0 ? paths[0] : undefined;
+        const first =
+          firstPath !== undefined ? theme.fg("accent", firstPath) : "";
+        return new Text(
+          theme.fg("error", "✗ ") +
+            theme.fg("toolTitle", theme.bold("Edit ")) +
+            first +
+            "\n" +
+            theme.fg("error", errorText),
+          0,
+          0,
+        );
+      }
+
+      // Success path.
+      const files = details.files;
+      const prefix =
+        theme.fg("success", "✓ ") + theme.fg("toolTitle", theme.bold("Edit "));
+
+      if (files.length === 0) {
+        return new Text(prefix, 0, 0);
+      }
+
+      const firstFile = files[0] as EditFileResult;
+      let text =
+        prefix +
+        theme.fg("accent", resolveDisplayPath(firstFile.path, context.cwd));
+      if (files.length > 1) {
+        text += theme.fg("dim", ` (+${files.length - 1} more)`);
+      }
+
+      const changedFiles = files.filter(
+        (f) => f.firstChangedLine !== undefined,
+      );
+      if (changedFiles.length > 0) {
+        text +=
+          " " +
+          theme.fg(
+            "dim",
+            `(${changedFiles.length} file${changedFiles.length > 1 ? "s" : ""} changed)`,
+          );
+      }
+
+      return new Text(text, 0, 0);
     },
   };
 }

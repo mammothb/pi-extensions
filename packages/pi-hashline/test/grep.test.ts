@@ -91,7 +91,7 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/^¶src\/bar\.ts#[0-9A-F]{4}\n/m);
+    expect(text).toMatch(/^¶src\/bar\.ts#[0-9A-F]{6}\n/m);
 
     // baz.ts should not appear (no matches).
     expect(text).not.toContain("baz.ts");
@@ -114,7 +114,7 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     const absPath = resolve(testDir, "src/app.ts");
     const head = snapshots.head(absPath);
     expect(head).not.toBeNull();
-    expect(head!.hash).toMatch(/^[0-9A-F]{4}$/);
+    expect(head!.hash).toMatch(/^[0-9A-F]{6}$/);
   });
 
   it("shows matching lines with line numbers", async () => {
@@ -214,7 +214,7 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/¶deep\/nested\/here\.ts#[0-9A-F]{4}/);
+    expect(text).toMatch(/¶deep\/nested\/here\.ts#[0-9A-F]{6}/);
   });
 
   it("glob filters files by pattern", async () => {
@@ -354,6 +354,6 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toMatch(/^¶tagctx\.ts#[0-9A-F]{4}\n/m);
+    expect(text).toMatch(/^¶tagctx\.ts#[0-9A-F]{6}\n/m);
   });
 });

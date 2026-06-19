@@ -9,10 +9,10 @@ import {
 } from "../src/lib/hashline/format.js";
 
 describe("computeFileHash", () => {
-  it("produces a 4-character uppercase hex string", () => {
+  it("produces a 6-character uppercase hex string", () => {
     const hash = computeFileHash("hello\n");
     expect(hash).toHaveLength(HL_FILE_HASH_LENGTH);
-    expect(hash).toMatch(/^[0-9A-F]{4}$/);
+    expect(hash).toMatch(/^[0-9A-F]{6}$/);
   });
 
   it("is stable for identical content", () => {
@@ -51,7 +51,9 @@ describe("computeFileHash", () => {
 
 describe("formatHashlineHeader", () => {
   it("formats a hashline header", () => {
-    expect(formatHashlineHeader("src/foo.ts", "A1B2")).toBe("¶src/foo.ts#A1B2");
+    expect(formatHashlineHeader("src/foo.ts", "A1B200")).toBe(
+      "¶src/foo.ts#A1B200",
+    );
   });
 });
 

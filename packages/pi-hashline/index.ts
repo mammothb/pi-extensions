@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createEditTool } from "./src/edit.js";
 import { createGrepTool } from "./src/grep.js";
 import { InMemorySnapshotStore } from "./src/lib/hashline/snapshots.js";
+import { createTreeSitterBlockResolver } from "./src/lib/tree-sitter-block-resolver.js";
 import { injectPrompt } from "./src/prompt.js";
 import { createReadTool } from "./src/read.js";
 import { createWriteTool } from "./src/write.js";
@@ -23,9 +24,10 @@ export * from "./src/lib/hashline/types.js";
 
 export default function (pi: ExtensionAPI) {
   const snapshots = new InMemorySnapshotStore();
+  const blockResolver = createTreeSitterBlockResolver();
 
   pi.registerTool(createReadTool(snapshots));
-  pi.registerTool(createEditTool(snapshots));
+  pi.registerTool(createEditTool(snapshots, blockResolver));
   pi.registerTool(createWriteTool(snapshots));
   pi.registerTool(createGrepTool(snapshots));
 
