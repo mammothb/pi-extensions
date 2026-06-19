@@ -6,7 +6,7 @@ import {
   formatNumberedLine,
   formatNumberedLines,
   HL_FILE_HASH_LENGTH,
-} from "../src/format";
+} from "../src/lib/hashline/format.js";
 
 describe("computeFileHash", () => {
   it("produces a 4-character uppercase hex string", () => {

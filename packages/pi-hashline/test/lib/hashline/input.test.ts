@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Patch, PatchSection } from "../src/input";
+import { Patch, PatchSection } from "../../../src/lib/hashline/input.js";
 
 describe("PatchSection", () => {
   describe("parse", () => {

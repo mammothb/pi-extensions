@@ -5,7 +5,7 @@ import {
   normalizeToLF,
   restoreLineEndings,
   stripBom,
-} from "../src/normalize";
+} from "../../../src/lib/hashline/normalize.js";
 
 describe("stripBom", () => {
   it("strips UTF-8 BOM", () => {

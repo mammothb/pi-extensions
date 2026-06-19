@@ -12,3 +12,4 @@ catalog:
   turndown: 7.2.4
   typebox: 1.2.0
   "@types/turndown": 5.0.6
+  diff: 8.0.4

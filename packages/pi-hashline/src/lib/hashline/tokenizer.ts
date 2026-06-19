@@ -17,8 +17,8 @@ import {
   HL_INSERT_TAIL,
   HL_PAYLOAD_REPLACE,
   HL_REPLACE_KEYWORD,
-} from "./format";
-import type { Anchor, Cursor, ParsedRange } from "./types";
+} from "./format.js";
+import type { Anchor, Cursor, ParsedRange } from "./types.js";
 
 // ─── BlockTarget (the target of a hunk header) ───────────────────────
 
@@ -42,7 +42,6 @@ export type Token =
   | (TokenBase & { kind: "blank" })
   | (TokenBase & { kind: "envelope-begin" })
   | (TokenBase & { kind: "envelope-end" })
-  | (TokenBase & { kind: "envelope-separator" })
   | (TokenBase & { kind: "abort" })
   | (TokenBase & { kind: "header"; path: string; fileHash?: string })
   | (TokenBase & { kind: "op-block"; target: BlockTarget })
@@ -51,10 +50,9 @@ export type Token =
 
 // ─── Envelope / abort markers ────────────────────────────────────────
 
-const ENVELOPE_BEGIN = "<<<";
-const ENVELOPE_END = ">>>";
-const ENVELOPE_SEPARATOR = "---";
-const ABORT_MARKER = "...";
+const ENVELOPE_BEGIN = "*** Begin Patch";
+const ENVELOPE_END = "*** End Patch";
+const ABORT_MARKER = "*** Abort";
 
 // ─── Line-number scanner ─────────────────────────────────────────────
 
@@ -290,9 +288,6 @@ function classifyLine(line: string, lineNum: number): Token {
   if (trimmed === ENVELOPE_END) {
     return { kind: "envelope-end", lineNum };
   }
-  if (trimmed === ENVELOPE_SEPARATOR) {
-    return { kind: "envelope-separator", lineNum };
-  }
   if (trimmed === ABORT_MARKER) {
     return { kind: "abort", lineNum };
   }
@@ -373,7 +368,6 @@ export class Tokenizer {
     return (
       trimmed === ENVELOPE_BEGIN ||
       trimmed === ENVELOPE_END ||
-      trimmed === ENVELOPE_SEPARATOR ||
       trimmed === ABORT_MARKER
     );
   }
@@ -389,6 +383,3 @@ export function cloneCursor(cursor: Cursor): Cursor {
   }
   return cursor;
 }
-
-// Re-export for convenience
-export type { Anchor, Cursor, ParsedRange } from "./types";

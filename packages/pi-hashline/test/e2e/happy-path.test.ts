@@ -11,12 +11,12 @@ import { join, resolve } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createEditTool, type EditToolDetails } from "../../src/edit";
-import { createGrepTool, type GrepToolDetails } from "../../src/grep";
-import type { ReadToolDetails } from "../../src/read";
-import { createReadTool } from "../../src/read";
-import { InMemorySnapshotStore } from "../../src/snapshots";
-import { createWriteTool, type WriteToolDetails } from "../../src/write";
+import { createEditTool, type EditToolDetails } from "../../src/edit.js";
+import { createGrepTool, type GrepToolDetails } from "../../src/grep.js";
+import { InMemorySnapshotStore } from "../../src/lib/hashline/snapshots.js";
+import { createReadTool } from "../../src/read.js";
+import type { ReadToolDetails } from "../../src/schema.js";
+import { createWriteTool, type WriteToolDetails } from "../../src/write.js";
 
 let testDir: string;
 let snapshots: InMemorySnapshotStore;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { injectPrompt, loadPrompt } from "../src/prompt";
+import { injectPrompt, loadPrompt } from "../src/prompt.js";
 
 describe("prompt", () => {
   it("loadPrompt returns non-empty string", () => {

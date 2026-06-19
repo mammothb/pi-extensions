@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemorySnapshotStore } from "../src/snapshots";
+import { InMemorySnapshotStore } from "../../../src/lib/hashline/snapshots.js";
 
 describe("InMemorySnapshotStore", () => {
   it("record returns a 4-char uppercase hex tag", () => {

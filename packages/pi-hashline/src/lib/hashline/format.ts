@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 
-import type { Cursor } from "./types";
+import type { Cursor } from "./types.js";
 
 /** File-section header prefix: `¶path#hash`. */
 export const HL_FILE_PREFIX = "¶";

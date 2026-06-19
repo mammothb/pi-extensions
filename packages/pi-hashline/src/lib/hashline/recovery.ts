@@ -14,14 +14,14 @@
  */
 
 import { applyPatch, structuredPatch } from "diff";
-import { applyEdits } from "./apply";
+import { applyEdits } from "./apply.js";
 import {
   RECOVERY_EXTERNAL_WARNING,
   RECOVERY_SESSION_CHAIN_WARNING,
   RECOVERY_SESSION_REPLAY_WARNING,
-} from "./messages";
-import type { SnapshotStore } from "./snapshots";
-import type { Edit } from "./types";
+} from "./messages.js";
+import type { SnapshotStore } from "./snapshots.js";
+import type { Edit } from "./types.js";
 
 // ─── Recovery result ─────────────────────────────────────────────────
 

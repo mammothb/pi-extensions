@@ -5,9 +5,10 @@ import { join, resolve } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { computeFileHash } from "../src/format";
-import { InMemorySnapshotStore } from "../src/snapshots";
-import { createWriteTool, type WriteToolDetails } from "../src/write";
+import { computeFileHash } from "../src/lib/hashline/format.js";
+import { InMemorySnapshotStore } from "../src/lib/hashline/snapshots.js";
+import type { WriteToolDetails } from "../src/schema.js";
+import { createWriteTool } from "../src/write.js";
 
 let testDir: string;
 let snapshots: InMemorySnapshotStore;

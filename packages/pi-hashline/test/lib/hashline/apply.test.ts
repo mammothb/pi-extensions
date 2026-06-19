@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { applyEdits } from "../src/apply";
-import type { Anchor, Cursor, Edit } from "../src/types";
+import { applyEdits } from "../../../src/lib/hashline/apply.js";
+import type { Anchor, Cursor, Edit } from "../../../src/lib/hashline/types.js";
 
 // ─── Edit constructors ───────────────────────────────────────────────
 

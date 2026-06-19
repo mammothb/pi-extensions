@@ -4,7 +4,7 @@
  * keeps wording stable across the rendering paths that surface them.
  */
 
-import { HL_FILE_HASH_SEP, HL_FILE_PREFIX } from "./format";
+import { HL_FILE_HASH_SEP, HL_FILE_PREFIX } from "./format.js";
 
 // ─── Error messages ──────────────────────────────────────────────────
 

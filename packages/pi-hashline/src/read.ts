@@ -1,7 +1,7 @@
 /**
  * Hashline read tool override.
  *
- * Overrides the built-in `read` tool to emit `¶PATH#TAG` headers and
+ * Overrides the built-in `read` tool to emit `\u00b6PATH#TAG` headers and
  * record content snapshots. Text files get tagged; images delegate to the
  * native read implementation.
  */
@@ -13,32 +13,15 @@ import {
   createReadToolDefinition,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-
 import {
   computeFileHash,
   formatHashlineHeader,
   formatNumberedLines,
-} from "./format";
-import type { SnapshotStore } from "./snapshots";
+} from "./lib/hashline/format.js";
+import type { SnapshotStore } from "./lib/hashline/snapshots.js";
+import { ReadSchema, type ReadToolDetails } from "./schema.js";
 
 const DEFAULT_MAX_BYTES = 50 * 1024;
-
-const ReadSchema = Type.Object({
-  path: Type.String({
-    description: "Path to the file to read (relative or absolute)",
-  }),
-  offset: Type.Optional(
-    Type.Number({
-      description: "Line number to start reading from (1-indexed)",
-    }),
-  ),
-  limit: Type.Optional(
-    Type.Number({
-      description: "Maximum number of lines to read",
-    }),
-  ),
-});
 
 /** File extensions handled by the native read tool (images, etc.). */
 const IMAGE_EXTENSIONS = new Set([
@@ -69,19 +52,6 @@ function resolvePath(rawPath: string, cwd: string): string {
     // Fall through — use absolute path.
   }
   return resolved;
-}
-
-export interface ReadToolDetails {
-  /** Total lines in the file (before offset/limit). */
-  totalLines: number;
-  /** Total bytes in the file. */
-  totalBytes: number;
-  /** Whether the displayed output was truncated. */
-  truncated: boolean;
-  /** Content hash of the full file. */
-  fileHash: string;
-  /** Hashline header for this file snapshot. */
-  header: string;
 }
 
 function errorResult(message: string): {
@@ -124,12 +94,12 @@ export function createReadTool(
     label: "Read",
     description:
       "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). " +
-      "Every text file view includes a ¶PATH#TAG header — copy this tag when editing " +
+      "Every text file view includes a \u00b6PATH#TAG header — copy this tag when editing " +
       "the file so the edit tool can validate you're working against the current version.",
     promptSnippet:
-      "Read file contents — every output includes a ¶PATH#TAG header required by the edit tool",
+      "Read file contents — every output includes a \u00b6PATH#TAG header required by the edit tool",
     promptGuidelines: [
-      "Use read to inspect file content instead of cat or tail. Every text output starts with a ¶PATH#TAG header — copy the entire header (including the tag) into edit tool calls to validate you're editing the current file version.",
+      "Use read to inspect file content instead of cat or tail. Every text output starts with a \u00b6PATH#TAG header — copy the entire header (including the tag) into edit tool calls to validate you're editing the current file version.",
       "Use offset/limit to read large files in sections. Tags are per-file, not per-section — any section of a file carries the same tag.",
     ],
     parameters: ReadSchema,
@@ -142,14 +112,17 @@ export function createReadTool(
       const ext = extname(absolutePath).toLowerCase();
       if (IMAGE_EXTENSIONS.has(ext)) {
         // Native read details type differs from hashline. Safe cast.
+        // biome-ignore lint/suspicious/noExplicitAny: native tool type mismatch in override
+        const onUpdateCast = onUpdate as any;
         const result = nativeRead(ctx).execute(
           toolCallId,
           params,
           signal,
-          onUpdate,
+          onUpdateCast,
           ctx,
         );
-        return result;
+        // biome-ignore lint/suspicious/noExplicitAny: native tool type mismatch in override
+        return result as any;
       }
 
       // Check readability.

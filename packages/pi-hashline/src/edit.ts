@@ -14,64 +14,32 @@ import { constants } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-
-import { applyEdits } from "./apply";
+import { applyEdits } from "./lib/hashline/apply.js";
 import {
   computeFileHash,
   formatHashlineHeader,
   formatNumberedLines,
-} from "./format";
-import { Patch, type PatchSection } from "./input";
+} from "./lib/hashline/format.js";
+import { Patch, type PatchSection } from "./lib/hashline/input.js";
 import {
   HEADTAIL_DRIFT_WARNING,
   MismatchError,
   missingTagMessage,
   nonExistentFileMessage,
   unrecognizedHashMessage,
-} from "./messages";
+} from "./lib/hashline/messages.js";
 import {
   detectLineEnding,
   normalizeToLF,
   restoreLineEndings,
-} from "./normalize";
-import { tryRecover } from "./recovery";
-import type { SnapshotStore } from "./snapshots";
-
-// ─── Schema ──────────────────────────────────────────────────────────
-
-const EditSchema = Type.Object({
-  edits: Type.String({
-    description:
-      "Hashline patch text: one or more ¶PATH#TAG sections followed by edit operations " +
-      "(replace N..M:, delete N..M, insert before|after|head|tail:). Copy the ¶PATH#TAG " +
-      "header from the read tool output.",
-  }),
-});
-
-// ─── Details type ────────────────────────────────────────────────────
-
-export interface EditToolDetails {
-  /** Per-file results. */
-  files: EditFileResult[];
-  /** Whether any files were changed. */
-  changed: boolean;
-}
-
-export interface EditFileResult {
-  /** Display-relative path. */
-  path: string;
-  /** New snapshot tag after the edit. */
-  fileHash: string;
-  /** Hashline header for the new version. */
-  header: string;
-  /** First changed line (1-indexed), or undefined for no-op. */
-  firstChangedLine?: number;
-  /** Warnings from parsing or drift. */
-  warnings?: string[];
-  /** Numbered preview lines around the change. */
-  preview: string;
-}
+} from "./lib/hashline/normalize.js";
+import { tryRecover } from "./lib/hashline/recovery.js";
+import type { SnapshotStore } from "./lib/hashline/snapshots.js";
+import {
+  type EditFileResult,
+  EditSchema,
+  type EditToolDetails,
+} from "./schema.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 

@@ -10,16 +10,16 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { createEditTool } from "./src/edit";
-import { createGrepTool } from "./src/grep";
-import { injectPrompt } from "./src/prompt";
-import { createReadTool } from "./src/read";
-import { InMemorySnapshotStore } from "./src/snapshots";
-import { createWriteTool } from "./src/write";
+import { createEditTool } from "./src/edit.js";
+import { createGrepTool } from "./src/grep.js";
+import { InMemorySnapshotStore } from "./src/lib/hashline/snapshots.js";
+import { injectPrompt } from "./src/prompt.js";
+import { createReadTool } from "./src/read.js";
+import { createWriteTool } from "./src/write.js";
 
-export * from "./src/format";
-export * from "./src/snapshots";
-export * from "./src/types";
+export * from "./src/lib/hashline/format.js";
+export * from "./src/lib/hashline/snapshots.js";
+export * from "./src/lib/hashline/types.js";
 
 export default function (pi: ExtensionAPI) {
   const snapshots = new InMemorySnapshotStore();

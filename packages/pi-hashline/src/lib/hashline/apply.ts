@@ -7,8 +7,8 @@
  * line preserve order (before-anchor → replacement → after-anchor).
  */
 
-import { cloneCursor } from "./tokenizer";
-import type { Anchor, ApplyResult, Edit } from "./types";
+import { cloneCursor } from "./tokenizer.js";
+import type { Anchor, ApplyResult, Edit } from "./types.js";
 
 // ─── Internal types ──────────────────────────────────────────────────
 

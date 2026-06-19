@@ -9,6 +9,9 @@ catalogs:
     '@types/turndown':
       specifier: 5.0.6
       version: 5.0.6
+    diff:
+      specifier: 8.0.4
+      version: 8.0.4
     htmlparser2:
       specifier: 12.0.0
       version: 12.0.0
@@ -112,7 +115,7 @@ importers:
         specifier: '*'
         version: 0.78.1
       diff:
-        specifier: ^8.0.0
+        specifier: 'catalog:'
         version: 8.0.4
       typebox:
         specifier: '*'

@@ -1,7 +1,7 @@
 /**
  * Hashline grep tool override.
  *
- * Overrides the built-in `grep` tool to emit `¶PATH#TAG` headers for each
+ * Overrides the built-in `grep` tool to emit `\u00b6PATH#TAG` headers for each
  * file with matches. Uses ripgrep (`rg --json`) for fast, gitignore-aware
  * search. After finding matches, reads each matching file to compute its
  * content hash and record a snapshot — so the agent can immediately `edit`
@@ -13,79 +13,26 @@ import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import {
+  computeFileHash,
+  formatHashlineHeader,
+} from "./lib/hashline/format.js";
+import { normalizeToLF } from "./lib/hashline/normalize.js";
+import type { SnapshotStore } from "./lib/hashline/snapshots.js";
+import {
+  type GrepFileResult,
+  GrepSchema,
+  type GrepToolDetails,
+} from "./schema.js";
 
-import { computeFileHash, formatHashlineHeader } from "./format";
-import { normalizeToLF } from "./normalize";
-import type { SnapshotStore } from "./snapshots";
-
-// ─── Schema ──────────────────────────────────────────────────────────
-
-const GrepSchema = Type.Object({
-  pattern: Type.String({
-    description: "The regex pattern to search for (ripgrep syntax)",
-  }),
-  path: Type.Optional(
-    Type.String({
-      description:
-        "File or directory to search in (default: current working directory)",
-    }),
-  ),
-  glob: Type.Optional(
-    Type.String({
-      description:
-        "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'",
-    }),
-  ),
-  context: Type.Optional(
-    Type.Number({
-      description:
-        "Number of lines to show before and after each match (default: 0)",
-    }),
-  ),
-  ignoreCase: Type.Optional(
-    Type.Boolean({
-      description: "Case-insensitive search (default: false)",
-    }),
-  ),
-  literal: Type.Optional(
-    Type.Boolean({
-      description:
-        "Treat pattern as literal string instead of regex (default: false)",
-    }),
-  ),
-});
-
-// ─── Details type ────────────────────────────────────────────────────
-
-export interface GrepToolDetails {
-  /** Number of files with matches. */
-  filesWithMatches: number;
-  /** Total matching lines across all files. */
-  totalMatches: number;
-  /** Per-file results. */
-  files: GrepFileResult[];
-}
-
-export interface GrepFileResult {
-  /** Display-relative path. */
-  path: string;
-  /** Content hash of the full file (for subsequent editing). */
-  fileHash: string;
-  /** Hashline header for this file snapshot. */
-  header: string;
-  /** Number of matches in this file. */
-  matchCount: number;
-}
-
-// ─── Constants ───────────────────────────────────────────────────────
+// -- Constants ----------------------------------------------------------
 
 const DEFAULT_MAX_BYTES = 50 * 1024;
 const DEFAULT_MAX_FILES = 50;
 const MAX_CONCURRENT_READS = 8;
 const GREP_MAX_LINE_LENGTH = 500;
 
-// ─── Helpers ─────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------
 
 function resolveDisplayPath(rawPath: string, cwd: string): string {
   const resolved = resolve(cwd, rawPath);
@@ -100,7 +47,7 @@ function resolveDisplayPath(rawPath: string, cwd: string): string {
   return resolved;
 }
 
-// ─── rg invocation ───────────────────────────────────────────────────
+// -- rg invocation ------------------------------------------------------
 
 interface RgMatch {
   path: string;
@@ -228,7 +175,7 @@ function runRg(
   });
 }
 
-// ─── Tool creator ────────────────────────────────────────────────────
+// -- Tool creator -------------------------------------------------------
 
 export function createGrepTool(
   snapshots: SnapshotStore,
@@ -237,13 +184,13 @@ export function createGrepTool(
     name: "grep",
     label: "Grep",
     description:
-      "Search file contents using ripgrep. Results include ¶PATH#TAG headers " +
+      "Search file contents using ripgrep. Results include \u00b6PATH#TAG headers " +
       "so you can immediately edit matching files without re-reading them. " +
       "Requires ripgrep (rg) to be installed.",
     promptSnippet:
-      "Search file contents — matching files get ¶PATH#TAG headers for immediate editing",
+      "Search file contents — matching files get \u00b6PATH#TAG headers for immediate editing",
     promptGuidelines: [
-      "Use grep to find code by pattern. Every matching file starts with a ¶PATH#TAG header — use that tag to edit the file without re-reading it. Use read if you need to see the full file content around the match.",
+      "Use grep to find code by pattern. Every matching file starts with a \u00b6PATH#TAG header — use that tag to edit the file without re-reading it. Use read if you need to see the full file content around the match.",
       "Use glob to filter by file extension (e.g. '*.ts'), context to show surrounding lines, ignoreCase for case-insensitive search, and literal to match a fixed string instead of regex.",
     ],
     parameters: GrepSchema,

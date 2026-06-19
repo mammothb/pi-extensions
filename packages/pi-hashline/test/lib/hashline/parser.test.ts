@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePatch } from "../src/parser";
-import type { Edit } from "../src/types";
+import { parsePatch } from "../../../src/lib/hashline/parser.js";
+import type { Edit } from "../../../src/lib/hashline/types.js";
 
 function collectKinds(edits: Edit[]): string[] {
   return edits.map((e) => e.kind);
@@ -190,25 +190,28 @@ describe("parsePatch", () => {
   });
 
   describe("envelope and abort markers", () => {
-    it("<<< is silently consumed", () => {
-      const { edits } = parsePatch("replace 1..1:\n+line\n<<<\n");
-      // <<< is consumed; edit still valid
+    it("*** Begin Patch is silently consumed", () => {
+      const { edits } = parsePatch("replace 1..1:\n+line\n*** Begin Patch\n");
+      expect(edits).toHaveLength(2);
+    });
+    it("*** End Patch stops parsing", () => {
+      const { edits } = parsePatch(
+        "replace 1..1:\n+line\n*** End Patch\n+ignored\n",
+      );
+      // +ignored is after *** End Patch so dropped
       expect(edits).toHaveLength(2);
     });
 
-    it(">>> stops parsing", () => {
-      const { edits } = parsePatch("replace 1..1:\n+line\n>>>\n+ignored\n");
-      // +ignored is after >>> so dropped
-      expect(edits).toHaveLength(2);
+    it("--- is rejected as bare body row (MINUS_ROW_REJECTED)", () => {
+      expect(() => parsePatch("replace 1..1:\n---\n")).toThrow(
+        /rows are not valid/,
+      );
     });
 
-    it("--- is silently consumed", () => {
-      const { edits } = parsePatch("replace 1..1:\n+line\n---\n");
-      expect(edits).toHaveLength(2);
-    });
-
-    it("... stops parsing", () => {
-      const { edits } = parsePatch("replace 1..1:\n+line\n...\n+ignored\n");
+    it("*** Abort stops parsing", () => {
+      const { edits } = parsePatch(
+        "replace 1..1:\n+line\n*** Abort\n+ignored\n",
+      );
       expect(edits).toHaveLength(2);
     });
   });

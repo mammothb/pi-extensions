@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Tokenizer } from "../src/tokenizer";
+import { Tokenizer } from "../../../src/lib/hashline/tokenizer.js";
 
 describe("Tokenizer", () => {
   const tokenizer = new Tokenizer();
@@ -18,28 +18,21 @@ describe("Tokenizer", () => {
   });
 
   describe("envelope and abort markers", () => {
-    it("classifies <<< as envelope-begin", () => {
-      const t = tokenizer.tokenize("<<<");
+    it("classifies *** Begin Patch as envelope-begin", () => {
+      const t = tokenizer.tokenize("*** Begin Patch");
       expect(t.kind).toBe("envelope-begin");
     });
-
-    it("classifies >>> as envelope-end", () => {
-      const t = tokenizer.tokenize(">>>");
+    it("classifies *** End Patch as envelope-end", () => {
+      const t = tokenizer.tokenize("*** End Patch");
       expect(t.kind).toBe("envelope-end");
     });
-
-    it("classifies --- as envelope-separator", () => {
-      const t = tokenizer.tokenize("---");
-      expect(t.kind).toBe("envelope-separator");
-    });
-
-    it("classifies ... as abort", () => {
-      const t = tokenizer.tokenize("...");
+    it("classifies *** Abort as abort", () => {
+      const t = tokenizer.tokenize("*** Abort");
       expect(t.kind).toBe("abort");
     });
 
     it("markers are exact match (no prefix/suffix)", () => {
-      const t = tokenizer.tokenize("<<< extra");
+      const t = tokenizer.tokenize("*** Begin Patch extra");
       expect(t.kind).toBe("raw"); // not envelope-begin
     });
   });
@@ -304,10 +297,9 @@ describe("Tokenizer", () => {
     });
 
     it("isEnvelopeMarker detects markers", () => {
-      expect(tokenizer.isEnvelopeMarker("<<<")).toBe(true);
-      expect(tokenizer.isEnvelopeMarker(">>>")).toBe(true);
-      expect(tokenizer.isEnvelopeMarker("---")).toBe(true);
-      expect(tokenizer.isEnvelopeMarker("...")).toBe(true);
+      expect(tokenizer.isEnvelopeMarker("*** Begin Patch")).toBe(true);
+      expect(tokenizer.isEnvelopeMarker("*** End Patch")).toBe(true);
+      expect(tokenizer.isEnvelopeMarker("*** Abort")).toBe(true);
       expect(tokenizer.isEnvelopeMarker("other")).toBe(false);
     });
   });

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { applyEdits } from "../src/apply";
+import { applyEdits } from "../../../src/lib/hashline/apply.js";
 import {
   RECOVERY_EXTERNAL_WARNING,
   RECOVERY_SESSION_REPLAY_WARNING,
-} from "../src/messages";
-import { tryRecover } from "../src/recovery";
-import { InMemorySnapshotStore } from "../src/snapshots";
-import type { Edit } from "../src/types";
+} from "../../../src/lib/hashline/messages.js";
+import { tryRecover } from "../../../src/lib/hashline/recovery.js";
+import { InMemorySnapshotStore } from "../../../src/lib/hashline/snapshots.js";
+import type { Edit } from "../../../src/lib/hashline/types.js";
 
 // Helpers
 function anc(line: number) {

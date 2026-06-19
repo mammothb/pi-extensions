@@ -7,10 +7,10 @@
  * requires file text + language detection and happens at apply time.
  */
 
-import { HL_PAYLOAD_REPLACE } from "./format";
-import type { BlockTarget, Token } from "./tokenizer";
-import { Tokenizer } from "./tokenizer";
-import type { Anchor, Cursor, Edit, ParsedRange } from "./types";
+import { HL_PAYLOAD_REPLACE } from "./format.js";
+import type { BlockTarget, Token } from "./tokenizer.js";
+import { Tokenizer } from "./tokenizer.js";
+import type { Anchor, Cursor, Edit, ParsedRange } from "./types.js";
 
 // ─── Warning / error message constants ───────────────────────────────
 
@@ -291,7 +291,6 @@ function feedToken(state: ParseState, token: Token): void {
 
   switch (token.kind) {
     case "envelope-begin":
-    case "envelope-separator":
     case "blank":
       // Silently consumed
       return;

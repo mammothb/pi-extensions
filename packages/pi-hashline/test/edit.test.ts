@@ -4,10 +4,10 @@ import { join, resolve } from "node:path";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EditToolDetails } from "../src/edit";
-import { createEditTool } from "../src/edit";
-import { MismatchError } from "../src/messages";
-import { InMemorySnapshotStore } from "../src/snapshots";
+import { createEditTool } from "../src/edit.js";
+import { MismatchError } from "../src/lib/hashline/messages.js";
+import { InMemorySnapshotStore } from "../src/lib/hashline/snapshots.js";
+import type { EditToolDetails } from "../src/schema.js";
 
 let testDir: string;
 let snapshots: InMemorySnapshotStore;

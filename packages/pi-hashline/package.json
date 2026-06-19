@@ -22,6 +22,6 @@
     "typebox": "*"
   },
   "dependencies": {
-    "diff": "^8.0.0"
+    "diff": "catalog:"
   }
 }

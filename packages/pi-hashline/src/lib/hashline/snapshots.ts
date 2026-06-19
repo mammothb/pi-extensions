@@ -16,7 +16,7 @@
  * edit onto the live content.
  */
 
-import { computeFileHash } from "./format";
+import { computeFileHash } from "./format.js";
 
 /**
  * One full-file version observed at a point in time. The tag the model sees

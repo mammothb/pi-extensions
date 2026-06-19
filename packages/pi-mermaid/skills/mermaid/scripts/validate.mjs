@@ -61,7 +61,7 @@ async function main() {
     source = Buffer.concat(chunks).toString("utf-8");
   }
 
-  if (!source || !source.trim()) {
+  if (!source?.trim()) {
     console.log(JSON.stringify({ valid: false, error: "Empty diagram" }));
     process.exit(0);
   }

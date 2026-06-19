@@ -4,10 +4,9 @@ import { join, resolve } from "node:path";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-import type { GrepToolDetails } from "../src/grep";
-import { createGrepTool } from "../src/grep";
-import { InMemorySnapshotStore } from "../src/snapshots";
+import { createGrepTool } from "../src/grep.js";
+import { InMemorySnapshotStore } from "../src/lib/hashline/snapshots.js";
+import type { GrepToolDetails } from "../src/schema.js";
 
 let testDir: string;
 let snapshots: InMemorySnapshotStore;
@@ -64,7 +63,7 @@ async function writeTestFile(
 // Use a conditional describe so these tests are skipped gracefully.
 const runTests = (() => {
   try {
-    const { spawnSync } = require("child_process");
+    const { spawnSync } = require("node:child_process");
     const result = spawnSync("rg", ["--version"], {
       stdio: "ignore",
       timeout: 5000,
