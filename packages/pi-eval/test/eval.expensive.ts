@@ -18,7 +18,9 @@ const cwd = process.cwd();
 
 describe("eval — timeout (expensive)", () => {
   it("Python infinite loop is killed by 30s timeout", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     await expect(
       tool.execute(
         "p6",

@@ -318,7 +318,9 @@ describe("edit tool (hashline)", () => {
     const details = result.details as EditToolDetails;
     expect(details.files).toHaveLength(1);
     expect(details.files[0]!.warnings).toBeDefined();
-    expect(details.files[0]!.warnings![0]).toMatch(/snapshot tag was stale/);
+    expect(
+      details.files[0]!.warnings!.some((w) => /snapshot tag was stale/.test(w)),
+    ).toBe(true);
 
     // File should have the insert applied.
     const newContent = await readFile(absPath, "utf-8");
@@ -349,7 +351,9 @@ describe("edit tool (hashline)", () => {
 
     const details = result.details as EditToolDetails;
     expect(details.files[0]!.warnings).toBeDefined();
-    expect(details.files[0]!.warnings![0]).toMatch(/snapshot tag was stale/);
+    expect(
+      details.files[0]!.warnings!.some((w) => /snapshot tag was stale/.test(w)),
+    ).toBe(true);
   });
 
   it("multi-section edit applies both files", async () => {
@@ -447,7 +451,7 @@ describe("edit tool (hashline)", () => {
     expect(newContent).toBe("a\r\nX\r\nc\r\n");
   });
 
-  it("edit response includes numbered preview", async () => {
+  it("edit response includes hashline preview", async () => {
     await writeTestFile(
       "preview.ts",
       "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n",
@@ -468,11 +472,11 @@ describe("edit tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    // Should have the new header + numbered lines around line 4.
+    // Should have the new header + hash-anchored lines around line 4.
     expect(text).toMatch(/^¶preview\.ts#[0-9A-F]{6}\n/m);
-    expect(text).toContain("3:line3");
-    expect(text).toContain("4:CHANGED");
-    expect(text).toContain("5:line5");
+    expect(text).toMatch(/[0-9a-f]{4}│line3/);
+    expect(text).toMatch(/[0-9a-f]{4}│CHANGED/);
+    expect(text).toMatch(/[0-9a-f]{4}│line5/);
   });
 
   it("no-op edit (empty diff) works", async () => {
@@ -611,6 +615,150 @@ describe("edit tool (hashline)", () => {
       // Should return an error (no throw — error in content)
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toMatch(/could not resolve/);
+    });
+  });
+
+  describe("JSON format", () => {
+    it("replaces a line by line number", async () => {
+      await writeTestFile("json-ln.ts", "line1\nline2\nline3\n");
+      const absPath = resolve(testDir, "json-ln.ts");
+
+      const tool = createEditTool(snapshots);
+      const ctx = createMockContext(testDir);
+
+      const result = await tool.execute(
+        "j1",
+        {
+          path: "json-ln.ts",
+          patch: [{ old_range: [2, 2], new_lines: ["REPLACED"] }],
+        } as any,
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const details = result.details as EditToolDetails;
+      expect(details.files).toHaveLength(1);
+      expect(details.changed).toBe(true);
+
+      const newContent = await readFile(absPath, "utf-8");
+      expect(newContent.replace(/\r\n/g, "\n")).toBe(
+        "line1\nREPLACED\nline3\n",
+      );
+    });
+
+    it("replaces a line by hash anchor", async () => {
+      await writeTestFile("json-hash.ts", "line1\nline2\nline3\n");
+      const absPath = resolve(testDir, "json-hash.ts");
+
+      // Compute hashes of the file to get a valid anchor
+      const { computeLineHashes } = await import("../src/lib/hashline/hash.js");
+      const hashes = computeLineHashes(
+        (await readFile(absPath, "utf-8")).replace(/\r\n/g, "\n"),
+      );
+
+      const tool = createEditTool(snapshots);
+      const ctx = createMockContext(testDir);
+
+      const result = await tool.execute(
+        "j2",
+        {
+          path: "json-hash.ts",
+          patch: [
+            { old_range: [hashes[1], hashes[1]], new_lines: ["REPLACED"] },
+          ],
+        } as any,
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const details = result.details as EditToolDetails;
+      expect(details.files).toHaveLength(1);
+      expect(details.changed).toBe(true);
+
+      const newContent = await readFile(absPath, "utf-8");
+      expect(newContent.replace(/\r\n/g, "\n")).toBe(
+        "line1\nREPLACED\nline3\n",
+      );
+    });
+
+    it("rejects stale hash anchor", async () => {
+      await writeTestFile("json-stale.ts", "a\nb\nc\n");
+
+      const tool = createEditTool(snapshots);
+      const ctx = createMockContext(testDir);
+
+      const result = await tool.execute(
+        "j3",
+        {
+          path: "json-stale.ts",
+          patch: [{ old_range: ["ffff", "ffff"], new_lines: ["X"] }],
+        } as any,
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(result.details.files).toHaveLength(0);
+      expect(result.details.changed).toBe(false);
+      expect(text).toMatch(/E_STALE_ANCHOR/);
+    });
+
+    it("rejects bare hash prefix in new_lines", async () => {
+      await writeTestFile("json-bare.ts", "a\nb\nc\n");
+
+      const tool = createEditTool(snapshots);
+      const ctx = createMockContext(testDir);
+
+      const result = await tool.execute(
+        "j4",
+        {
+          path: "json-bare.ts",
+          patch: [{ old_range: [2, 2], new_lines: ["abcd│stolen content"] }],
+        } as any,
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(result.details.files).toHaveLength(0);
+      expect(text).toMatch(/E_BARE_HASH_PREFIX/);
+    });
+
+    it("warns on boundary duplication (trailing)", async () => {
+      await writeTestFile("json-dup.ts", "function foo() {\n  code\n}\n");
+      const absPath = resolve(testDir, "json-dup.ts");
+
+      const tool = createEditTool(snapshots);
+      const ctx = createMockContext(testDir);
+
+      // Replace line 2 with content that ends in "}" (same as line 3)
+      const result = await tool.execute(
+        "j5",
+        {
+          path: "json-dup.ts",
+          patch: [{ old_range: [2, 2], new_lines: ["  code", "}"] }],
+        } as any,
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      const details = result.details as EditToolDetails;
+      expect(details.files).toHaveLength(1);
+      expect(details.files[0]!.warnings).toBeDefined();
+      expect(
+        details.files[0]!.warnings!.some((w) => /boundary duplication/.test(w)),
+      ).toBe(true);
+
+      // File should have the duplicate (no autocorrection)
+      const newContent = await readFile(absPath, "utf-8");
+      expect(newContent.replace(/\r\n/g, "\n")).toBe(
+        "function foo() {\n  code\n}\n}\n",
+      );
     });
   });
 });

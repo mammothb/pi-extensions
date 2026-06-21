@@ -55,7 +55,9 @@ function del(line: number, lineNum = 1): Edit {
 function mockResolver(map: Record<number, BlockSpan | null>): BlockResolver {
   return (req: BlockResolverRequest): BlockSpan | null => {
     const entry = map[req.line];
-    if (entry === undefined) return null;
+    if (entry === undefined) {
+      return null;
+    }
     return entry;
   };
 }

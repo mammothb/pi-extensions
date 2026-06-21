@@ -55,7 +55,9 @@ function parseOutput(text: string): ParsedOutput {
 
 /** Count all lines in a string (including empty lines). */
 function countLines(s: string): number {
-  if (!s || s.length === 0) return 0;
+  if (!s || s.length === 0) {
+    return 0;
+  }
   return s.split("\n").length;
 }
 
@@ -284,7 +286,9 @@ export function createEvalTool(): ToolDefinition<
             throw new EvalCwdNotFoundError(resolved, "not a directory");
           }
         } catch (err) {
-          if (err instanceof EvalCwdNotFoundError) throw err;
+          if (err instanceof EvalCwdNotFoundError) {
+            throw err;
+          }
           throw new EvalCwdNotFoundError(resolved);
         }
         effectiveCwd = resolved;

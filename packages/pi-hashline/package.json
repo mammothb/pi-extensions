@@ -21,8 +21,8 @@
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
-  "dependencies": {
-    "diff": "catalog:",
+  "dependencies": {},
+  "optionalDependencies": {
     "tree-sitter": "catalog:",
     "tree-sitter-javascript": "catalog:",
     "tree-sitter-python": "catalog:",

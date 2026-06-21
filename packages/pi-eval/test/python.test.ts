@@ -7,7 +7,9 @@ const cwd = process.cwd();
 
 describe("resolvePythonBinary", () => {
   it("resolves default python3 from PATH", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const bin = await resolvePythonBinary(undefined, cwd);
     expect(bin).toBeTruthy();
     // Should contain "python3" in the path
@@ -27,7 +29,9 @@ describe("resolvePythonBinary", () => {
   });
 
   it("resolves absolute pythonPath when valid", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     // First resolve default to get the absolute path
     const defaultBin = await resolvePythonBinary(undefined, cwd);
     // Then resolve using that absolute path
@@ -36,7 +40,9 @@ describe("resolvePythonBinary", () => {
   });
 
   it("resolves relative pythonPath from cwd", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const { access } = await import("node:fs/promises");
     let hasVenv = false;
     try {
@@ -45,7 +51,9 @@ describe("resolvePythonBinary", () => {
     } catch {
       // .venv not present
     }
-    if (!hasVenv) return;
+    if (!hasVenv) {
+      return;
+    }
 
     const bin = await resolvePythonBinary(".venv/bin/python3", cwd);
     expect(bin).toContain(".venv/bin/python3");

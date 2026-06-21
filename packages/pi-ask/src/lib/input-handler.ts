@@ -47,7 +47,9 @@ export function handleInput(data: string, ctx: InputDeps): boolean {
 
   const state = ctx.states[ctx.activeTab];
   const q = ctx.questions[ctx.activeTab];
-  if (!state || !q) return false;
+  if (!state || !q) {
+    return false;
+  }
 
   // Edit mode: route to inline editor
   if (state.inEditMode) {
@@ -97,7 +99,9 @@ function handleEditModeInput(
 
   if (matchesKey(data, Key.enter)) {
     const editor = ctx.editor;
-    if (!editor) return false;
+    if (!editor) {
+      return false;
+    }
 
     const text = editor.getText().trim();
     if (text) {

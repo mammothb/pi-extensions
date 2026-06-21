@@ -10,7 +10,9 @@ export function readConfigFile(
   path: string,
   label: string,
 ): Record<string, unknown> | null {
-  if (!existsSync(path)) return null;
+  if (!existsSync(path)) {
+    return null;
+  }
   try {
     return JSON.parse(readFileSync(path, "utf-8"));
   } catch (err) {

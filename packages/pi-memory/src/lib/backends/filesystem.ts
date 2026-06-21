@@ -470,7 +470,9 @@ export class FileSystemBackend implements MemoryBackend {
     limit: number,
   ): ScoredKey[] {
     const queryWords = this.#tokenize(query);
-    if (queryWords.length === 0) return [];
+    if (queryWords.length === 0) {
+      return [];
+    }
 
     const results: ScoredKey[] = [];
 

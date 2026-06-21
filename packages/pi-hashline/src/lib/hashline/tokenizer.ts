@@ -346,8 +346,10 @@ export class Tokenizer {
     const tokens: Token[] = [];
     for (let i = 0; i < lines.length; i++) {
       // Strip trailing \r for CRLF support
-      let line = lines[i] ?? "";
-      if (line.endsWith("\r")) line = line.slice(0, -1);
+      let line = lines[i] as string;
+      if (line.endsWith("\r")) {
+        line = line.slice(0, -1);
+      }
       tokens.push(classifyLine(line, i + 1));
     }
     return tokens;

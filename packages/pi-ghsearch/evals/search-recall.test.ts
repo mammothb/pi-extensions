@@ -66,8 +66,12 @@ function runGhSearch(q: SearchQuery): SearchResult {
   if (q.scope !== "code" && jsonFields[q.scope]) {
     flags.push("--json", jsonFields[q.scope]!);
   }
-  if (q.language) flags.push("--language", q.language);
-  if (q.state) flags.push("--state", q.state);
+  if (q.language) {
+    flags.push("--language", q.language);
+  }
+  if (q.state) {
+    flags.push("--state", q.state);
+  }
 
   // Build shell-safe command
   const cmd = [
@@ -201,7 +205,9 @@ describe("search recall benchmarks", () => {
     let mrrSum = 0;
     let mrrCount = 0;
     for (const r of results) {
-      if (!r.query.expected_contains || r.error) continue;
+      if (!r.query.expected_contains || r.error) {
+        continue;
+      }
       // For JSON results, find position of first expected item
       try {
         const parsed = JSON.parse(r.raw);

@@ -131,7 +131,7 @@ describe("read tool (hashline)", () => {
     expect(details1.fileHash).not.toBe(details2.fileHash);
   });
 
-  it("formats output as numbered lines", async () => {
+  it("formats output with HASH│content lines", async () => {
     await writeTestFile("nums.ts", "line1\nline2\nline3\n");
     const tool = createReadTool(snapshots);
     const ctx = createMockContext(testDir);
@@ -145,11 +145,11 @@ describe("read tool (hashline)", () => {
     );
     const text = (result.content[0] as { type: "text"; text: string }).text;
 
-    expect(text).toContain("1:line1");
-    expect(text).toContain("2:line2");
-    expect(text).toContain("3:line3");
+    // Should have HASH│content format (4 hex chars + │ + content)
+    expect(text).toMatch(/[0-9a-f]{4}│line1/);
+    expect(text).toMatch(/[0-9a-f]{4}│line2/);
+    expect(text).toMatch(/[0-9a-f]{4}│line3/);
   });
-
   it("offset skips lines", async () => {
     await writeTestFile("skip.ts", "a\nb\nc\nd\ne\n");
     const tool = createReadTool(snapshots);
@@ -164,10 +164,10 @@ describe("read tool (hashline)", () => {
     );
     const text = (result.content[0] as { type: "text"; text: string }).text;
 
-    expect(text).not.toContain("1:a");
-    expect(text).not.toContain("2:b");
-    expect(text).toContain("3:c");
-    expect(text).toContain("4:d");
+    expect(text).not.toMatch(/[0-9a-f]{4}│a\n/);
+    expect(text).not.toMatch(/[0-9a-f]{4}│b\n/);
+    expect(text).toMatch(/[0-9a-f]{4}│c/);
+    expect(text).toMatch(/[0-9a-f]{4}│d/);
   });
 
   it("limit caps the number of lines", async () => {
@@ -184,11 +184,11 @@ describe("read tool (hashline)", () => {
     );
     const text = (result.content[0] as { type: "text"; text: string }).text;
 
-    expect(text).toContain("2:b");
-    expect(text).toContain("3:c");
-    expect(text).not.toContain("1:a");
-    expect(text).not.toContain("4:d");
-    expect(text).not.toContain("5:e");
+    expect(text).toMatch(/[0-9a-f]{4}│b/);
+    expect(text).toMatch(/[0-9a-f]{4}│c/);
+    expect(text).not.toMatch(/[0-9a-f]{4}│a/);
+    expect(text).not.toMatch(/[0-9a-f]{4}│d/);
+    expect(text).not.toMatch(/[0-9a-f]{4}│e/);
   });
 
   it("snapshot is recorded in the store", async () => {
@@ -286,15 +286,14 @@ describe("read tool (hashline)", () => {
     const text = (result.content[0] as { type: "text"; text: string }).text;
 
     expect(details.fileHash).toBe(computeFileHash("line1\nline2\n"));
-    expect(text).toContain("1:line1");
-    expect(text).toContain("2:line2");
+    expect(text).toMatch(/[0-9a-f]{4}│line1/);
+    expect(text).toMatch(/[0-9a-f]{4}│line2/);
   });
 
   it("large files get truncation warning", async () => {
     const longLine = `${"x".repeat(100)}\n`;
     const lines = longLine.repeat(700);
     await writeTestFile("large.ts", lines);
-
     const tool = createReadTool(snapshots);
     const ctx = createMockContext(testDir);
 

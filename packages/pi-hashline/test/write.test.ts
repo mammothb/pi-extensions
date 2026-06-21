@@ -193,7 +193,7 @@ describe("write tool (hashline)", () => {
     expect(tag1).not.toBe(tag2);
   });
 
-  it("output includes numbered lines like read tool", async () => {
+  it("output includes hashline-anchored lines like read tool", async () => {
     const tool = createWriteTool(snapshots);
     const ctx = createMockContext(testDir);
 
@@ -209,9 +209,9 @@ describe("write tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toContain("1:line1");
-    expect(text).toContain("2:line2");
-    expect(text).toContain("3:line3");
+    expect(text).toMatch(/[0-9a-f]{4}│line1/);
+    expect(text).toMatch(/[0-9a-f]{4}│line2/);
+    expect(text).toMatch(/[0-9a-f]{4}│line3/);
   });
 
   it("details include totalLines", async () => {
@@ -267,10 +267,8 @@ describe("write tool (hashline)", () => {
     expect(details.totalLines).toBe(1);
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toContain("1:single line");
+    expect(text).toMatch(/[0-9a-f]{4}│single line/);
   });
-
-  // -- Prefix stripping integration tests -------------------------------
 
   it("strips hashline prefixes from content before writing", async () => {
     const tool = createWriteTool(snapshots);

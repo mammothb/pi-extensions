@@ -1,6 +1,29 @@
 # Hashline Edit Grammar
 
-You are editing files using **hashline anchoring**. Every file you read has a `¶PATH#TAG` header. Every edit you make must include that same header so the tool can validate you're working against the version you read.
+You are editing files using **hashline anchoring**. Every file you read has a `¶PATH#TAG` header and `HASH│content` line prefixes. Every edit you make must include the header so the tool can validate you're working against the version you read.
+
+## Two Edit Formats
+
+The edit tool accepts two formats:
+
+### JSON Format (preferred)
+```json
+{"path": "src/greet.ts", "patch": [
+  {"old_range": ["1d2e", "1d2e"], "new_lines": ["  console.log(`Hello, ${name}`);"]}
+]}
+```
+- `path` — file to edit
+- `patch` — array of edit objects, each with:
+  - `old_range`: `[start, end]` — 4-char hex HASH anchors from read output, or line numbers
+  - `new_lines`: `["..."]` — replacement content, one string per line. Use `[]` to delete.
+- All edits in a single call apply against the same pre-edit file snapshot
+
+### Text Grammar (legacy — prefer JSON format above)
+```
+¶PATH#TAG
+replace N..M:
++TEXT
+```
 
 ## Section Headers
 
@@ -37,19 +60,23 @@ Body rows appear only under a `:` header. Every body row is:
 
 ```
 +TEXT     Add a new literal line TEXT, verbatim. Leading whitespace is kept.
-          Use `+` alone to add a blank line.
+
+## Examples
+
+Read returns (note `HASH│content` line prefixes):
+```
+¶src/greet.ts#A1B200
+aB3f│function greet(name: string) {
+1d2e│  console.log("Hello, " + name);
+f09a│}
 ```
 
-There is NO other body row kind. **Never write `-old` rows or bare context lines.** To keep a line, leave it out of every range. To insert a literal line starting with `-`, prefix it: `+-text`.
-
-## Critical Rules
-
-1. **Re-ground after every edit.** Each applied edit mints a fresh `#TAG` and renumbers the file. The tag and line numbers you just used are dead. Take the next edit's `¶PATH#TAG` and line numbers from the edit response or a fresh `read`, never from pre-edit memory.
-
-2. **Ranges are tight.** Cover only lines whose content actually changes. Never widen a range to swallow an unchanged signature, brace, or statement. A stale single-line replace corrupts one line; a stale block replace shreds everything.
-
-3. **The body is the final content.** Only `+TEXT` rows under a `:` header. The range does the deleting — never include both old and new lines.
-
+JSON format — replace line identified by hash `1d2e`:
+```json
+{"path": "src/greet.ts", "patch": [
+  {"old_range": ["1d2e", "1d2e"], "new_lines": ["  console.log(`Hello, ${name}`);"]}
+]}
+```
 4. **One hunk per range.** The body is the final desired content, never an old/new pair. To change lines 2 and 5 while keeping 3–4, issue two separate hunks.
 
 5. **Never format code with this tool.** Use the project's formatter (e.g. `bash: npm run format`) for reordering imports, re-indenting, or mechanical restyling.

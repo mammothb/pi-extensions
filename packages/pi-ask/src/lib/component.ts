@@ -125,7 +125,9 @@ export class AskComponent implements Component {
 
       onMoveCursor: (delta) => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         moveCursor(pair.state, delta, getOptions(pair.q).length);
         this.invalidate();
         this.#tui.requestRender();
@@ -133,7 +135,9 @@ export class AskComponent implements Component {
 
       onToggleSelected: (index) => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         toggleSelected(pair.state, index);
         this.invalidate();
         this.#tui.requestRender();
@@ -141,13 +145,17 @@ export class AskComponent implements Component {
 
       onSelectOption: (index) => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         selectOption(pair.state, index);
       },
 
       onEnterEditMode: () => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         enterEditMode(pair.state, this.#editor);
         this.invalidate();
         this.#tui.requestRender();
@@ -155,26 +163,34 @@ export class AskComponent implements Component {
 
       onExitEditMode: (save) => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         exitEditMode(pair.state, this.#editor, save);
         this.invalidate();
       },
 
       onClearFreeTextAndUnconfirmIfNeeded: () => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         clearFreeTextAndUnconfirmIfNeeded(pair.state, pair.q);
       },
 
       onAutoConfirmIfAnswered: () => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         autoConfirmIfAnswered(pair.state, pair.q);
       },
 
       onConfirmAndAdvance: () => {
         const pair = activePair(this.#states, this.#questions, this.#activeTab);
-        if (!pair) return;
+        if (!pair) {
+          return;
+        }
         confirm(pair.state);
         this.#advance();
       },

@@ -273,7 +273,9 @@ export function renderSubmitTab(
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const state = states[i];
-    if (!q || !state) continue;
+    if (!q || !state) {
+      continue;
+    }
     const answer = getAnswerText(q, state);
     if (answer !== null) {
       add(

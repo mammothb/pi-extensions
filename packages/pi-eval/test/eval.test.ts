@@ -157,7 +157,9 @@ describe("eval — JavaScript execution", () => {
 
 describe("eval — Python execution", () => {
   it('print("hello") → STDOUT contains hello', async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p1",
       { language: "python", code: 'print("hello")' },
@@ -169,7 +171,9 @@ describe("eval — Python execution", () => {
   });
 
   it("1/0 → throws with ZeroDivisionError in STDERR", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     await expect(
       tool.execute(
         "p2",
@@ -182,7 +186,9 @@ describe("eval — Python execution", () => {
   });
 
   it("multi-line code works", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p3",
       {
@@ -197,7 +203,9 @@ describe("eval — Python execution", () => {
   });
 
   it("sys.exit(1) → throws with exit code 1", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     await expect(
       tool.execute(
         "p4",
@@ -210,7 +218,9 @@ describe("eval — Python execution", () => {
   });
 
   it("sys.exit(0) → resolves with exitCode 0", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p4b",
       { language: "python", code: "import sys; sys.exit(0)" },
@@ -222,7 +232,9 @@ describe("eval — Python execution", () => {
   });
 
   it("stderr is labelled separately from stdout", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p4c",
       {
@@ -239,7 +251,9 @@ describe("eval — Python execution", () => {
   });
 
   it("empty code → (no output)", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p5",
       { language: "python", code: "" },
@@ -251,7 +265,9 @@ describe("eval — Python execution", () => {
   });
 
   it("2 MB output is truncated at 1 MB with notice", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p7",
       {
@@ -268,7 +284,9 @@ describe("eval — Python execution", () => {
   }, 30_000);
 
   it("output under 1 MB is not truncated", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const r = await tool.execute(
       "p8",
       { language: "python", code: 'print("short")' },
@@ -323,7 +341,9 @@ describe("eval — pythonPath via config", () => {
   });
 
   it("pythonPath: .venv/bin/python3 uses venv binary", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const { access } = await import("node:fs/promises");
     let hasVenv = false;
     try {
@@ -332,7 +352,9 @@ describe("eval — pythonPath via config", () => {
     } catch {
       // .venv not present, skip
     }
-    if (!hasVenv) return;
+    if (!hasVenv) {
+      return;
+    }
     writeConfig({ pythonPath: ".venv/bin/python3" });
     const r = await tool.execute(
       "pp2",
@@ -348,7 +370,9 @@ describe("eval — pythonPath via config", () => {
   });
 
   it("import numpy succeeds inside a venv that has it", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const { access } = await import("node:fs/promises");
     let hasVenv = false;
     try {
@@ -357,7 +381,9 @@ describe("eval — pythonPath via config", () => {
     } catch {
       // .venv not present
     }
-    if (!hasVenv) return;
+    if (!hasVenv) {
+      return;
+    }
     writeConfig({ pythonPath: ".venv/bin/python3" });
     // Try importing numpy; it may or may not be installed
     try {
@@ -538,7 +564,9 @@ describe("eval — nodeModulesPath via config", () => {
     } catch {
       // no local node_modules
     }
-    if (!hasModules) return;
+    if (!hasModules) {
+      return;
+    }
 
     writeConfig({ nodeModulesPath: "./node_modules" });
     const r = await tool.execute(
@@ -651,7 +679,9 @@ describe("eval — cwd parameter", () => {
   });
 
   it("Python respects cwd parameter", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     const tmpDir = join(
       tmpdir(),
       `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`,

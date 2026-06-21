@@ -98,7 +98,9 @@ export function findCompiledWildcardMatch<T>(
 
   for (let i = patterns.length - 1; i >= 0; i -= 1) {
     const compiled = patterns[i];
-    if (!compiled) continue;
+    if (!compiled) {
+      continue;
+    }
     if (compiled.regex.test(normalizedInput)) {
       return {
         pattern: compiled.pattern,

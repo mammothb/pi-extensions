@@ -110,7 +110,9 @@ function formatFirstItem(
   scope: string,
   item: Record<string, unknown> | undefined,
 ): string {
-  if (!item) return "";
+  if (!item) {
+    return "";
+  }
 
   switch (scope) {
     case "repos": {

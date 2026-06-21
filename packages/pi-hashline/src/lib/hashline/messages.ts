@@ -52,17 +52,6 @@ export const HEADTAIL_DRIFT_WARNING =
   "is content-independent so the insert was not rejected — re-read if the " +
   "drift was unexpected.";
 
-/** Warning when recovery succeeds via 3-way merge on an external change. */
-export const RECOVERY_EXTERNAL_WARNING =
-  "Recovered from a stale file hash using a previous read snapshot (file changed externally between read and edit).";
-
-/** Warning when recovery succeeds via replay against a newer in-session snapshot. */
-export const RECOVERY_SESSION_CHAIN_WARNING =
-  "Recovered from a stale file hash using an earlier in-session snapshot (the file hash advanced after a prior edit in this session).";
-
-/** Warning when structured-patch merge refused but anchor-content gate passed. */
-export const RECOVERY_SESSION_REPLAY_WARNING =
-  "Recovered by replaying your edits onto the current file content — your previous edit in this session changed line(s) you re-targeted with a stale hash. Verify the diff matches your intent before continuing.";
 // ─── Block resolution messages ────────────────────────────────────────
 
 export const BLOCK_RESOLVER_UNAVAILABLE =

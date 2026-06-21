@@ -87,10 +87,14 @@ function getMismatchDisplayLines(
 ): number[] {
   const displayLines = new Set<number>();
   for (const line of anchorLines) {
-    if (line < 1 || line > fileLines.length) continue;
+    if (line < 1 || line > fileLines.length) {
+      continue;
+    }
     const lo = Math.max(1, line - MISMATCH_CONTEXT);
     const hi = Math.min(fileLines.length, line + MISMATCH_CONTEXT);
-    for (let lineNum = lo; lineNum <= hi; lineNum++) displayLines.add(lineNum);
+    for (let lineNum = lo; lineNum <= hi; lineNum++) {
+      displayLines.add(lineNum);
+    }
   }
   return [...displayLines].sort((a, b) => a - b);
 }
@@ -177,11 +181,15 @@ export class MismatchError extends Error {
       details.anchorLines ?? [],
       details.fileLines,
     );
-    if (displayLines.length === 0) return lines.join("\n");
+    if (displayLines.length === 0) {
+      return lines.join("\n");
+    }
     lines.push("");
     let previous = -1;
     for (const lineNum of displayLines) {
-      if (previous !== -1 && lineNum > previous + 1) lines.push("...");
+      if (previous !== -1 && lineNum > previous + 1) {
+        lines.push("...");
+      }
       previous = lineNum;
       const text = details.fileLines[lineNum - 1] ?? "";
       const marker = anchorSet.has(lineNum) ? "*" : " ";

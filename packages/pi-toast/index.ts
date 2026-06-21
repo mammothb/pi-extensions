@@ -13,7 +13,9 @@ const execFileP = promisify(execFile);
 // ── session label (tmux-aware) ──────────────────────────────────────────────
 
 async function getSessionLabel(): Promise<string> {
-  if (!process.env.TMUX) return "(shell)";
+  if (!process.env.TMUX) {
+    return "(shell)";
+  }
   try {
     const { stdout } = await execFileP(
       "tmux",

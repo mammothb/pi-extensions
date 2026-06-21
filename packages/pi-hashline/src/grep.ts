@@ -295,7 +295,9 @@ export function createGrepTool(
         );
 
         for (const result of batchResults) {
-          if (result === null) continue;
+          if (result === null) {
+            continue;
+          }
           totalMatches += result.rgFile.matches.filter((m) => m.isMatch).length;
           fileResults.push({
             path: result.displayPath,
@@ -333,9 +335,11 @@ export function createGrepTool(
               );
 
               for (let l = start; l <= end; l++) {
-                if (shown.has(l)) continue;
+                if (shown.has(l)) {
+                  continue;
+                }
                 shown.add(l);
-                const text = (lines[l - 1] ?? "").slice(
+                const text = (lines[l - 1] as string).slice(
                   0,
                   GREP_MAX_LINE_LENGTH,
                 );

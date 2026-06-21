@@ -81,10 +81,14 @@ const langCache = new Map<string, Language | null>();
  */
 function getLanguage(ext: string): Language | null {
   const cfg = EXTENSION_CONFIG[ext];
-  if (!cfg) return null;
+  if (!cfg) {
+    return null;
+  }
 
   const cached = langCache.get(ext);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
 
   let lang: Language | null = null;
   try {
@@ -107,7 +111,9 @@ function getLanguage(ext: string): Language | null {
   // Validate — setLanguage throws on invalid objects
   if (lang !== null) {
     const ParserCtor = getParserClass();
-    if (ParserCtor === null) return null;
+    if (ParserCtor === null) {
+      return null;
+    }
     try {
       const probe = new ParserCtor();
       probe.setLanguage(lang);
@@ -145,33 +151,47 @@ function blockRangeAt(
   language: Language,
 ): BlockSpan | null {
   // 1. Validate input
-  if (line < 1 || code.length === 0) return null;
+  if (line < 1 || code.length === 0) {
+    return null;
+  }
 
   // 3. Find the first non-whitespace column on the target line
   const lines = code.split("\n");
   const row = line - 1;
-  if (row >= lines.length) return null;
+  if (row >= lines.length) {
+    return null;
+  }
 
   const targetLine = lines[row];
-  if (targetLine === undefined) return null;
+  if (targetLine === undefined) {
+    return null;
+  }
 
   // 4. Blank / whitespace-only line → null
   const col = targetLine.search(/\S/);
-  if (col === -1) return null;
+  if (col === -1) {
+    return null;
+  }
 
   // 5. Parse
   const ParserCtor = getParserClass();
-  if (ParserCtor === null) return null;
+  if (ParserCtor === null) {
+    return null;
+  }
   const parser = new ParserCtor();
   parser.setLanguage(language);
   const tree = parser.parse(code);
 
   // 6. Find named leaf at (row, col)
   const leaf = tree.rootNode.namedDescendantForPosition({ row, column: col });
-  if (!leaf) return null;
+  if (!leaf) {
+    return null;
+  }
 
   // 7. Leaf must start on the target row
-  if (leaf.startPosition.row !== row) return null;
+  if (leaf.startPosition.row !== row) {
+    return null;
+  }
 
   // 8. Climb to outermost named ancestor that starts on `row`
   let node = leaf;
@@ -184,7 +204,9 @@ function blockRangeAt(
   }
 
   // 9. Error check — node.hasError propagates to ancestors in tree-sitter 0.22.x
-  if (node.hasError) return null;
+  if (node.hasError) {
+    return null;
+  }
 
   // 10. Return 1-indexed span with trailing-newline correction
   // (ported from oh-my-pi's node_content_end_line: when endPosition lands
@@ -215,7 +237,9 @@ export function createTreeSitterBlockResolver(): BlockResolver {
   return (request: BlockResolverRequest): BlockSpan | null => {
     const ext = extname(request.path).toLowerCase();
     const language = getLanguage(ext);
-    if (!language) return null;
+    if (!language) {
+      return null;
+    }
     return blockRangeAt(request.text, request.line, language);
   };
 }

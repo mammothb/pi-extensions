@@ -30,7 +30,9 @@ function applyBan(
   command: string,
   banEnabled: boolean,
 ): { blocked: boolean; reason?: string } {
-  if (!banEnabled) return { blocked: false };
+  if (!banEnabled) {
+    return { blocked: false };
+  }
 
   const blocked: Record<string, string> = {
     "gh search": "gh_search",
@@ -57,7 +59,9 @@ function applyBan(
 function simulateExtensionSetup(
   config: GhSearchConfig,
 ): ToolCallHandler | null {
-  if (!config.banBashGh) return null;
+  if (!config.banBashGh) {
+    return null;
+  }
 
   const blocked: Record<string, string> = {
     "gh search": "gh_search",
@@ -66,7 +70,9 @@ function simulateExtensionSetup(
   };
 
   return (event: ToolCallEvent) => {
-    if (event.toolName !== "bash") return;
+    if (event.toolName !== "bash") {
+      return;
+    }
 
     const cmd = event.input?.command ?? "";
     const trimmed = cmd.trim();

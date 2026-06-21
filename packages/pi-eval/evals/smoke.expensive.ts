@@ -29,7 +29,9 @@ describe("smoke: timeout (expensive)", () => {
   }, 60_000);
 
   it("Python infinite loop is killed by 30s timeout", async () => {
-    if (!(await hasPython3())) return;
+    if (!(await hasPython3())) {
+      return;
+    }
     await expect(
       tool.execute(
         "safe3",

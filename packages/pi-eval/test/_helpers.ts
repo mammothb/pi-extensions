@@ -30,8 +30,11 @@ export async function hasPython3(): Promise<boolean> {
     const { execFile } = await import("node:child_process");
     await new Promise<void>((resolvePromise, reject) => {
       execFile("python3", ["--version"], (error) => {
-        if (error) reject(error);
-        else resolvePromise();
+        if (error) {
+          reject(error);
+        } else {
+          resolvePromise();
+        }
       });
     });
     return true;

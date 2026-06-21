@@ -54,18 +54,25 @@ export function getAnswerText(
   q: Question,
   state: QuestionState,
 ): string | null {
-  if (!state.confirmed) return null;
+  if (!state.confirmed) {
+    return null;
+  }
   if (q.multi) {
     const labels = [...state.selectedIndices]
       .sort((a, b) => a - b)
       .map((idx) => q.options[idx]?.label)
       .filter((l): l is string => l !== undefined);
-    if (state.freeTextValue !== null) labels.push(state.freeTextValue);
+    if (state.freeTextValue !== null) {
+      labels.push(state.freeTextValue);
+    }
     return labels.join(", ");
   }
-  if (state.freeTextValue !== null) return state.freeTextValue;
-  if (state.selectedIndex !== null)
+  if (state.freeTextValue !== null) {
+    return state.freeTextValue;
+  }
+  if (state.selectedIndex !== null) {
     return q.options[state.selectedIndex]?.label ?? null;
+  }
   return null;
 }
 
@@ -129,7 +136,9 @@ export function exitEditMode(
 }
 
 export function autoConfirmIfAnswered(state: QuestionState, q: Question): void {
-  if (state.confirmed) return;
+  if (state.confirmed) {
+    return;
+  }
   if (q.multi) {
     if (state.selectedIndices.size > 0 || state.freeTextValue !== null) {
       state.confirmed = true;
@@ -173,7 +182,9 @@ export function buildResult(
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const s = states[i];
-    if (!q || !s) continue;
+    if (!q || !s) {
+      continue;
+    }
     const text = getAnswerText(q, s);
     if (text !== null) {
       answers[q.question] = text;

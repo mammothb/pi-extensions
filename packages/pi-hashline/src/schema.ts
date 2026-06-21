@@ -8,12 +8,35 @@ import { Type } from "typebox";
 // -- Edit tool ------------------------------------------------------------
 
 export const EditSchema = Type.Object({
-  edits: Type.String({
-    description:
-      "Hashline patch text: one or more \u00b6PATH#TAG sections followed by edit operations " +
-      "(replace N..M:, delete N..M, insert before|after|head|tail:). Copy the \u00b6PATH#TAG " +
-      "header from the read tool output.",
-  }),
+  edits: Type.Optional(
+    Type.String({
+      description:
+        "Hashline patch text: one or more \u00b6PATH#TAG sections followed by edit operations " +
+        "(replace N..M:, delete N..M, insert before|after|head|tail:). Copy the \u00b6PATH#TAG " +
+        "header from the read tool output.",
+    }),
+  ),
+  // JSON format (mutually exclusive with edits). Uses line numbers in Phase 1,
+  // hash anchors added in Phase 2.
+  path: Type.Optional(
+    Type.String({ description: "File path to edit (JSON format)" }),
+  ),
+  patch: Type.Optional(
+    Type.Array(
+      Type.Object({
+        old_range: Type.Array(Type.Union([Type.Number(), Type.String()]), {
+          minItems: 2,
+          maxItems: 2,
+          description:
+            "Inclusive line range [start, end] — numbers now, hash anchors in Phase 2",
+        }),
+        new_lines: Type.Array(Type.String(), {
+          description: "Replacement content, one string per line",
+        }),
+      }),
+      { description: "Edits to apply" },
+    ),
+  ),
 });
 
 export interface EditToolDetails {

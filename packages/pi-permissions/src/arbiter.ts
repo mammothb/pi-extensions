@@ -57,7 +57,9 @@ export function runBashArbiter(
     });
 
     child.on("error", (err) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timeoutId);
       resolve({
@@ -67,7 +69,9 @@ export function runBashArbiter(
     });
 
     child.on("close", (exitCode) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timeoutId);
 

@@ -51,7 +51,9 @@ export function isProcessAlive(pid: number): boolean {
  * Remove lock files belonging to dead PIDs.
  */
 export function cleanStaleLocks(dir: string): void {
-  if (!existsSync(dir)) return;
+  if (!existsSync(dir)) {
+    return;
+  }
   for (const entry of readdirSync(dir)) {
     const pid = parseInt(entry.replace(/\.lock$/, ""), 10);
     if (!Number.isNaN(pid) && !isProcessAlive(pid)) {
@@ -161,7 +163,9 @@ export function runScript(
 
     child.on("close", (code) => {
       if (code === 0) {
-        if (stdout.trim()) console.log(stdout.trim());
+        if (stdout.trim()) {
+          console.log(stdout.trim());
+        }
         resolve();
       } else {
         reject(

@@ -51,7 +51,9 @@ export function resolveBlockEdits(
 
     // Block edit — needs a resolver
     if (!resolver) {
-      if (onUnresolved === "drop") continue;
+      if (onUnresolved === "drop") {
+        continue;
+      }
       throw new Error(BLOCK_RESOLVER_UNAVAILABLE);
     }
 
@@ -62,7 +64,9 @@ export function resolveBlockEdits(
     });
 
     if (span === null) {
-      if (onUnresolved === "drop") continue;
+      if (onUnresolved === "drop") {
+        continue;
+      }
       throw new Error(blockUnresolvedMessage(edit.anchor.line));
     }
 

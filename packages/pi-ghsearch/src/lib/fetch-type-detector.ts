@@ -70,7 +70,9 @@ export function detectFetchType(parsed: unknown): {
       const comments =
         typeof obj.comments === "number" ? `${obj.comments} comments` : "";
       let summary = `[issue] #${obj.number} "${obj.title}" — ${obj.state}`;
-      if (comments) summary += `, ${comments}`;
+      if (comments) {
+        summary += `, ${comments}`;
+      }
       return { type: "issue", summary };
     }
 
@@ -95,7 +97,9 @@ export function detectFetchType(parsed: unknown): {
   // Array of something
   if (Array.isArray(parsed)) {
     const len = parsed.length;
-    if (len === 0) return { type: "unknown", summary: "empty list" };
+    if (len === 0) {
+      return { type: "unknown", summary: "empty list" };
+    }
     // Try to detect type from first element, but keep it simple
     return {
       type: "unknown",

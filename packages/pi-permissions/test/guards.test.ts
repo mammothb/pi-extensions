@@ -48,7 +48,9 @@ function createMockPi(hasUI = true) {
       input: Record<string, unknown>,
     ): Promise<{ block?: boolean; reason?: string } | undefined> {
       const toolCall = handlers.find((h) => h.event === "tool_call");
-      if (!toolCall) throw new Error("No tool_call handler registered");
+      if (!toolCall) {
+        throw new Error("No tool_call handler registered");
+      }
       return toolCall.handler({ toolName, input }, ctx) as Promise<
         | {
             block?: boolean;

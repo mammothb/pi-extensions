@@ -7,7 +7,9 @@ import { McpResultPayload } from "../types";
  */
 function tryParsePayload(payload: string): string | undefined {
   const trimmed = payload.trim();
-  if (!trimmed.startsWith("{")) return undefined;
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
   try {
     const data = Value.Parse(McpResultPayload, JSON.parse(trimmed));
     return data.result.content.find((item) => item.text)?.text;

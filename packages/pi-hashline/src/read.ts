@@ -16,8 +16,11 @@ import {
 import {
   computeFileHash,
   formatHashlineHeader,
-  formatNumberedLines,
 } from "./lib/hashline/format.js";
+import {
+  computeLineHashes,
+  formatHashlineRegion,
+} from "./lib/hashline/hash.js";
 import type { SnapshotStore } from "./lib/hashline/snapshots.js";
 import { ReadSchema, type ReadToolDetails } from "./schema.js";
 
@@ -151,8 +154,11 @@ export function createReadTool(
         const allLines = rawLines;
         const totalLines = allLines.length;
 
-        // Compute hash over full normalized content.
+        // Compute file-level hash for snapshot tag.
         const fileHash = computeFileHash(normalized);
+
+        // Compute per-line content hashes for the entire file.
+        const allLineHashes = computeLineHashes(normalized);
 
         // Record snapshot (keyed by absolute path for consistency).
         snapshots.record(absolutePath, normalized);
@@ -166,35 +172,31 @@ export function createReadTool(
           ? startLine + params.limit
           : allLines.length;
         const selectedLines = allLines.slice(startLine, endLine);
+        const selectedHashes = allLineHashes.slice(startLine, endLine);
 
-        let text = selectedLines.join("\n");
+        // Format with hashline header + hash-anchored lines.
+        let formatted = `${header}\n${formatHashlineRegion(selectedHashes, selectedLines)}`;
         let truncated = false;
 
-        // Truncate at 50KB.
-        const textBytes = Buffer.byteLength(text, "utf-8");
-        if (textBytes > DEFAULT_MAX_BYTES) {
-          let truncatedText = text.slice(0, DEFAULT_MAX_BYTES);
-          while (
-            Buffer.byteLength(truncatedText, "utf-8") > DEFAULT_MAX_BYTES
-          ) {
-            truncatedText = truncatedText.slice(0, -1);
+        // Truncate at 50KB, preserving complete hashline-formatted lines.
+        const formattedBytes = Buffer.byteLength(formatted, "utf-8");
+        if (formattedBytes > DEFAULT_MAX_BYTES) {
+          const formattedLines = formatted.split("\n");
+          // First line is the ¶PATH#TAG header — always keep it.
+          let kept = formattedLines[0] as string;
+          for (let i = 1; i < formattedLines.length; i++) {
+            const candidate = `${kept}\n${formattedLines[i] as string}`;
+            if (Buffer.byteLength(candidate, "utf-8") > DEFAULT_MAX_BYTES) {
+              truncated = true;
+              break;
+            }
+            kept = candidate;
           }
-          const truncatedLines = truncatedText.split("\n");
-          const originalLastLine = selectedLines[truncatedLines.length - 1];
-          const displayLines =
-            truncatedLines[truncatedLines.length - 1] === originalLastLine
-              ? truncatedLines
-              : truncatedLines.slice(0, -1);
-
-          text = `${displayLines.join("\n")}\n\n[Output truncated at 50KB. Use offset/limit to read specific sections.]`;
-          truncated = true;
+          formatted = `${kept}\n\n[Output truncated at 50KB. Use offset/limit to read specific sections.]`;
         }
 
-        // Format with hashline header + numbered lines.
-        const output = `${header}\n${formatNumberedLines(text, startLine + 1)}`;
-
         return {
-          content: [{ type: "text", text: output }],
+          content: [{ type: "text", text: formatted }],
           details: {
             totalLines,
             totalBytes,

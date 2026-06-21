@@ -125,8 +125,11 @@ function bucketByLine(edits: IndexedEdit[]): Map<number, IndexedEdit[]> {
           ? entry.edit.cursor.anchor.line
           : 0; // won't be used (bof/eof are partitioned out)
     const bucket = byLine.get(line);
-    if (bucket) bucket.push(entry);
-    else byLine.set(line, [entry]);
+    if (bucket) {
+      bucket.push(entry);
+    } else {
+      byLine.set(line, [entry]);
+    }
   }
   return byLine;
 }
@@ -246,10 +249,14 @@ export function applyEdits(text: string, edits: readonly Edit[]): ApplyResult {
 
   // Apply boundary inserts.
   const bofChanged = insertAtStart(fileLines, bofLines);
-  if (bofChanged !== undefined) track(bofChanged);
+  if (bofChanged !== undefined) {
+    track(bofChanged);
+  }
 
   const eofChanged = insertAtEnd(fileLines, eofLines);
-  if (eofChanged !== undefined) track(eofChanged);
+  if (eofChanged !== undefined) {
+    track(eofChanged);
+  }
 
   return { text: fileLines.join("\n"), firstChangedLine };
 }

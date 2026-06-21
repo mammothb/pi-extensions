@@ -66,16 +66,13 @@ afterEach(async () => {
 });
 
 describe("E2E recovery scenarios", () => {
-  it("reads file, external change on unrelated line, edit recovers", async () => {
+  it("reads file, external change on unrelated line, edit is rejected", async () => {
     const ctx = createMockContext(testDir);
 
     // 1. Write and read the file.
     await write.execute(
       "w1",
-      {
-        path: "file.ts",
-        content: "line1\nline2\nline3\nline4\nline5\n",
-      },
+      { path: "file.ts", content: "line1\nline2\nline3\nline4\nline5\n" },
       undefined,
       undefined,
       ctx,
@@ -87,52 +84,44 @@ describe("E2E recovery scenarios", () => {
       undefined,
       ctx,
     );
-    const tag = (r1.details as ReadToolDetails).fileHash;
+    const details = r1.details as ReadToolDetails;
+    const tag = details.fileHash;
 
-    // 2. External change on line 1 (unrelated to edit on line 3).
+    // 2. External change on an unrelated line (line 4).
+    const absPath = resolve(testDir, "file.ts");
     await writeFile(
-      resolve(testDir, "file.ts"),
-      "LINE1_CHANGED_EXTERNALLY\nline2\nline3\nline4\nline5\n",
+      absPath,
+      "line1\nline2\nline3\nCHANGED_EXTERNALLY\nline5\n",
       "utf-8",
     );
 
-    // 3. Edit using old tag on line 3. Recovery should succeed.
-    const e = await edit.execute(
+    // 3. Edit with stale tag — should be REJECTED (no recovery).
+    const result = await edit.execute(
       "e1",
-      {
-        edits: `¶file.ts#${tag}\nreplace 3..3:\n+LINE3_CHANGED\n`,
-      },
+      { edits: `¶file.ts#${tag}\nreplace 2..2:\n+X\n` },
       undefined,
       undefined,
       ctx,
     );
 
-    const editResult = (e.details as EditToolDetails).files[0]!;
-    // Should have a recovery warning.
-    expect(editResult.warnings).toBeDefined();
-    expect(
-      editResult.warnings!.some((w) =>
-        w.includes("Recovered from a stale file hash"),
-      ),
-    ).toBe(true);
+    const text = (result.content[0] as { type: "text"; text: string }).text;
+    expect(result.details.files).toHaveLength(0);
+    expect(result.details.changed).toBe(false);
+    // Should be rejected — no recovery
+    expect(text).toMatch(/file changed between read and edit/);
 
-    // 4. Verify file content: external change preserved + edit applied.
-    const content = await readFile(resolve(testDir, "file.ts"), "utf-8");
-    expect(content.replace(/\r\n/g, "\n")).toBe(
-      "LINE1_CHANGED_EXTERNALLY\nline2\nLINE3_CHANGED\nline4\nline5\n",
-    );
+    // File should NOT have been modified.
+    const onDisk = await readFile(absPath, "utf-8");
+    expect(onDisk).toContain("CHANGED_EXTERNALLY");
   });
 
-  it("external change on exact anchor line → unrecoverable MismatchError", async () => {
+  it("external change on exact anchor line → unrecoverable, rejected", async () => {
     const ctx = createMockContext(testDir);
 
-    // 1. Write and read.
+    // 1. Write and read the file.
     await write.execute(
       "w1",
-      {
-        path: "exact.ts",
-        content: "line1\nline2\nline3\n",
-      },
+      { path: "exact.ts", content: "line1\nline2\nline3\n" },
       undefined,
       undefined,
       ctx,
