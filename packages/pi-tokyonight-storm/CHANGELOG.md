@@ -1,5 +1,11 @@
 # @mammothb/pi-tokyonight-storm
 
+## 0.2.1
+
+### Patch Changes
+
+- 9d54440: strict semantic for pi-hashline, per line hashing, atomic io.
+
 ## 0.2.0
 
 ### Minor Changes

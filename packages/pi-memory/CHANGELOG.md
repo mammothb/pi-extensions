@@ -1,5 +1,13 @@
 # @mammothb/pi-memory
 
+## 0.3.5
+
+### Patch Changes
+
+- 9d54440: strict semantic for pi-hashline, per line hashing, atomic io.
+- Updated dependencies [9d54440]
+  - @mammothb/pi-shared@1.3.1
+
 ## 0.3.4
 
 ### Patch Changes

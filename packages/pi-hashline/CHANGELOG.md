@@ -1,5 +1,11 @@
 # @mammothb/pi-hashline
 
+## 1.0.0
+
+### Major Changes
+
+- 9d54440: strict semantic for pi-hashline, per line hashing, atomic io.
+
 ## 0.3.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @mammothb/pi-mermaid
 
+## 0.1.1
+
+### Patch Changes
+
+- 9d54440: strict semantic for pi-hashline, per line hashing, atomic io.
+
 ## 0.1.0
 
 ### Minor Changes

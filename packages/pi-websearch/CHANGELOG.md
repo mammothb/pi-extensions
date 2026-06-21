@@ -1,5 +1,13 @@
 # @mammothb/pi-websearch
 
+## 4.0.3
+
+### Patch Changes
+
+- 9d54440: strict semantic for pi-hashline, per line hashing, atomic io.
+- Updated dependencies [9d54440]
+  - @mammothb/pi-shared@1.3.1
+
 ## 4.0.2
 
 ### Patch Changes
