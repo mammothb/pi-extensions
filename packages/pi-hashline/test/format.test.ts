@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   computeFileHash,
   formatHashlineHeader,
-  formatNumberedLine,
-  formatNumberedLines,
   HL_FILE_HASH_LENGTH,
 } from "../src/lib/hashline/format.js";
 
@@ -54,27 +52,5 @@ describe("formatHashlineHeader", () => {
     expect(formatHashlineHeader("src/foo.ts", "A1B200")).toBe(
       "¶src/foo.ts#A1B200",
     );
-  });
-});
-
-describe("formatNumberedLine", () => {
-  it("formats a single numbered line", () => {
-    expect(formatNumberedLine(1, "const x = 42;")).toBe("1:const x = 42;");
-  });
-});
-
-describe("formatNumberedLines", () => {
-  it("formats multiple lines with starting line number", () => {
-    const text = "line1\nline2\nline3";
-    expect(formatNumberedLines(text, 1)).toBe("1:line1\n2:line2\n3:line3");
-  });
-
-  it("formats with custom start line", () => {
-    const text = "a\nb";
-    expect(formatNumberedLines(text, 10)).toBe("10:a\n11:b");
-  });
-
-  it("handles empty string", () => {
-    expect(formatNumberedLines("", 1)).toBe("1:");
   });
 });

@@ -177,9 +177,9 @@ function jsonPatchToEdits(
 }
 
 /**
- * Execute a JSON-format edit. Supports both line numbers (Phase 1) and
- * hash anchors (Phase 2) in old_range. Hash mismatches are rejected with
- * a diagnostic that includes fresh anchor context.
+ * Execute a JSON-format edit. Supports hash anchors and line numbers in
+ * old_range. Hash mismatches are rejected with a diagnostic that includes
+ * fresh anchor context.
  */
 async function executeJsonEdit(
   absPath: string,
@@ -198,7 +198,6 @@ async function executeJsonEdit(
   // Reject bare hash prefixes in edit content (Phase 3).
   assertNoBareHashPrefixLines(patch, fileHashes);
 
-  // Resolve hash anchors (or pass through line numbers).
   const { resolved, mismatches, boundaryWarnings } = resolveHashlineEdits(
     patch,
     fileHashes,
@@ -209,7 +208,6 @@ async function executeJsonEdit(
     throw new Error(formatMismatchError(mismatches, fileLines, fileHashes));
   }
 
-  // Convert resolved edits (now all line numbers) to internal Edit[].
   const numberedPatch = resolved.map((r) => ({
     old_range: [r.old_range[0].line, r.old_range[1].line] as [number, number],
     new_lines: r.new_lines,
@@ -316,7 +314,7 @@ export function createEditTool(
       "Edit files with hashline anchoring — copy ¶PATH#TAG from read/grep/write output",
     promptGuidelines: [
       "Use edit to modify existing files. Copy the ¶PATH#TAG header from your most recent read, grep, or write output — the tag is REQUIRED. Use the write tool to create new files.",
-      "After every edit, the file gets a new tag and renumbered lines. Always take the next edit's ¶PATH#TAG and line numbers from the edit response or a fresh read — never reuse old tags.",
+      "After every edit, the file gets a new tag and hash anchors. Always take the next edit's ¶PATH#TAG and hash anchors from the edit response or a fresh read — never reuse old tags.",
       "If the tool returns a stale-tag rejection (automatic recovery failed), STOP and re-read the file. A drift warning means the edit was applied — verify the diff, do not re-read.",
       "Use replace N..M: for changes, delete N..M for removal, insert before/after/head/tail: for additions. Body rows are +TEXT only — no -old rows or bare context lines.",
       'For JSON format: use {"path":"file","patch":[{"old_range":[N,M],"new_lines":["..."]}]}',

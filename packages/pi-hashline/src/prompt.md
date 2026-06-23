@@ -87,59 +87,6 @@ JSON format — replace line identified by hash `1d2e`:
 
 8. **Block resolution is language-aware.** Supported languages: TypeScript (.ts/.tsx), JavaScript (.js/.jsx/.mjs/.cjs), Python (.py/.pyw), YAML (.yaml/.yml), and optionally Bash, JSON, TOML, CSS, HTML, Rust, Go (when installed).
 
-## Examples
-
-Read returns:
-```
-¶src/greet.ts#A1B200
-1:function greet(name: string) {
-2:  console.log("Hello, " + name);
-3:}
-```
-
-Replace line 2:
-```
-¶src/greet.ts#A1B200
-replace 2..2:
-+  console.log(`Hello, ${name}`);
-```
-
-Insert after line 1:
-```
-¶src/greet.ts#A1B200
-insert after 1:
-+  if (!name) name = "world";
-```
-
-Delete line 2:
-```
-¶src/greet.ts#A1B200
-delete 2
-```
-
-Add header and footer:
-```
-¶src/greet.ts#A1B200
-insert head:
-+// Auto-generated
-insert tail:
-+export default greet;
-```
-
-Replace a whole function block (Python):
-```
-¶greet.py#A1B200
-replace block 1:
-+def greet(name):
-+    print(f"Hello, {name}")
-```
-
-Delete an inner if-statement:
-```
-¶src/module.ts#C3D400
-delete block 2
-```
-
 ## Anti-Patterns (WRONG)
 ```
 # WRONG — empty replace to delete. Use delete 4 instead.
@@ -165,4 +112,4 @@ replace 3..3:
 
 ## On Stale-Tag Rejection
 
-If the edit tool says the tag is stale ("file changed between read and edit"), re-`read` the file to get the current tag and line numbers. Never stack more edits onto stale numbers.
+If the edit tool says the tag is stale ("file changed between read and edit"), re-`read` the file to get the current tag and hash anchors. Never stack more edits onto stale anchors.

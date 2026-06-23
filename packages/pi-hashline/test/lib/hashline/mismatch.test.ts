@@ -2,90 +2,13 @@
  * Unit tests for MismatchError and its displayMessage rendering.
  */
 import { describe, expect, it } from "vitest";
-import {
-  formatFullAnchorRequirement,
-  MismatchError,
-  parseTag,
-  validateLineRef,
-} from "../../../src/lib/hashline/mismatch.js";
+import { MismatchError } from "../../../src/lib/hashline/mismatch.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function makeFileLines(...lines: string[]): string[] {
   return lines;
 }
-
-// ─── parseTag ─────────────────────────────────────────────────────────
-
-describe("parseTag", () => {
-  it("parses a bare line number", () => {
-    expect(parseTag("42")).toEqual({ line: 42 });
-  });
-
-  it("parses a decorated line number with leading whitespace and marker", () => {
-    expect(parseTag("  > 7")).toEqual({ line: 7 });
-  });
-
-  it("parses a line number with trailing colon and text", () => {
-    expect(parseTag("*42:some content")).toEqual({ line: 42 });
-  });
-
-  it("parses a line number with leading + marker", () => {
-    expect(parseTag("+15:code")).toEqual({ line: 15 });
-  });
-
-  it("throws on invalid input", () => {
-    expect(() => parseTag("not a number")).toThrow("Invalid line reference");
-  });
-
-  it("throws on line 0", () => {
-    expect(() => parseTag("0")).toThrow("Line number must be >= 1");
-  });
-
-  it("negative sign is consumed as a decoration marker", () => {
-    // "-5" parses as line 5 with "-" consumed by the marker character class.
-    expect(parseTag("-5")).toEqual({ line: 5 });
-  });
-});
-
-// ─── formatFullAnchorRequirement ──────────────────────────────────────
-
-describe("formatFullAnchorRequirement", () => {
-  it("returns expected format string without raw input", () => {
-    const result = formatFullAnchorRequirement();
-    expect(result).toMatch(/a bare line number/);
-    expect(result).toMatch(/¶src\/foo\.ts#1A2B3C/);
-    expect(result).toMatch(/line "160"/);
-    expect(result).not.toMatch(/Received/);
-  });
-
-  it("includes raw input when provided", () => {
-    const result = formatFullAnchorRequirement("bad input");
-    expect(result).toMatch(/Received "bad input"/);
-  });
-});
-
-// ─── validateLineRef ──────────────────────────────────────────────────
-
-describe("validateLineRef", () => {
-  it("does not throw for a valid line reference", () => {
-    expect(() => validateLineRef({ line: 3 }, ["a", "b", "c"])).not.toThrow();
-  });
-
-  it("does not throw for last line", () => {
-    expect(() => validateLineRef({ line: 3 }, ["a", "b", "c"])).not.toThrow();
-  });
-
-  it("throws when line < 1", () => {
-    expect(() => validateLineRef({ line: 0 }, ["a"])).toThrow("does not exist");
-  });
-
-  it("throws when line > file length", () => {
-    expect(() => validateLineRef({ line: 5 }, ["a", "b"])).toThrow(
-      "does not exist",
-    );
-  });
-});
 
 // ─── MismatchError construction ───────────────────────────────────────
 
@@ -212,19 +135,15 @@ describe("formatMessage / displayMessage", () => {
     expect(msg).toMatch(/Edit rejected for file\.ts/);
     expect(msg).toMatch(/file changed between read and edit/);
 
-    // Should show anchor lines with * markers.
-    expect(msg).toMatch(/\*3:c/);
-    expect(msg).toMatch(/\*6:f/);
-    expect(msg).toMatch(/\*9:i/);
+    // Should show anchor lines with * markers and hash prefixes.
+    expect(msg).toMatch(/\*[0-9a-f]{4}│c/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│f/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│i/);
 
-    // Should show context lines with space marker.
-    expect(msg).toMatch(/ 1:a/);
-    expect(msg).toMatch(/ 5:e/);
-    // File has 10 lines, all context windows overlap → no line 11.
-    expect(msg).not.toMatch(/ 11:/);
-
-    // Anchors [3,6,9] on a 10-line file: windows are 1-5, 4-8, 7-10
-    // → all lines 1-10 covered → no ellipsis gaps.
+    // Should show context lines with space marker and hash prefixes.
+    expect(msg).toMatch(/ [0-9a-f]{4}│a/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│e/);
+    // All lines 1–10 covered by overlapping context windows — no ellipsis gaps.
     expect(msg).not.toMatch(/\.\.\./);
   });
 
@@ -239,7 +158,7 @@ describe("formatMessage / displayMessage", () => {
 
     const msg = err.displayMessage;
     expect(msg).toMatch(/Edit rejected for empty\.ts/);
-    // No anchor context — no numbered lines after the header block.
+    // No anchor context — no hash-anchored lines after the header block.
     const afterHeader = msg.split("\n\n")[1];
     expect(afterHeader).toBeUndefined();
   });
@@ -254,11 +173,11 @@ describe("formatMessage / displayMessage", () => {
     });
 
     const msg = err.displayMessage;
-    expect(msg).toMatch(/\*1:line1/);
-    expect(msg).toMatch(/ 2:line2/);
-    expect(msg).toMatch(/ 3:line3/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│line1/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│line2/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│line3/);
     // Should not show line before 1 (no line 0).
-    expect(msg).not.toMatch(/0:/);
+    expect(msg).not.toMatch(/│line0/);
   });
 
   it("anchor at end of file shows last lines", () => {
@@ -271,11 +190,11 @@ describe("formatMessage / displayMessage", () => {
     });
 
     const msg = err.displayMessage;
-    expect(msg).toMatch(/\*5:e/);
-    expect(msg).toMatch(/ 4:d/);
-    expect(msg).toMatch(/ 3:c/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│e/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│d/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│c/);
     // Should not show line after 5 (no line 6).
-    expect(msg).not.toMatch(/6:/);
+    expect(msg).not.toMatch(/│f/);
   });
 
   it("adjacent anchors merge context (no ...)", () => {
@@ -289,10 +208,10 @@ describe("formatMessage / displayMessage", () => {
 
     const msg = err.displayMessage;
     // Lines 1..6 should appear without a "..." gap.
-    expect(msg).toMatch(/ 1:a/);
-    expect(msg).toMatch(/\*3:c/);
-    expect(msg).toMatch(/\*4:d/);
-    expect(msg).toMatch(/ 6:f/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│a/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│c/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│d/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│f/);
     expect(msg).not.toMatch(/\.\.\./);
   });
 
@@ -307,12 +226,11 @@ describe("formatMessage / displayMessage", () => {
 
     const msg = err.displayMessage;
     // Should show context around line 2 only.
-    expect(msg).toMatch(/\*2:b/);
-    expect(msg).toMatch(/ 1:a/);
-    expect(msg).toMatch(/ 3:c/);
-    // No reference to line 999 or 0.
+    expect(msg).toMatch(/\*[0-9a-f]{4}│b/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│a/);
+    expect(msg).toMatch(/ [0-9a-f]{4}│c/);
+    // No reference to line 999 or line 0 content.
     expect(msg).not.toMatch(/999/);
-    expect(msg).not.toMatch(/0:/);
   });
 
   it("message and displayMessage differ: message is formatMessage, displayMessage delegates", () => {
@@ -340,8 +258,7 @@ describe("formatMessage / displayMessage", () => {
 
     const msg = err.displayMessage;
     expect(msg).toMatch(/hash #FFFF00 is not from this session/);
-    expect(msg).toMatch(/never invent the tag/);
-    expect(msg).toMatch(/\*2:b/);
+    expect(msg).toMatch(/\*[0-9a-f]{4}│b/);
   });
 });
 
@@ -372,6 +289,6 @@ describe("MismatchError as plain Error", () => {
 
     expect(err.message).toMatch(/Edit rejected/);
     expect(err.message).toMatch(/file changed/);
-    expect(err.message).toMatch(/\*2:b/);
+    expect(err.message).toMatch(/\*[0-9a-f]{4}│b/);
   });
 });

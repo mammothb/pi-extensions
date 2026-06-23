@@ -17,6 +17,10 @@ import {
   computeFileHash,
   formatHashlineHeader,
 } from "./lib/hashline/format.js";
+import {
+  computeLineHashes,
+  HL_HASH_LINE_BODY_SEP,
+} from "./lib/hashline/hash.js";
 import { normalizeToLF } from "./lib/hashline/normalize.js";
 import type { SnapshotStore } from "./lib/hashline/snapshots.js";
 import {
@@ -60,8 +64,10 @@ interface RgMatch {
 interface RgFile {
   path: string;
   matches: RgMatch[];
-  /** Full file content (lines), populated when context > 0 or for hashing. */
+  /** Full file content (lines), populated when file is read for hashing. */
   contentLines?: string[];
+  /** Per-line content hashes, populated when file is read for hashing. */
+  lineHashes?: string[];
 }
 
 interface RgOptions {
@@ -275,11 +281,10 @@ export function createGrepTool(
               snapshots.record(absPath, normalized);
               const displayPath = resolveDisplayPath(rgFile.path, ctx.cwd);
 
-              // Store content lines for context display.
-              if (contextValue > 0) {
-                const lines = normalized.split("\n");
-                rgFile.contentLines = lines;
-              }
+              // Store content lines and per-line hashes for both context and flat display.
+              const lines = normalized.split("\n");
+              rgFile.contentLines = lines;
+              rgFile.lineHashes = computeLineHashes(normalized);
 
               return {
                 rgFile,
@@ -308,7 +313,7 @@ export function createGrepTool(
         }
       }
 
-      // 3. Format output: ¶PATH#TAG header + numbered match lines (with optional context).
+      // 3. Format output: ¶PATH#TAG header + hash-anchored match lines (with optional context).
       const parts: string[] = [];
 
       for (let fi = 0; fi < fileResults.length; fi++) {
@@ -320,10 +325,12 @@ export function createGrepTool(
         const rgFile = rgByAbsPath.get(absPath);
         parts.push(fr.header);
 
-        if (rgFile !== undefined) {
-          if (contextValue > 0 && rgFile.contentLines) {
+        if (rgFile?.contentLines && rgFile.lineHashes) {
+          const lines = rgFile.contentLines;
+          const hashes = rgFile.lineHashes;
+
+          if (contextValue > 0) {
             // Context mode: show surrounding lines for each match.
-            const lines = rgFile.contentLines;
             const actualMatches = rgFile.matches.filter((m) => m.isMatch);
             const shown = new Set<number>();
 
@@ -346,10 +353,11 @@ export function createGrepTool(
                 const isActualMatch = actualMatches.some(
                   (am) => am.lineNumber === l,
                 );
+                const hash = hashes[l - 1] as string;
                 if (isActualMatch) {
-                  parts.push(`${l}:${text}`);
+                  parts.push(`${hash}${HL_HASH_LINE_BODY_SEP}${text}`);
                 } else {
-                  parts.push(`${l}- ${text}`);
+                  parts.push(`${hash}- ${text}`);
                 }
               }
 
@@ -359,10 +367,14 @@ export function createGrepTool(
               }
             }
           } else {
-            // Flat mode: just show match lines.
+            // Flat mode: show match lines with hash anchors.
             for (const match of rgFile.matches) {
-              const text = match.line.slice(0, GREP_MAX_LINE_LENGTH);
-              parts.push(`${match.lineNumber}:${text}`);
+              const hash = hashes[match.lineNumber - 1] as string;
+              const text = (lines[match.lineNumber - 1] as string).slice(
+                0,
+                GREP_MAX_LINE_LENGTH,
+              );
+              parts.push(`${hash}${HL_HASH_LINE_BODY_SEP}${text}`);
             }
           }
         }

@@ -157,7 +157,7 @@ describe("edit tool (hashline)", () => {
     expect(result.details.files).toHaveLength(0);
     expect(result.details.changed).toBe(false);
     expect(text).toMatch(/changed between read and edit/);
-    expect(text).toMatch(/\*2:CHANGED/);
+    expect(text).toMatch(/\*[0-9a-f]{4}│CHANGED/);
     expect(text).toMatch(new RegExp(`#${tag}`));
   });
   it("rejects missing tag", async () => {

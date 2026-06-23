@@ -6,19 +6,12 @@
  * richer diagnostic via {@link MismatchError.displayMessage}.
  */
 
-import {
-  formatNumberedLine,
-  HL_FILE_HASH_EXAMPLES,
-  HL_FILE_HASH_SEP,
-  HL_FILE_PREFIX,
-} from "./format.js";
+import { HL_FILE_HASH_SEP, HL_FILE_PREFIX } from "./format.js";
+import { computeLineHashes } from "./hash.js";
 
 // ─── Constants ────────────────────────────────────────────────────────
-
 /** Lines of context shown around each anchor in mismatch diagnostics. */
 export const MISMATCH_CONTEXT = 2;
-
-const LINE_REF_RE = /^\s*[>+\-*]*\s*(\d+)(?::.*)?\s*$/;
 
 // ─── MismatchDetails ──────────────────────────────────────────────────
 
@@ -41,44 +34,6 @@ export interface MismatchDetails {
    * `true` for backward compatibility with direct callers.
    */
   hashRecognized?: boolean;
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-/** Format the required-shape diagnostic shown when a line reference is malformed. */
-export function formatFullAnchorRequirement(raw?: string): string {
-  const received = raw === undefined ? "" : ` Received ${JSON.stringify(raw)}.`;
-  return (
-    `a bare line number from read/search output plus the section header content-hash tag ` +
-    `(for example ${HL_FILE_PREFIX}src/foo.ts${HL_FILE_HASH_SEP}${HL_FILE_HASH_EXAMPLES[0]} and line "160")${received}`
-  );
-}
-
-/** Parse a decorated bare line-number anchor like `42`, `*42:foo`, ` > 7`. */
-export function parseTag(ref: string): { line: number } {
-  const match = ref.match(LINE_REF_RE);
-  if (!match) {
-    throw new Error(
-      `Invalid line reference. Expected ${formatFullAnchorRequirement(ref)}.`,
-    );
-  }
-  const line = Number.parseInt(match[1], 10);
-  if (line < 1) {
-    throw new Error(`Line number must be >= 1, got ${line} in "${ref}".`);
-  }
-  return { line };
-}
-
-/** Throws when the line reference is out of bounds for the given file. */
-export function validateLineRef(
-  ref: { line: number },
-  fileLines: string[],
-): void {
-  if (ref.line < 1 || ref.line > fileLines.length) {
-    throw new Error(
-      `Line ${ref.line} does not exist (file has ${fileLines.length} lines)`,
-    );
-  }
 }
 
 function getMismatchDisplayLines(
@@ -184,6 +139,7 @@ export class MismatchError extends Error {
     if (displayLines.length === 0) {
       return lines.join("\n");
     }
+    const allHashes = computeLineHashes(details.fileLines.join("\n"));
     lines.push("");
     let previous = -1;
     for (const lineNum of displayLines) {
@@ -192,8 +148,9 @@ export class MismatchError extends Error {
       }
       previous = lineNum;
       const text = details.fileLines[lineNum - 1] ?? "";
+      const hash = allHashes[lineNum - 1] ?? "????";
       const marker = anchorSet.has(lineNum) ? "*" : " ";
-      lines.push(`${marker}${formatNumberedLine(lineNum, text)}`);
+      lines.push(`${marker}${hash}\u2502${text}`);
     }
     return lines.join("\n");
   }

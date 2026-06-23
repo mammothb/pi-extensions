@@ -7,8 +7,8 @@
  * format.
  *
  * Auto-strips hashline display prefixes when the model accidentally copies
- * `\u00b6PATH#HASH` headers and `LINE:` prefixes from read output into write
- * content.
+ * `\u00b6PATH#HASH` headers and `HASH│content` or `LINE:` prefixes from read
+ * output into write content.
  */
 
 import { isAbsolute, relative, resolve } from "node:path";

@@ -16,8 +16,7 @@ export const EditSchema = Type.Object({
         "header from the read tool output.",
     }),
   ),
-  // JSON format (mutually exclusive with edits). Uses line numbers in Phase 1,
-  // hash anchors added in Phase 2.
+  // JSON format (mutually exclusive with edits).
   path: Type.Optional(
     Type.String({ description: "File path to edit (JSON format)" }),
   ),
@@ -28,7 +27,7 @@ export const EditSchema = Type.Object({
           minItems: 2,
           maxItems: 2,
           description:
-            "Inclusive line range [start, end] — numbers now, hash anchors in Phase 2",
+            "Inclusive line range [start, end] — hash anchors or line numbers",
         }),
         new_lines: Type.Array(Type.String(), {
           description: "Replacement content, one string per line",
@@ -57,8 +56,7 @@ export interface EditFileResult {
   firstChangedLine?: number;
   /** Warnings from parsing or drift. */
   warnings?: string[];
-  /** Numbered preview lines around the change. */
-  preview: string;
+  /** Hash-anchored preview lines around the change. */
 }
 
 // -- Read tool ------------------------------------------------------------

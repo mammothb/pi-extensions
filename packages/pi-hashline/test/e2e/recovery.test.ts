@@ -157,7 +157,7 @@ describe("E2E recovery scenarios", () => {
     expect(result.details.files).toHaveLength(0);
     expect(result.details.changed).toBe(false);
     expect(text).toMatch(/changed between read and edit/);
-    expect(text).toMatch(/\*2:LINE2_EXTERNALLY_CHANGED/);
+    expect(text).toMatch(/\*[0-9a-f]{4}│LINE2_EXTERNALLY_CHANGED/);
 
     // 4. File on disk should be UNCHANGED (edit rejected).
     const content = await readFile(resolve(testDir, "exact.ts"), "utf-8");

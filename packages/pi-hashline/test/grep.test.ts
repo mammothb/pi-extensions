@@ -117,7 +117,7 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     expect(head!.hash).toMatch(/^[0-9A-F]{6}$/);
   });
 
-  it("shows matching lines with line numbers", async () => {
+  it("shows matching lines with hash anchors", async () => {
     await writeTestFile(
       "src/file.ts",
       "line1\nline2\nline3 with match\nline4\nanother match here\n",
@@ -135,8 +135,9 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
     );
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toContain("3:line3 with match");
-    expect(text).toContain("5:another match here");
+    // Hash-anchored: expect 4-char hex hash followed by │ and content.
+    expect(text).toMatch(/[0-9a-f]{4}│line3 with match/);
+    expect(text).toMatch(/[0-9a-f]{4}│another match here/);
   });
 
   it("returns no matches for non-matching pattern", async () => {
@@ -309,12 +310,12 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
       undefined,
       ctx,
     );
-
     const text = (result.content[0] as { type: "text"; text: string }).text;
-    expect(text).toContain("3:MATCH");
-    expect(text).toContain("2- line2");
-    expect(text).toContain("4- line4");
-    expect(text).not.toContain("1:"); // out of context range
+    // Hash-anchored: matches show HASH│, context shows HASH-
+    expect(text).toMatch(/[0-9a-f]{4}│MATCH/);
+    expect(text).toMatch(/[0-9a-f]{4}- line2/);
+    expect(text).toMatch(/[0-9a-f]{4}- line4/);
+    expect(text).not.toMatch(/[0-9a-f]{4}[│-] line1/); // out of context range
   });
 
   it("context with overlapping ranges deduplicates lines", async () => {
@@ -333,8 +334,8 @@ describe.skipIf(!runTests)("grep tool (hashline)", () => {
 
     const text = (result.content[0] as { type: "text"; text: string }).text;
     // Both matches with context; ranges may overlap — lines deduplicated.
-    const count3 = (text.match(/3:MATCH1/g) || []).length;
-    const count5 = (text.match(/5:MATCH2/g) || []).length;
+    const count3 = (text.match(/[0-9a-f]{4}│MATCH1/g) || []).length;
+    const count5 = (text.match(/[0-9a-f]{4}│MATCH2/g) || []).length;
     expect(count3).toBe(1);
     expect(count5).toBe(1);
   });

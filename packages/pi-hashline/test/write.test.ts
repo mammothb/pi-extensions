@@ -270,7 +270,7 @@ describe("write tool (hashline)", () => {
     expect(text).toMatch(/[0-9a-f]{4}│single line/);
   });
 
-  it("strips hashline prefixes from content before writing", async () => {
+  it("strips hashline line-number prefixes from content before writing", async () => {
     const tool = createWriteTool(snapshots);
     const ctx = createMockContext(testDir);
 
@@ -278,13 +278,32 @@ describe("write tool (hashline)", () => {
     const content = "1:hello\n2:world\n";
     await tool.execute(
       "id1",
-      { path: "stripped.ts", content },
+      { path: "stripped_num.ts", content },
       undefined,
       undefined,
       ctx,
     );
 
-    const absPath = resolve(testDir, "stripped.ts");
+    const absPath = resolve(testDir, "stripped_num.ts");
+    const onDisk = await readFile(absPath, "utf-8");
+    expect(onDisk).toBe("hello\nworld\n");
+  });
+
+  it("strips hashline hash-anchor prefixes from content before writing", async () => {
+    const tool = createWriteTool(snapshots);
+    const ctx = createMockContext(testDir);
+
+    // Content with hashline hash-anchor prefixes (no header).
+    const content = "a3bf│hello\n2cf2│world\n";
+    await tool.execute(
+      "id1",
+      { path: "stripped_hash.ts", content },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const absPath = resolve(testDir, "stripped_hash.ts");
     const onDisk = await readFile(absPath, "utf-8");
     expect(onDisk).toBe("hello\nworld\n");
   });
