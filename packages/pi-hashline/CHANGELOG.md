@@ -1,5 +1,11 @@
 # @mammothb/pi-hashline
 
+## 1.0.1
+
+### Patch Changes
+
+- 7bed6a2: Fix hash-anchored line format gaps: grep output, mismatch diagnostics, prefix stripping, prompt instructions, and stale comments now consistently use `HASH│content` format. Remove dead old-format code (`formatNumberedLine`, `parseTag`, etc.).
+
 ## 1.0.0
 
 ### Major Changes
