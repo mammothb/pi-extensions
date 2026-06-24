@@ -8,15 +8,7 @@ import { Type } from "typebox";
 // -- Edit tool ------------------------------------------------------------
 
 export const EditSchema = Type.Object({
-  edits: Type.Optional(
-    Type.String({
-      description:
-        "Hashline patch text: one or more \u00b6PATH#TAG sections followed by edit operations " +
-        "(replace N..M:, delete N..M, insert before|after|head|tail:). Copy the \u00b6PATH#TAG " +
-        "header from the read tool output.",
-    }),
-  ),
-  // JSON format (mutually exclusive with edits).
+  // JSON format.
   path: Type.Optional(
     Type.String({ description: "File path to edit (JSON format)" }),
   ),
@@ -57,6 +49,7 @@ export interface EditFileResult {
   /** Warnings from parsing or drift. */
   warnings?: string[];
   /** Hash-anchored preview lines around the change. */
+  preview: string;
 }
 
 // -- Read tool ------------------------------------------------------------

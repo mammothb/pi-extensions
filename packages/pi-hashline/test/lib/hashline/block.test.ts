@@ -192,7 +192,7 @@ describe("resolveBlockEdits", () => {
       const edits: Edit[] = [block(1, ["x"])];
 
       expect(() => resolveBlockEdits(edits, text, path, resolver)).toThrow(
-        /could not resolve a syntactic block/,
+        /could not resolve a syntactic block/i,
       );
     });
 

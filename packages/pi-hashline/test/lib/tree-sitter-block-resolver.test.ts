@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { BlockResolver } from "../../src/lib/hashline/types.js";
-import { createTreeSitterBlockResolver } from "../../src/lib/tree-sitter-block-resolver.js";
+import {
+  createTreeSitterBlockResolver,
+  validateSyntax,
+} from "../../src/lib/tree-sitter-block-resolver.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -283,6 +286,47 @@ describe("TreeSitterBlockResolver", () => {
       if (span !== null) {
         expect(span.start).toBe(1);
       }
+    });
+  });
+  describe("validateSyntax", () => {
+    it("returns empty array for valid TypeScript", () => {
+      const issues = validateSyntax(
+        "test.ts",
+        "const x = 1;\nfunction foo() {\n  return x;\n}\n",
+      );
+      expect(issues).toEqual([]);
+    });
+
+    it("returns empty array for unsupported extension", () => {
+      const issues = validateSyntax("test.xyz", "anything");
+      expect(issues).toEqual([]);
+    });
+
+    it("returns empty array for empty text", () => {
+      const issues = validateSyntax("test.ts", "");
+      expect(issues).toEqual([]);
+    });
+
+    it("detects syntax error in TypeScript", () => {
+      const issues = validateSyntax(
+        "test.ts",
+        "function foo( {\n  return 1;\n}",
+      );
+      expect(issues.length).toBeGreaterThan(0);
+      expect(issues[0]!.line).toBe(1);
+      expect(issues[0]!.message).toMatch(/Unexpected/);
+    });
+
+    it("detects missing expression after equals", () => {
+      const issues = validateSyntax("test.js", "const x = ;");
+      expect(issues.length).toBeGreaterThan(0);
+    });
+
+    it("caps at 10 issues", () => {
+      // Generate a file with many errors
+      const badCode = Array.from({ length: 20 }, () => "!!!\n").join("");
+      const issues = validateSyntax("test.ts", badCode);
+      expect(issues.length).toBeLessThanOrEqual(10);
     });
   });
 });

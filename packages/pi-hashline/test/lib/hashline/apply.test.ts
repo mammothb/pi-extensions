@@ -413,7 +413,7 @@ describe("applyEdits", () => {
       ];
 
       expect(() => resolveAndApply(code, "/test.ts", edits)).toThrow(
-        /could not resolve a syntactic block/,
+        /could not resolve a syntactic block/i,
       );
     });
 
@@ -436,7 +436,7 @@ describe("applyEdits", () => {
         resolveBlockEdits(edits, code, "/test.xyz", resolver, {
           onUnresolved: "throw",
         }),
-      ).toThrow(/could not resolve/);
+      ).toThrow(/could not resolve/i);
     });
   });
 });

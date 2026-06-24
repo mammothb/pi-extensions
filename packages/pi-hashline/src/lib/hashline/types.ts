@@ -69,17 +69,6 @@ export interface ParsedRange {
   end: Anchor;
 }
 
-/** Optional hints for {@link splitPatchInput}. */
-export interface SplitOptions {
-  /** Resolves absolute paths inside hashline headers to cwd-relative form. */
-  cwd?: string;
-  /**
-   * Fallback path used when the input lacks a `¶PATH` header but contains
-   * recognizable hashline operations.
-   */
-  path?: string;
-}
-
 /**
  * Resolved 1-indexed inclusive line span of a `replace block N:` target.
  */

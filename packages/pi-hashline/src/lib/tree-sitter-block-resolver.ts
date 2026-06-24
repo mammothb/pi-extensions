@@ -243,3 +243,68 @@ export function createTreeSitterBlockResolver(): BlockResolver {
     return blockRangeAt(request.text, request.line, language);
   };
 }
+
+// ─── Syntax validation ────────────────────────────────────────────────
+
+/** A single syntax issue detected by tree-sitter. */
+export interface SyntaxIssue {
+  /** 1-indexed line number of the error. */
+  line: number;
+  /** 1-indexed column (byte offset within the line). */
+  column: number;
+  /** Human-readable summary. */
+  message: string;
+}
+
+/**
+ * Parse `text` with the tree-sitter grammar matching `path`'s extension.
+ * Returns up to 10 syntax issues (capped to avoid flooding on cascading
+ * failures). Returns [] when the language is unsupported or tree-sitter
+ * is unavailable — this is a best-effort check, not a hard gate.
+ */
+export function validateSyntax(path: string, text: string): SyntaxIssue[] {
+  const ext = extname(path).toLowerCase();
+  const language = getLanguage(ext);
+  if (!language) {
+    return [];
+  }
+
+  const ParserCtor = getParserClass();
+  if (!ParserCtor) {
+    return [];
+  }
+
+  const parser = new ParserCtor();
+  parser.setLanguage(language);
+  const tree = parser.parse(text);
+
+  const issues: SyntaxIssue[] = [];
+  const MAX_ISSUES = 10;
+
+  function walk(node: Parser.SyntaxNode): void {
+    if (issues.length >= MAX_ISSUES) {
+      return;
+    }
+    if (node.type === "ERROR") {
+      const token = text.slice(node.startIndex, node.endIndex).slice(0, 40);
+      issues.push({
+        line: node.startPosition.row + 1,
+        column: node.startPosition.column + 1,
+        message:
+          token.length > 0
+            ? `Unexpected token '${token}'`
+            : `Unexpected ${node.startPosition.row + 1}:${node.startPosition.column + 1}`,
+      });
+      return;
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(tree.rootNode);
+  return issues;
+}

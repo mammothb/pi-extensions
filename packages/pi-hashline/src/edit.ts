@@ -17,22 +17,13 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { applyEdits } from "./lib/hashline/apply.js";
 import { resolveBlockEdits } from "./lib/hashline/block.js";
-import {
-  computeFileHash,
-  formatHashlineHeader,
-} from "./lib/hashline/format.js";
+import { formatHashlineHeader } from "./lib/hashline/format.js";
 import { writeFileAtomically } from "./lib/hashline/fs-write.js";
 import {
   computeLineHashes,
   formatHashlineRegion,
 } from "./lib/hashline/hash.js";
-import { Patch, type PatchSection } from "./lib/hashline/input.js";
-import {
-  HEADTAIL_DRIFT_WARNING,
-  missingTagMessage,
-  nonExistentFileMessage,
-} from "./lib/hashline/messages.js";
-import { MismatchError } from "./lib/hashline/mismatch.js";
+import { nonExistentFileMessage } from "./lib/hashline/messages.js";
 import {
   detectLineEnding,
   normalizeToLF,
@@ -46,8 +37,8 @@ import {
   resolveHashlineEdits,
 } from "./lib/hashline/resolve.js";
 import type { SnapshotStore } from "./lib/hashline/snapshots.js";
-import { Tokenizer } from "./lib/hashline/tokenizer.js";
 import type { BlockResolver, Edit } from "./lib/hashline/types.js";
+import { validateSyntax } from "./lib/tree-sitter-block-resolver.js";
 import {
   type EditFileResult,
   EditSchema,
@@ -69,37 +60,6 @@ function resolveDisplayPath(rawPath: string, cwd: string): string {
   return resolved;
 }
 
-const TOKENIZER = new Tokenizer();
-/**
- * Extract file paths from hashline headers in edit input text.
- * Handles BOM prefix and quoted paths (defensive — `formatHashlineHeader`
- * never produces quotes). Delegates header detection to the tokenizer.
- */
-export function parseHashlineHeaders(input: string): string[] {
-  // Strip BOM if present.
-  let text = input;
-  if (text.charCodeAt(0) === 0xfeff) {
-    text = text.slice(1);
-  }
-
-  const paths = new Set<string>();
-  const lines = text.split(/\r?\n/);
-  for (const rawLine of lines) {
-    const token = TOKENIZER.tokenize(rawLine.trimStart());
-    if (token.kind !== "header") {
-      continue;
-    }
-
-    // Strip optional surrounding quotes (defensive — model may quote paths).
-    const unquoted = token.path.replace(/^["'](.+)["']$/, "$1").trim();
-    if (unquoted.length > 0) {
-      paths.add(unquoted);
-    }
-  }
-
-  return [...paths];
-}
-
 /** Show up to 20 lines around the first changed line, formatted with hashes. */
 function formatPreview(
   text: string,
@@ -117,31 +77,6 @@ function formatPreview(
     lineHashes.slice(start, end),
     lines.slice(start, end),
   );
-}
-/** Collect anchor lines from already-resolved concrete edits. */
-function collectResolvedAnchorLines(edits: readonly Edit[]): number[] {
-  const lines = new Set<number>();
-  for (const edit of edits) {
-    if (edit.kind === "delete") {
-      lines.add(edit.anchor.line);
-    } else if (
-      edit.kind === "insert" &&
-      (edit.cursor.kind === "before_anchor" ||
-        edit.cursor.kind === "after_anchor")
-    ) {
-      lines.add(edit.cursor.anchor.line);
-    }
-  }
-  return [...lines].sort((a, b) => a - b);
-}
-interface PreflightEntry {
-  section: PatchSection;
-  absPath: string;
-  displayPath: string;
-  normalized: string;
-  lineEnding: "\r\n" | "\n";
-  liveHash: string;
-  resolvedEdits: readonly Edit[];
 }
 
 // ─── JSON format helpers ───────────────────────────────────────────────
@@ -186,6 +121,7 @@ async function executeJsonEdit(
   displayPath: string,
   patch: HashlineToolEdit[],
   snapshots: SnapshotStore,
+  blockResolver?: BlockResolver,
 ): Promise<EditFileResult> {
   // Read file.
   const rawContent = await readFile(absPath, "utf-8");
@@ -208,16 +144,50 @@ async function executeJsonEdit(
     throw new Error(formatMismatchError(mismatches, fileLines, fileHashes));
   }
 
-  const numberedPatch = resolved.map((r) => ({
+  // Separate block edits from range edits and resolve them.
+  const blockEdits: Edit[] = [];
+  const blockPatchEntries = patch.filter((p) => p.block !== undefined);
+  for (const bp of blockPatchEntries) {
+    const line = bp.block as number;
+    blockEdits.push({
+      kind: "block",
+      anchor: { line },
+      payloads: bp.new_lines,
+      lineNum: line,
+      index: blockEdits.length,
+    });
+  }
+  let resolvedBlockEdits: readonly Edit[] = [];
+  if (blockEdits.length > 0) {
+    resolvedBlockEdits = resolveBlockEdits(
+      blockEdits,
+      normalized,
+      displayPath,
+      blockResolver,
+      { onUnresolved: "throw" },
+    );
+  }
+
+  const rangeEdits = resolved.map((r) => ({
     old_range: [r.old_range[0].line, r.old_range[1].line] as [number, number],
     new_lines: r.new_lines,
   }));
-  const internalEdits = jsonPatchToEdits(numberedPatch);
+  const internalEdits = [
+    ...jsonPatchToEdits(rangeEdits),
+    ...resolvedBlockEdits,
+  ];
   const {
     text: newText,
     firstChangedLine,
     warnings: applyWarnings,
   } = applyEdits(normalized, internalEdits);
+
+  // Syntax validation (best-effort, tree-sitter may be unavailable).
+  const syntaxIssues = validateSyntax(displayPath, newText);
+  const syntaxWarnings = syntaxIssues.map(
+    (issue) =>
+      `Syntax error at line ${issue.line}, column ${issue.column}: ${issue.message}`,
+  );
 
   // Compute line hashes of the result for preview formatting.
   const resultHashes = computeLineHashes(newText);
@@ -231,7 +201,11 @@ async function executeJsonEdit(
   );
 
   // Collect all warnings.
-  const allWarnings = [...(applyWarnings ?? []), ...boundaryMsgs];
+  const allWarnings = [
+    ...(applyWarnings ?? []),
+    ...boundaryMsgs,
+    ...syntaxWarnings,
+  ];
 
   // Restore line endings and write atomically.
   const output = restoreLineEndings(newText, lineEnding);
@@ -252,7 +226,7 @@ async function executeJsonEdit(
   };
 }
 
-/** Validate JSON format edits: old_range accepts numbers (line) or strings (hash). */
+/** Validate JSON format edits: accepts old_range (hash/line range) or block (line number). */
 function assertJsonPatch(patch: unknown): asserts patch is HashlineToolEdit[] {
   if (!Array.isArray(patch) || patch.length === 0) {
     throw new Error(
@@ -261,26 +235,51 @@ function assertJsonPatch(patch: unknown): asserts patch is HashlineToolEdit[] {
   }
   for (let i = 0; i < patch.length; i++) {
     const entry = patch[i] as Record<string, unknown>;
-    const range = entry.old_range;
-    if (!Array.isArray(range) || range.length !== 2) {
+    const hasRange = entry.old_range !== undefined;
+    const hasBlock = entry.block !== undefined;
+
+    if (!hasRange && !hasBlock) {
       throw new Error(
-        `[E_BAD_SHAPE] Edit ${i}: "old_range" must be a [start, end] pair.`,
+        `[E_BAD_SHAPE] Edit ${i}: must have either "old_range" (a [start, end] pair) or "block" (a line number).`,
       );
     }
-    // Accept numbers (line) or strings (hash)
-    for (let j = 0; j < 2; j++) {
-      const val = range[j];
-      if (typeof val !== "number" && typeof val !== "string") {
+    if (hasRange && hasBlock) {
+      throw new Error(
+        `[E_BAD_SHAPE] Edit ${i}: cannot have both "old_range" and "block".`,
+      );
+    }
+
+    if (hasRange) {
+      const range = entry.old_range;
+      if (!Array.isArray(range) || range.length !== 2) {
         throw new Error(
-          `[E_BAD_SHAPE] Edit ${i}: old_range[${j}] must be a number (line) or string (hash).`,
+          `[E_BAD_SHAPE] Edit ${i}: "old_range" must be a [start, end] pair.`,
         );
       }
-      if (typeof val === "number" && (!Number.isInteger(val) || val < 1)) {
+      for (let j = 0; j < 2; j++) {
+        const val = (range as unknown[])[j];
+        if (typeof val !== "number" && typeof val !== "string") {
+          throw new Error(
+            `[E_BAD_SHAPE] Edit ${i}: old_range[${j}] must be a number (line) or string (hash).`,
+          );
+        }
+        if (typeof val === "number" && (!Number.isInteger(val) || val < 1)) {
+          throw new Error(
+            `[E_BAD_SHAPE] Edit ${i}: old_range[${j}] line number must be a positive integer.`,
+          );
+        }
+      }
+    }
+
+    if (hasBlock) {
+      const block = entry.block;
+      if (typeof block !== "number" || !Number.isInteger(block) || block < 1) {
         throw new Error(
-          `[E_BAD_SHAPE] Edit ${i}: old_range[${j}] line number must be a positive integer.`,
+          `[E_BAD_SHAPE] Edit ${i}: "block" must be a positive integer (1-indexed line number).`,
         );
       }
     }
+
     if (!Array.isArray(entry.new_lines)) {
       throw new Error(
         `[E_BAD_SHAPE] Edit ${i}: "new_lines" must be a string array.`,
@@ -306,8 +305,8 @@ export function createEditTool(
     name: "edit",
     label: "Edit",
     description:
-      "Edit files using hashline anchoring. Copy the ¶PATH#TAG header from the read " +
-      "tool output and write edit operations (replace, delete, insert) below it. " +
+      "Edit files using hashline anchoring. Copy the \u00b6PATH#TAG header from the read " +
+      "tool output and provide edit operations in JSON format. " +
       "The tag validates you are editing the version you read — if the file changed " +
       "since your read, the tool attempts automatic recovery; re-read only on rejection.",
     promptSnippet:
@@ -316,8 +315,7 @@ export function createEditTool(
       "Use edit to modify existing files. Copy the ¶PATH#TAG header from your most recent read, grep, or write output — the tag is REQUIRED. Use the write tool to create new files.",
       "After every edit, the file gets a new tag and hash anchors. Always take the next edit's ¶PATH#TAG and hash anchors from the edit response or a fresh read — never reuse old tags.",
       "If the tool returns a stale-tag rejection (automatic recovery failed), STOP and re-read the file. A drift warning means the edit was applied — verify the diff, do not re-read.",
-      "Use replace N..M: for changes, delete N..M for removal, insert before/after/head/tail: for additions. Body rows are +TEXT only — no -old rows or bare context lines.",
-      'For JSON format: use {"path":"file","patch":[{"old_range":[N,M],"new_lines":["..."]}]}',
+      'Use JSON format: {"path":"<file>","patch":[{"old_range":["<HASH>","<HASH>"],"new_lines":["..."]}]}. old_range accepts 4-char hex HASH anchors from read/grep output, or 1-indexed line numbers. Use {"block": N, "new_lines": [...]} to replace an entire syntactic block (function, if, class, etc). Use [] as new_lines to delete.',
     ],
     parameters: EditSchema,
 
@@ -350,6 +348,7 @@ export function createEditTool(
             displayPath,
             jsonPatch,
             snapshots,
+            blockResolver,
           );
 
           // Format output with hashline header + preview.
@@ -375,170 +374,15 @@ export function createEditTool(
         }
       }
 
-      // ── Route: text grammar (edits string) ────────────────────────
-      const { edits: patchText } = params as { edits?: string };
-
-      // Collect warnings — include text grammar deprecation notice.
-      const warnings: string[] = [
-        "Text grammar is deprecated. Prefer JSON format: " +
-          '{"path":"<file>","patch":[{"old_range":["<HASH>","<HASH>"],"new_lines":["..."]}]}',
-      ];
-      let patch: Patch;
-      try {
-        patch = Patch.parse(patchText, { cwd: ctx.cwd });
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "invalid edit input";
-        return {
-          content: [{ type: "text", text: `Edit parse error: ${message}` }],
-          details: { files: [], changed: false },
-        };
-      }
-
-      // 2. Preflight: read all files, validate tags.
-      const preflight: PreflightEntry[] = [];
-
-      for (const section of patch.sections) {
-        const absPath = resolve(ctx.cwd, section.path);
-        const displayPath = resolveDisplayPath(section.path, ctx.cwd);
-
-        // Check file exists.
-        let rawContent: string;
-        try {
-          await access(absPath, constants.R_OK);
-          rawContent = await readFile(absPath, "utf-8");
-        } catch {
-          return {
-            content: [
-              { type: "text", text: nonExistentFileMessage(displayPath) },
-            ],
-            details: { files: [], changed: false },
-          };
-        }
-
-        // Normalize and hash live content.
-        const lineEnding = detectLineEnding(rawContent);
-        const normalized = normalizeToLF(rawContent);
-        const liveHash = computeFileHash(normalized);
-
-        // Resolve any block edits to concrete inserts+deletes
-        let resolvedEdits: readonly Edit[];
-        try {
-          resolvedEdits = resolveBlockEdits(
-            section.edits,
-            normalized,
-            displayPath,
-            blockResolver,
-            { onUnresolved: "throw" },
-          );
-        } catch (err: unknown) {
-          const message =
-            err instanceof Error ? err.message : "block resolution failed";
-          return {
-            content: [{ type: "text", text: `Edit error: ${message}` }],
-            details: { files: [], changed: false },
-          };
-        }
-        // Validate tag.
-        if (section.fileHash === undefined) {
-          return {
-            content: [{ type: "text", text: missingTagMessage(displayPath) }],
-            details: { files: [], changed: false },
-          };
-        }
-
-        if (section.fileHash !== liveHash) {
-          // Head/tail-only inserts on stale tag: apply with warning.
-          if (!section.hasAnchoredEdit) {
-            warnings.push(HEADTAIL_DRIFT_WARNING);
-            preflight.push({
-              section,
-              absPath,
-              displayPath,
-              normalized,
-              lineEnding,
-              liveHash,
-              resolvedEdits,
-            });
-            continue;
-          }
-
-          // Anchored edits on stale tag: reject immediately (no recovery).
-          const anchorLines = collectResolvedAnchorLines(resolvedEdits);
-          const snapshot = snapshots.byHash(absPath, section.fileHash);
-          const error = new MismatchError({
-            path: displayPath,
-            expectedFileHash: section.fileHash,
-            actualFileHash: liveHash,
-            fileLines: normalized.split("\n"),
-            anchorLines,
-            hashRecognized: snapshot !== null,
-          });
-
-          return {
-            content: [{ type: "text", text: error.displayMessage }],
-            details: { files: [], changed: false },
-          };
-        }
-
-        preflight.push({
-          section,
-          absPath,
-          displayPath,
-          normalized,
-          lineEnding,
-          liveHash,
-          resolvedEdits,
-        });
-      }
-
-      // 3. Apply all edits (atomic — preflight passed for all).
-      const fileResults: EditFileResult[] = [];
-
-      for (const pf of preflight) {
-        const {
-          text: newText,
-          firstChangedLine,
-          warnings: applyWarnings,
-        } = applyEdits(pf.normalized, pf.resolvedEdits);
-
-        // Restore line endings and write atomically.
-        const output = restoreLineEndings(newText, pf.lineEnding);
-        await writeFileAtomically(pf.absPath, output);
-        const newHash = snapshots.record(pf.absPath, newText);
-        const header = formatHashlineHeader(pf.displayPath, newHash);
-        const resultHashes = computeLineHashes(newText);
-        const preview = formatPreview(newText, resultHashes, firstChangedLine);
-        const fileWarnings = [
-          ...(pf.section.fileHash !== pf.liveHash ? warnings : []),
-          ...(applyWarnings ?? []),
-        ];
-
-        fileResults.push({
-          path: pf.displayPath,
-          fileHash: newHash,
-          header,
-          firstChangedLine,
-          warnings: fileWarnings.length > 0 ? fileWarnings : undefined,
-          preview,
-        });
-      }
-
-      // 4. Format the output.
-      const outputParts = fileResults.map((fr) => {
-        let block = `${fr.header}\n${fr.preview}`;
-        if (fr.warnings && fr.warnings.length > 0) {
-          block += `\n\nWarnings:\n${fr.warnings.map((w) => `- ${w}`).join("\n")}`;
-        }
-        return block;
-      });
-
+      // No valid edit input provided.
       return {
-        content: [{ type: "text", text: outputParts.join("\n\n") }],
-        details: {
-          files: fileResults,
-          changed: fileResults.some((fr) => fr.firstChangedLine !== undefined),
-        },
+        content: [
+          {
+            type: "text",
+            text: 'Edit error: provide "path" and "patch" in JSON format.',
+          },
+        ],
+        details: { files: [], changed: false },
       };
     },
 
@@ -554,20 +398,6 @@ export function createEditTool(
           0,
           0,
         );
-      }
-
-      // Text grammar: parse headers for path
-      if (typeof args.edits === "string") {
-        const paths = parseHashlineHeaders(args.edits);
-        let text = theme.fg("toolTitle", theme.bold("Edit "));
-        const first = paths[0];
-        if (first !== undefined) {
-          text += theme.fg("accent", resolveDisplayPath(first, context.cwd));
-          if (paths.length > 1) {
-            text += theme.fg("dim", ` (+${paths.length - 1} more)`);
-          }
-        }
-        return new Text(text, 0, 0);
       }
 
       return new Text(
@@ -596,9 +426,7 @@ export function createEditTool(
             ? details.files.map((f) => f.path)
             : jsonPath
               ? [jsonPath]
-              : parseHashlineHeaders(
-                  (context.args as { edits?: string }).edits ?? "",
-                );
+              : [];
         const firstPath = paths.length > 0 ? paths[0] : undefined;
         const first =
           firstPath !== undefined ? theme.fg("accent", firstPath) : "";

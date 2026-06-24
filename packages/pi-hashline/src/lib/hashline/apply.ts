@@ -7,8 +7,7 @@
  * line preserve order (before-anchor → replacement → after-anchor).
  */
 
-import { cloneCursor } from "./tokenizer.js";
-import type { Anchor, ApplyResult, Edit } from "./types.js";
+import type { Anchor, ApplyResult, Cursor, Edit } from "./types.js";
 
 // ─── Internal types ──────────────────────────────────────────────────
 
@@ -27,6 +26,14 @@ function isReplacementInsert(
   edit: Edit,
 ): edit is InsertEdit & { mode: "replacement" } {
   return edit.kind === "insert" && edit.mode === "replacement";
+}
+
+/** Clone a cursor so edits own their anchor references. */
+function cloneCursor(cursor: Cursor): Cursor {
+  if (cursor.kind === "before_anchor" || cursor.kind === "after_anchor") {
+    return { kind: cursor.kind, anchor: { line: cursor.anchor.line } };
+  }
+  return cursor;
 }
 
 /** Clone an edit so the applier owns its own copies. */

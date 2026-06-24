@@ -1,65 +1,38 @@
 # Hashline Edit Grammar
 
-You are editing files using **hashline anchoring**. Every file you read has a `¶PATH#TAG` header and `HASH│content` line prefixes. Every edit you make must include the header so the tool can validate you're working against the version you read.
+You are editing files using **hashline anchoring**. Every file you read has a `¶PATH#TAG` header and `HASH│content` line prefixes. Every edit you make must reference anchors from the version you read.
 
-## Two Edit Formats
+## Edit Format
 
-The edit tool accepts two formats:
+The edit tool uses a JSON format with a `path` and `patch` array:
 
-### JSON Format (preferred)
 ```json
 {"path": "src/greet.ts", "patch": [
   {"old_range": ["1d2e", "1d2e"], "new_lines": ["  console.log(`Hello, ${name}`);"]}
 ]}
 ```
+
 - `path` — file to edit
 - `patch` — array of edit objects, each with:
-  - `old_range`: `[start, end]` — 4-char hex HASH anchors from read output, or line numbers
+  - `old_range`: `[start, end]` — 4-char hex HASH anchors (from read/grep output), or 1-indexed line numbers
+  - `block`: `N` — (alternative to `old_range`) line number of an opening construct (function, if, class). Replaces the entire syntactic block determined by tree-sitter.
   - `new_lines`: `["..."]` — replacement content, one string per line. Use `[]` to delete.
 - All edits in a single call apply against the same pre-edit file snapshot
+### Block Edits
 
-### Text Grammar (legacy — prefer JSON format above)
+Use `block` instead of `old_range` to replace or delete an entire syntactic block (function, if-statement, class, etc.). Point `block` at the line that OPENS the construct — the `{`-bearing line, `def`, `function`, `if`, etc.
+
+```json
+{"path": "src/greet.ts", "patch": [
+  {"block": 1, "new_lines": ["function greet(name: string) {", "  return `Hello, ${name}`;", "}"]}
+]}
 ```
-¶PATH#TAG
-replace N..M:
-+TEXT
-```
+
+Supported languages: TypeScript (.ts/.tsx), JavaScript (.js/.jsx/.mjs/.cjs), Python (.py/.pyw), YAML (.yaml/.yml).
 
 ## Section Headers
 
-Every file section starts with `¶PATH#TAG`. Copy the entire header from the `read` or `grep` output. **The tag is REQUIRED** — there is no hashless form. To create a new file, use the `write` tool.
-
-## Operations
-
-```
-replace N..M:         Replace original lines N–M with the body rows below.
-                      Single line: `replace N..N:`.
-                      Body length is irrelevant — replacing 1 line with 10 is still `replace N..N:`.
-
-delete N..M           Delete original lines N–M. No body, no colon.
-                      Single line: `delete N`.
-
-insert before N:      Insert body rows immediately before line N.
-insert after N:       Insert body rows immediately after line N.
-insert head:          Insert body rows at the very start of the file.
-insert tail:          Insert body rows at the very end of the file.
-
-replace block N:      Replace the whole syntactic block that BEGINS on line N —
-                      its header line through its closing line — resolved with
-                      tree-sitter at apply time. Body rows below. Point N at the
-                      line that OPENS the construct (the `if`/`function`/`def`/
-                      `{`-bearing line), not a closing `}` or a blank line.
-
-delete block N        Delete the whole syntactic block that BEGINS on line N.
-                      No body, no colon.
-```
-
-## Body Rows
-
-Body rows appear only under a `:` header. Every body row is:
-
-```
-+TEXT     Add a new literal line TEXT, verbatim. Leading whitespace is kept.
+Every file section starts with `¶PATH#TAG`. Copy the entire header from the `read`, `grep`, or `write` output. **The tag is REQUIRED** — there is no hashless form. To create a new file, use the `write` tool.
 
 ## Examples
 
@@ -71,43 +44,53 @@ aB3f│function greet(name: string) {
 f09a│}
 ```
 
-JSON format — replace line identified by hash `1d2e`:
+Replace line identified by hash `1d2e`:
 ```json
 {"path": "src/greet.ts", "patch": [
   {"old_range": ["1d2e", "1d2e"], "new_lines": ["  console.log(`Hello, ${name}`);"]}
 ]}
 ```
-4. **One hunk per range.** The body is the final desired content, never an old/new pair. To change lines 2 and 5 while keeping 3–4, issue two separate hunks.
+
+Delete a range using empty `new_lines`:
+```json
+{"path": "src/greet.ts", "patch": [
+  {"old_range": ["aB3f", "f09a"], "new_lines": []}
+]}
+```
+
+Replace multiple non-adjacent lines in one call:
+```json
+{"path": "src/greet.ts", "patch": [
+  {"old_range": [2, 2], "new_lines": ["  const msg = `Hello, ${name}`;"]},
+  {"old_range": [5, 5], "new_lines": ["  return msg;"]}
+]}
+```
+
+## Rules
+
+1. **Hash anchors come from read/grep output.** Copy the 4-character hex hash from the `HASH│` prefix of each line. Do not guess or construct anchors.
+
+2. **Line numbers start at 1.** If you use line numbers in `old_range`, they refer to the file as you read it.
+
+3. **After every edit, the file gets a new tag and hash anchors.** Always take the next edit's anchors from the edit response or a fresh read — never reuse old tags from a previous edit.
+
+4. **One hunk per range.** To change lines 2 and 5 while keeping 3–4, issue two separate edits in the `patch` array. Untouched lines are absent from every range.
 
 5. **Never format code with this tool.** Use the project's formatter (e.g. `bash: npm run format`) for reordering imports, re-indenting, or mechanical restyling.
 
-6. **Block ops are resolved at apply time.** A `replace block N:` or `delete block N` is resolved by tree-sitter against the current file content — the block's exact line span is determined from the live file, not from pre-edit memory.
-
-7. **Point at the opening line.** `replace block N:` resolves the block that *begins* on line N. Point N at the line that OPENS the construct (the `if`, `function`, `def`, or `{`-bearing line). A closing `}` or a blank line resolves to nothing because no block begins there.
-
-8. **Block resolution is language-aware.** Supported languages: TypeScript (.ts/.tsx), JavaScript (.js/.jsx/.mjs/.cjs), Python (.py/.pyw), YAML (.yaml/.yml), and optionally Bash, JSON, TOML, CSS, HTML, Rust, Go (when installed).
-
 ## Anti-Patterns (WRONG)
+
 ```
-# WRONG — empty replace to delete. Use delete 4 instead.
-replace 4..4:
+# WRONG — copying the HASH│ prefix into new_lines.
+# old_range uses hashes; new_lines uses literal content only.
+{"old_range": ["1d2e", "1d2e"], "new_lines": ["1d2e│  console.log(`Hello`);"]}
 
-# WRONG — range describes post-edit size. Use replace 1..1: (body length is irrelevant).
-replace 1..2:
-+function greet(name: string) {
-
-# WRONG — `-` rows do not exist. The range deletes; the body is only new content.
-replace 3..3:
-    old line
--   removed line
-+   new line
-
-# WRONG — point at closing delimiter. Point at the line that OPENS the block.
-replace block 3:    ← line 3 is `}` — resolves to nothing
+# WRONG — using hashes as a range separator (aB3f..1d2e).
+# old_range is always [start, end] — two separate anchors.
+{"old_range": ["aB3f..1d2e"], "new_lines": ["replacement"]}
 
 # RIGHT
-replace 3..3:
-+   new line
+{"old_range": ["1d2e", "1d2e"], "new_lines": ["  console.log(`Hello, ${name}`);"]}
 ```
 
 ## On Stale-Tag Rejection

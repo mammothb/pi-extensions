@@ -6,10 +6,10 @@ describe("prompt", () => {
   it("loadPrompt returns non-empty string", () => {
     const prompt = loadPrompt();
     expect(prompt.length).toBeGreaterThan(100);
-    expect(prompt).toContain("¶PATH#TAG");
-    expect(prompt).toContain("replace N..M:");
-    expect(prompt).toContain("delete N..M");
-    expect(prompt).toContain("insert before N:");
+    expect(prompt).toContain("\u00b6PATH#TAG");
+    expect(prompt).toContain('"old_range"');
+    expect(prompt).toContain('"new_lines"');
+    expect(prompt).toContain('"path"');
   });
 
   it("loadPrompt is cached (same reference on second call)", () => {

@@ -26,7 +26,10 @@ export interface ResolvedHashlineEdit {
 
 /** Raw edit as received in the JSON format (string=hash, number=line). */
 export interface HashlineToolEdit {
-  old_range: [string | number, string | number];
+  /** Inclusive line range [start, end] — hash anchors or line numbers. */
+  old_range?: [string | number, string | number];
+  /** Line number (1-indexed) of the opening construct for a block edit. Mutually exclusive with old_range. */
+  block?: number;
   new_lines: string[];
 }
 
@@ -74,8 +77,17 @@ export function resolveHashlineEdits(
   const boundaryWarnings: BoundaryDuplicationWarning[] = [];
 
   for (const edit of edits) {
-    const startResolved = resolveAnchor(edit.old_range[0], fileHashes);
-    const endResolved = resolveAnchor(edit.old_range[1], fileHashes);
+    // Block edits are resolved elsewhere — skip hash resolution.
+    if (edit.block !== undefined) {
+      continue;
+    }
+
+    const range = edit.old_range;
+    if (!range) {
+      continue;
+    }
+    const startResolved = resolveAnchor(range[0], fileHashes);
+    const endResolved = resolveAnchor(range[1], fileHashes);
 
     if (isMismatch(startResolved)) {
       mismatches.push(startResolved);
