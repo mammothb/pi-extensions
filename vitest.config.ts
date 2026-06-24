@@ -61,13 +61,6 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
-      {
-        test: {
-          name: "pi-hashline",
-          root: "./packages/pi-hashline",
-          include: ["test/**/*.test.ts"],
-        },
-      },
     ],
   },
 });
