@@ -1,5 +1,11 @@
 # @mammothb/pi-ask
 
+## 2.1.3
+
+### Patch Changes
+
+- cc962fd: Fix recommended option not rendered with "(Recommended)" label or pre-selected by default.
+
 ## 2.1.2
 
 ### Patch Changes
