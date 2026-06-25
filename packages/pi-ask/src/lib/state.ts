@@ -23,14 +23,31 @@ export type DisplayOption = Option & { isOther?: true };
 // ── Factory ──────────────────────────────────────────────────────────────────
 
 export function createInitialStates(questions: Question[]): QuestionState[] {
-  return questions.map(() => ({
-    cursorIndex: 0,
-    selectedIndex: null,
-    selectedIndices: new Set<number>(),
-    confirmed: false,
-    freeTextValue: null,
-    inEditMode: false,
-  }));
+  return questions.map((q) => {
+    const state: QuestionState = {
+      cursorIndex: 0,
+      selectedIndex: null,
+      selectedIndices: new Set<number>(),
+      confirmed: false,
+      freeTextValue: null,
+      inEditMode: false,
+    };
+
+    if (
+      q.recommended !== undefined &&
+      q.recommended >= 0 &&
+      q.recommended < q.options.length
+    ) {
+      state.cursorIndex = q.recommended;
+      if (q.multi) {
+        state.selectedIndices.add(q.recommended);
+      } else {
+        state.selectedIndex = q.recommended;
+      }
+    }
+
+    return state;
+  });
 }
 
 // ── Derived helpers (pure) ───────────────────────────────────────────────────

@@ -163,12 +163,19 @@ export function renderQuestionBody(
     const isOther = opt.isOther === true;
     const prefix = isHighlighted ? theme.fg("accent", ">") : " ";
 
+    const isRecommended = q.recommended === i;
+    const recommendedSuffix = isRecommended
+      ? theme.fg("dim", " (Recommended)")
+      : "";
+
     if (q.multi && !isOther) {
       // Checkbox style
       const checked = state.selectedIndices.has(i);
       const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
       const labelColor = isHighlighted ? "accent" : "text";
-      add(`${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}`);
+      add(
+        `${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
+      );
     } else if (isOther) {
       const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
       const suffix = state.inEditMode ? theme.fg("accent", " ✎") : "";
@@ -201,7 +208,7 @@ export function renderQuestionBody(
       const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
       const labelColor = isHighlighted ? "accent" : "text";
       add(
-        `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}`,
+        `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
       );
     }
 

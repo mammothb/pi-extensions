@@ -1,0 +1,22 @@
+{
+  "name": "@mammothb/pi-stats",
+  "version": "0.1.0",
+  "description": "A pi extension that tracks tool, skill, and extension usage stats",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
