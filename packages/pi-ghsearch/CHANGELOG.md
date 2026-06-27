@@ -1,5 +1,11 @@
 # @mammothb/pi-ghsearch
 
+## 1.0.7
+
+### Patch Changes
+
+- ed033fb: dedupe ghsearch query params
+
 ## 1.0.6
 
 ### Patch Changes
