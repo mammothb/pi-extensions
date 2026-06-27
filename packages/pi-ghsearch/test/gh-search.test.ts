@@ -261,6 +261,130 @@ describe("gh_search tool", () => {
     expect(callArgs).not.toContain("--jq");
   });
 
+  it("strips language:xxx from query when language param is set", async () => {
+    const pi = createMockPi({
+      stdout: "raw code results",
+      stderr: "",
+      code: 0,
+    });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await tool.execute(
+      "call-1",
+      {
+        scope: "code",
+        query: "glob::glob clap path wildcard language:rust",
+        language: "rust",
+      },
+      undefined,
+      undefined,
+      { cwd: "/tmp" } as any,
+    );
+
+    const callArgs = pi.exec.mock.calls[0]?.[1] as string[];
+    // language:rust should be stripped from the query
+    expect(callArgs[2]).toBe("glob::glob clap path wildcard");
+    // --language should still be passed
+    expect(callArgs).toContain("--language");
+    expect(callArgs).toContain("rust");
+  });
+
+  it("strips owner:xxx from query when owner param is set", async () => {
+    const pi = createMockPi({ stdout: "[]", stderr: "", code: 0 });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await tool.execute(
+      "call-1",
+      { scope: "repos", query: "topic:mcp owner:my-org", owner: ["my-org"] },
+      undefined,
+      undefined,
+      {} as any,
+    );
+
+    const callArgs = pi.exec.mock.calls[0]?.[1] as string[];
+    expect(callArgs[2]).toBe("topic:mcp");
+  });
+
+  it("strips multiple repo:xxx from query when repo param is set", async () => {
+    const pi = createMockPi({ stdout: "[]", stderr: "", code: 0 });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await tool.execute(
+      "call-1",
+      {
+        scope: "code",
+        query: "fix repo:org/a repo:org/b",
+        repo: ["org/a", "org/b"],
+      },
+      undefined,
+      undefined,
+      {} as any,
+    );
+
+    const callArgs = pi.exec.mock.calls[0]?.[1] as string[];
+    expect(callArgs[2]).toBe("fix");
+  });
+
+  it("throws when query becomes empty after stripping all qualifiers", async () => {
+    const pi = createMockPi({ stdout: "", stderr: "", code: 0 });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await expect(
+      tool.execute(
+        "call-1",
+        { scope: "code", query: "language:rust", language: "rust" },
+        undefined,
+        undefined,
+        {} as any,
+      ),
+    ).rejects.toThrow("Query became empty");
+  });
+
+  it("strips quoted qualifier values", async () => {
+    const pi = createMockPi({
+      stdout: "raw code results",
+      stderr: "",
+      code: 0,
+    });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await tool.execute(
+      "call-1",
+      {
+        scope: "code",
+        query: 'bug label:"good first issue"',
+        label: ["good first issue"],
+      },
+      undefined,
+      undefined,
+      { cwd: "/tmp" } as any,
+    );
+
+    const callArgs = pi.exec.mock.calls[0]?.[1] as string[];
+    expect(callArgs[2]).toBe("bug");
+  });
+
+  it("does not strip qualifiers that differ from explicit params", async () => {
+    const pi = createMockPi({
+      stdout: "raw code results",
+      stderr: "",
+      code: 0,
+    });
+    const tool = createGhSearchTool(pi as any, DEFAULT_CONFIG);
+
+    await tool.execute(
+      "call-1",
+      { scope: "code", query: "fix language:typescript", language: "rust" },
+      undefined,
+      undefined,
+      { cwd: "/tmp" } as any,
+    );
+
+    const callArgs = pi.exec.mock.calls[0]?.[1] as string[];
+    // language:typescript should NOT be stripped because the param says rust
+    expect(callArgs[2]).toBe("fix language:typescript");
+  });
+
   it("includes truncation notice when output is truncated", async () => {
     // Generate output over the 50KB default to trigger truncation
     const item = { name: "x".repeat(200) };

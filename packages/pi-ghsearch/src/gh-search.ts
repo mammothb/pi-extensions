@@ -85,6 +85,70 @@ const GhSearchParamsSchema = Type.Object({
 
 type GhSearchParams = Static<typeof GhSearchParamsSchema>;
 
+/**
+ * Strip qualifiers from the raw query that are already provided as explicit
+ * parameters. Prevents the LLM from accidentally double-specifying a filter
+ * (e.g. `language:rust` in query + `language: "rust"` param), which produces
+ * duplicate qualifiers that confuse the GitHub API.
+ */
+function sanitizeQuery(query: string, params: GhSearchParams): string {
+  let q = query;
+  if (params.language) {
+    q = stripQualifier(q, "language", params.language);
+  }
+  if (params.owner) {
+    for (const v of params.owner) {
+      q = stripQualifier(q, "owner", v);
+    }
+  }
+  if (params.repo) {
+    for (const v of params.repo) {
+      q = stripQualifier(q, "repo", v);
+    }
+  }
+  if (params.author) {
+    q = stripQualifier(q, "author", params.author);
+  }
+  if (params.assignee) {
+    q = stripQualifier(q, "assignee", params.assignee);
+  }
+  if (params.label) {
+    for (const v of params.label) {
+      q = stripQualifier(q, "label", v);
+    }
+  }
+
+  if (!q) {
+    throw new Error(
+      "Query has no search terms after removing qualifiers already set via parameters. Add keywords or drop the filters.",
+    );
+  }
+  return q;
+}
+
+function stripQualifier(
+  query: string,
+  qualifier: string,
+  value: string,
+): string {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const qe = esc(qualifier);
+  const ve = esc(value);
+  // Match qualifier:value (unquoted single-word) or qualifier:"value" /
+  // qualifier:'value'. For quoted values use lookahead instead of \b because
+  // " and ' are non-word chars.
+  const re = new RegExp(
+    `\\b${qe}:${ve}\\b|` +
+      `\\b${qe}:"${ve}"(?=\\s|$)|` +
+      `\\b${qe}:'${ve}'(?=\\s|$)`,
+    "g",
+  );
+  return query
+    .replace(re, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function addOptionalFlag(
   args: string[],
   flag: string,
@@ -244,7 +308,8 @@ export function createGhSearchTool(
       _onUpdate,
       ctx,
     ) => {
-      const args = ["search", params.scope, params.query];
+      const query = sanitizeQuery(params.query, params);
+      const args = ["search", params.scope, query];
 
       // --json is not supported for code search; --jq requires --json
       if (params.scope !== "code") {
