@@ -1,5 +1,11 @@
 # @mammothb/pi-ghsearch
 
+## 1.0.8
+
+### Patch Changes
+
+- 1ab499b: show decoded gh fetch content first and strip base64 content
+
 ## 1.0.7
 
 ### Patch Changes
