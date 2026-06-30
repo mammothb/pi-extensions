@@ -139,11 +139,28 @@ export function createGhFetchTool(
         // not JSON — keep raw text
       }
 
-      // Auto-decode base64 content from GitHub Contents API responses
+      // Auto-decode base64 content from GitHub Contents API responses.
+      // For files, the decoded source code is the primary output (put first).
+      // The JSON metadata is secondary; the base64 "content" field is replaced
+      // with a placeholder to avoid wasting context on useless base64 strings.
+      // details.parsed keeps the original JSON unchanged for programmatic access.
       const decodedContent = decodeGitHubContent(parsed);
       if (decodedContent !== null) {
         const filePath = (parsed as Record<string, unknown>).path ?? "unknown";
-        text += `\n\n--- Decoded file content (${filePath}) ---\n${decodedContent}`;
+
+        // Build clean JSON with base64 replaced by a placeholder
+        const cleanParsed = { ...(parsed as Record<string, unknown>) };
+        cleanParsed.content = "[base64-encoded; see decoded content above]";
+        const cleanJson = JSON.stringify(cleanParsed, null, 2);
+
+        // Decoded content first, then metadata
+        text = [
+          `--- Decoded file content (${filePath}) ---`,
+          decodedContent,
+          "",
+          "--- API response metadata ---",
+          cleanJson,
+        ].join("\n");
       }
 
       const {

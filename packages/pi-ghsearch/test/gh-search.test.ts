@@ -337,7 +337,7 @@ describe("gh_search tool", () => {
         undefined,
         {} as any,
       ),
-    ).rejects.toThrow("Query became empty");
+    ).rejects.toThrow("Query has no search terms");
   });
 
   it("strips quoted qualifier values", async () => {

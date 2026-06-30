@@ -149,14 +149,23 @@ describe("gh_fetch tool", () => {
     );
 
     if (result.content[0]?.type === "text") {
-      expect(result.content[0].text).toContain(
+      // Decoded content appears first, before metadata
+      const text = result.content[0].text;
+      const decodedPos = text.indexOf(
         "--- Decoded file content (docs/README.md) ---",
       );
-      expect(result.content[0].text).toContain("# Hello World");
-      expect(result.content[0].text).toContain("This is a test.");
-      // The JSON metadata should still be present
-      expect(result.content[0].text).toContain('"name"');
-      expect(result.content[0].text).toContain('"encoding"');
+      const metadataPos = text.indexOf("--- API response metadata ---");
+      expect(decodedPos).toBeGreaterThanOrEqual(0);
+      expect(metadataPos).toBeGreaterThan(decodedPos); // metadata comes after decoded
+
+      expect(text).toContain("# Hello World");
+      expect(text).toContain("This is a test.");
+      // Base64 should be replaced with placeholder, not present in text
+      expect(text).not.toContain("IyBIZWxsbyBXb3JsZAoKVGhpcyBpcyBhIHRlc3");
+      expect(text).toContain("[base64-encoded; see decoded content above]");
+      // JSON metadata keys still present
+      expect(text).toContain('"name"');
+      expect(text).toContain('"encoding"');
     }
     // details.parsed should still be the original JSON, not the appended text
     expect(result.details.parsed).toEqual({
