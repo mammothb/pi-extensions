@@ -1,0 +1,33 @@
+[package]
+name = "mm-cli"
+version = "0.2.0"
+description = "Memory CLI"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "mm"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["cargo", "derive"] }
+env_logger = { workspace = true }
+fs-err = { workspace = true }
+glob = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shellexpand = { workspace = true }
+unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+rstest = { workspace = true }
+serial_test = { workspace = true }
+tempfile = { workspace = true }
