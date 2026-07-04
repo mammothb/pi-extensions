@@ -1,5 +1,11 @@
 # @mammothb/pi-ghsearch
 
+## 1.0.9
+
+### Patch Changes
+
+- d1e19c5: Tighten tool prompts for token efficiency: trim bloated descriptions, add missing `promptGuidelines`, ensure every guideline names its tool explicitly per pi SDK convention
+
 ## 1.0.8
 
 ### Patch Changes

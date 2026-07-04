@@ -1,5 +1,11 @@
 # @mammothb/pi-ask
 
+## 2.1.4
+
+### Patch Changes
+
+- d1e19c5: Tighten tool prompts for token efficiency: trim bloated descriptions, add missing `promptGuidelines`, ensure every guideline names its tool explicitly per pi SDK convention
+
 ## 2.1.3
 
 ### Patch Changes

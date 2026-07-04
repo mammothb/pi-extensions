@@ -1,5 +1,11 @@
 # @mammothb/pi-webfetch
 
+## 2.0.3
+
+### Patch Changes
+
+- d1e19c5: Tighten tool prompts for token efficiency: trim bloated descriptions, add missing `promptGuidelines`, ensure every guideline names its tool explicitly per pi SDK convention
+
 ## 2.0.2
 
 ### Patch Changes

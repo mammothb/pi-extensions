@@ -1,5 +1,11 @@
 # @mammothb/pi-memory
 
+## 0.3.6
+
+### Patch Changes
+
+- d1e19c5: Tighten tool prompts for token efficiency: trim bloated descriptions, add missing `promptGuidelines`, ensure every guideline names its tool explicitly per pi SDK convention
+
 ## 0.3.5
 
 ### Patch Changes
