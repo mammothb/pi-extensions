@@ -103,6 +103,9 @@ export default function (pi: ExtensionAPI) {
     label: "Usage Stats",
     description: "Get extension usage counts for the current session",
     promptSnippet: "Get extension usage counts",
+    promptGuidelines: [
+      "Use stats to check which extensions are most active in the current session.",
+    ],
     parameters: Type.Object({}),
     async execute() {
       return {

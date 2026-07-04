@@ -8,18 +8,33 @@ allowBuilds:
   tree-sitter-python: true
   tree-sitter-typescript: true
   tree-sitter-yaml: true
+overrides:
+  "@earendil-works/pi-agent-core": "0.79.4"
+  "@earendil-works/pi-ai": "0.79.4"
+  "@earendil-works/pi-coding-agent": "0.79.4"
+  "@earendil-works/pi-tui": "0.79.4"
+
 catalog:
+  "@biomejs/biome": 2.4.14
+  "@changesets/cli": 2.31.0
   "@earendil-works/pi-ai": 0.79.4
   "@earendil-works/pi-coding-agent": 0.79.4
   "@earendil-works/pi-tui": 0.79.4
-  htmlparser2: 12.0.0
-  mermaid: 11.0.0
-  turndown: 7.2.4
-  typebox: 1.2.0
+  "@types/node": 25.9.1
   "@types/turndown": 5.0.6
+  "@vitest/coverage-v8": 4.1.7
   diff: 8.0.4
+  htmlparser2: 12.0.0
+  mammoth: 1.12.0
+  mermaid: 11.0.0
   tree-sitter: 0.22.4
   tree-sitter-javascript: 0.23.1
   tree-sitter-python: 0.23.6
   tree-sitter-typescript: 0.23.2
   tree-sitter-yaml: 0.5.0
+  turndown: 7.2.4
+  typebox: 1.2.0
+  typescript: 6.0.3
+  unpdf: 1.6.2
+  vitest: 4.1.7
+  xlsx: 0.18.5

@@ -24,7 +24,7 @@ export function createMemoryEditTool(
     promptSnippet: "Delete or rename a persistent memory entry",
     promptGuidelines: [
       "Use memory_edit to clean up stale or incorrect memory entries.",
-      "To update a value, use retain instead — it overwrites the existing key.",
+      "memory_edit: to update a value, use retain instead — it overwrites the existing key.",
       "memory_edit: deleting a key is permanent (the value is removed from disk).",
     ],
     parameters: Parameters,

@@ -126,15 +126,17 @@ export function createEvalTool(): ToolDefinition<
   return {
     name: "eval",
     label: "Eval",
-    description: `Execute JavaScript or Python code in an isolated subprocess.
-
-- Each call is a fresh subprocess — no state persists between calls
-- 30-second timeout; press Escape to cancel a running evaluation
-- Working directory is the agent's current working directory (like bash)
-- Set cwd to specify a working directory for the subprocess (default: agent's cwd)
-- Set pythonPath or nodeModulesPath in ~/.pi/agent/pi-eval.json (global) or .pi/pi-eval.json (project) to configure the runtime for all eval calls`,
-    promptSnippet:
-      "Execute JavaScript or Python code in an isolated subprocess",
+    description:
+      "Execute JavaScript or Python code in an isolated subprocess. " +
+      "Each call is a fresh process — no state persists. " +
+      "30-second timeout; press Escape to cancel. " +
+      `Set cwd to specify a working directory (default: agent's cwd).`,
+    promptSnippet: "Run JS/Python code in a subprocess",
+    promptGuidelines: [
+      "Prefer eval over bash for calculations, data processing, and code testing.",
+      "Each eval call is a fresh subprocess — no variables or imports persist between calls.",
+      "eval: set pythonPath or nodeModulesPath in ~/.pi/agent/pi-eval.json (global) or .pi/pi-eval.json (project) to configure runtimes.",
+    ],
     parameters: Parameters,
     renderCall(args, theme, ctx) {
       const badge = args.language === "javascript" ? "(js)" : "(py)";

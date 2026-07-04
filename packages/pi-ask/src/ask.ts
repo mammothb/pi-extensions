@@ -28,12 +28,11 @@ export function createAskTool(
   return {
     name: "AskUserQuestion",
     label: "Ask",
-    description: `Ask the user questions during execution. Use this tool when you need to:
-1. Gather user preferences or requirements
-2. Clarify ambiguous instructions
-3. Get decisions on implementation choices as you work
-4. Offer choices to the user about what direction to take
-    `,
+    description:
+      "Ask the user questions with a structured interactive TUI form. " +
+      "Each question has 2-4 options. Supports multi-select, recommended defaults, " +
+      "and an always-available free-text 'Other' answer. Use for gathering preferences, " +
+      "clarifying ambiguity, or offering implementation choices.",
     promptSnippet: "Ask the user questions with a structured interactive UI",
     promptGuidelines: [
       "Use AskUserQuestion instead of asking questions in plain text — it provides a structured, interactive UI. Prefer it whenever a question can be answered with 2-4 concrete options.",

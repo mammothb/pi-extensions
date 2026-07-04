@@ -226,7 +226,7 @@ export function createGhSearchTool(
     promptGuidelines: [
       "gh_search: code scope uses separate rate limits — always quote the full query string to avoid shell escaping issues.",
       "gh_search: for broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.",
-      "Use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.",
+      "gh_search: use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.",
     ],
     parameters: GhSearchParamsSchema,
     renderCall(args, theme, _ctx) {

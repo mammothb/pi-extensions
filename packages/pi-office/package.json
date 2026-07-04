@@ -1,0 +1,38 @@
+{
+  "name": "@mammothb/pi-office",
+  "version": "0.1.0",
+  "description": "A pi extension for reading and searching PDF, DOCX, and XLSX files — pure JS, zero system dependencies",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src",
+    "skills"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*",
+    "mammoth": "catalog:",
+    "turndown": "catalog:",
+    "unpdf": "catalog:",
+    "xlsx": "catalog:"
+  },
+  "devDependencies": {
+    "@types/turndown": "catalog:"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}

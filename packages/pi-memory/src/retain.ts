@@ -39,7 +39,7 @@ export function createRetainTool(
       "retain: overwrite a key by calling retain with the same key name.",
       'retain: use scope "global" for preferences that apply across all projects. Default scope is "project".',
       "retain: use ttlSeconds for observations that may become stale.",
-      "Keep retained values concise (under 2000 chars). Use compact_memory to find oversized entries.",
+      "retain: keep values concise (under 2000 chars). Use compact_memory to find oversized entries.",
     ],
     parameters: Parameters,
     renderCall(args, theme, _ctx) {

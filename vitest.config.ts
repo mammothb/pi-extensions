@@ -68,6 +68,12 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-office",
+          root: "./packages/pi-office",
+        },
+      },
     ],
   },
 });

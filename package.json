@@ -11,11 +11,14 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.14",
-    "@changesets/cli": "2.31.0",
-    "@types/node": "25.9.1",
-    "@vitest/coverage-v8": "4.1.7",
-    "typescript": "6.0.3",
-    "vitest": "4.1.7"
+    "@biomejs/biome": "catalog:",
+    "@changesets/cli": "catalog:",
+    "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@earendil-works/pi-tui": "catalog:",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -28,6 +28,15 @@ describe("createWebfetchTool — tool definition shape", () => {
     expect(tool.description).toContain("format");
   });
 
+  it("has promptGuidelines with format and usage hints", () => {
+    expect(tool.promptGuidelines).toBeDefined();
+    expect(tool.promptGuidelines!.length).toBeGreaterThanOrEqual(2);
+    expect(tool.promptGuidelines!.some((g) => g.includes("format"))).toBe(true);
+    expect(tool.promptGuidelines!.some((g) => g.includes("WebFetch"))).toBe(
+      true,
+    );
+  });
+
   describe("parameters", () => {
     const params = tool.parameters;
 
