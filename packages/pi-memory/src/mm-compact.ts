@@ -1,12 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  buildMmCompactInstructions,
-  parseKeepAndPrompt,
-} from "../core/compact-args";
-import {
   formatCompactionStats,
   getLastCompactionStats,
-} from "../hooks/before-compact";
+} from "./before-compact";
+import {
+  buildMmCompactInstructions,
+  parseKeepAndPrompt,
+} from "./lib/compact/compact-args";
 
 export const registerMmCompactCommand = (pi: ExtensionAPI) => {
   pi.registerCommand("mm-compact", {

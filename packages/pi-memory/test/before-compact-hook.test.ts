@@ -21,7 +21,7 @@ import {
   formatCompactionStats,
   getLastCompactionStats,
   registerBeforeCompactHook,
-} from "../src/hooks/before-compact";
+} from "../src/before-compact";
 
 let tmpDir: string;
 let CONFIG_PATH: string;

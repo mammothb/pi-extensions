@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderMessage } from "../src/core/render-entries";
+import { renderMessage } from "../src/lib/recall/render-entries";
 import {
   assistantText,
   assistantWithToolCall,

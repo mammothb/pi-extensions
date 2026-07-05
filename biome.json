@@ -31,7 +31,7 @@
         "packages/*/evals/**",
         "*.test.ts",
         "*.spec.ts",
-        "packages/pi-memory/src/hooks/**"
+        "packages/pi-memory/src/before-compact.ts"
       ],
       "linter": {
         "rules": {

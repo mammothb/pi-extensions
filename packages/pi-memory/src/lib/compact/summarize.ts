@@ -3,7 +3,7 @@ import type { Message } from "@earendil-works/pi-ai";
 
 // ── CompileInput ──
 
-export interface CompileInput {
+interface CompileInput {
   messages: Message[];
   previousSummary?: string;
 }

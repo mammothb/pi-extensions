@@ -3,18 +3,24 @@
   "version": "1.0.0",
   "description": "VCC conversation compaction for Pi, backed by mm-cli",
   "keywords": [
-    "pi-package",
-    "pi-extension"
+    "pi-package"
   ],
   "license": "MIT",
   "files": [
     "index.ts",
-    "src"
+    "src",
+    "prompts"
   ],
   "pi": {
     "extensions": [
       "./index.ts"
+    ],
+    "prompts": [
+      "prompts"
     ]
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

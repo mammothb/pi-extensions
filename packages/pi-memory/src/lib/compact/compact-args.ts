@@ -2,7 +2,7 @@ export const MM_COMPACT_INSTRUCTION = "__mm_compact__";
 
 const KEEP_TOKEN_RE = /^keep:(\d+)$/;
 
-export interface ParsedCompactionArgs {
+interface ParsedCompactionArgs {
   followUpPrompt: string;
   keepUserTurns: number | null;
   keepUserTurnsExplicit: boolean;

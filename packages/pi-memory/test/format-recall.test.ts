@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatRecallOutput } from "../src/core/format-recall";
-import type { RenderedEntry } from "../src/core/render-entries";
+import { formatRecallOutput } from "../src/lib/recall/format-recall";
+import type { RenderedEntry } from "../src/lib/recall/render-entries";
 
 describe("formatRecallOutput", () => {
   it("shows no-match message with query", () => {

@@ -1,7 +1,7 @@
 import type { Message } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
-import type { RenderedEntry } from "../src/core/render-entries";
-import { searchEntries } from "../src/core/search-entries";
+import type { RenderedEntry } from "../src/lib/recall/render-entries";
+import { searchEntries } from "../src/lib/recall/search-entries";
 
 const entries: RenderedEntry[] = [
   { index: 0, role: "user", summary: "Fix login bug" },

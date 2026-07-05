@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOwnCut } from "../src/hooks/before-compact";
+import { buildOwnCut } from "../src/lib/compact/build-own-cut";
 
 const msg = (
   id: string,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getActiveLineageEntryIds } from "../src/core/lineage";
+import { getActiveLineageEntryIds } from "../src/lib/recall/lineage";
 
 describe("getActiveLineageEntryIds", () => {
   it("returns IDs from active branch", () => {

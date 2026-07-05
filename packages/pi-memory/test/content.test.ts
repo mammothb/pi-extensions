@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clip, firstLine, textOf, textParts } from "../src/core/content";
+import { clip, firstLine, textOf, textParts } from "../src/lib/recall/content";
 
 describe("textParts", () => {
   it("returns [] for undefined content", () => {

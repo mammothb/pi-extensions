@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { compile } from "../src/core/summarize";
+import { compile } from "../src/lib/compact/summarize";
 import { assistantText, assistantWithToolCall, userMsg } from "./fixtures";
 
 const mmBin = process.env.MM_CLI_PATH ?? "mm";

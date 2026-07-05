@@ -2,16 +2,23 @@ import { writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import {
+  buildOwnCut,
+  collectLiveMessages,
+  REASON_MESSAGES,
+} from "./lib/compact/build-own-cut";
+import {
   MM_COMPACT_INSTRUCTION,
   parseKeepAndPrompt,
-} from "../core/compact-args";
-import type { MmCompactDetails } from "../core/details";
-import { loadSettings, type MmCompactSettings } from "../core/settings";
-// TODO: rename MmCompactSettings → MmCompactSettings
-import { compile } from "../core/summarize";
-import type { CompactionReason } from "../core/types";
+} from "./lib/compact/compact-args";
+import { loadSettings, type MmCompactSettings } from "./lib/compact/settings";
+import { compile } from "./lib/compact/summarize";
+import type {
+  BranchEntry,
+  CompactionReason,
+  MmCompactDetails,
+} from "./lib/compact/types";
 
-export { MM_COMPACT_INSTRUCTION } from "../core/compact-args";
+export { MM_COMPACT_INSTRUCTION } from "./lib/compact/compact-args";
 
 export interface CompactionStats {
   summarized: number;
@@ -26,10 +33,35 @@ export interface CompactionStats {
   willRetry?: boolean;
 }
 
-let lastStats: CompactionStats | null = null;
-let lastCompactWasMmCompact = false;
-let pendingFollowUpPrompt: string | null = null;
-export const getLastCompactionStats = () => lastStats;
+// ── Factory for isolated hook state ────────────────────────────
+
+interface BeforeCompactState {
+  lastStats: CompactionStats | null;
+  lastCompactWasMmCompact: boolean;
+  pendingFollowUpPrompt: string | null;
+}
+
+export function createBeforeCompactHook() {
+  const state: BeforeCompactState = {
+    lastStats: null,
+    lastCompactWasMmCompact: false,
+    pendingFollowUpPrompt: null,
+  };
+
+  const register = (pi: ExtensionAPI) => {
+    registerHookWithState(pi, state);
+  };
+
+  const getLastStats = () => state.lastStats;
+
+  return { register, getLastStats };
+}
+
+// Singleton for the default export — tests use createBeforeCompactHook() directly.
+const defaultHook = createBeforeCompactHook();
+
+export const registerBeforeCompactHook = defaultHook.register;
+export const getLastCompactionStats = defaultHook.getLastStats;
 
 const formatTokens = (n: number): string => {
   if (n >= 1000) {
@@ -98,13 +130,6 @@ const parseCompactionInstructions = (
   };
 };
 
-const normalizeKeepUserTurns = (keepUserTurns: number): number => {
-  if (!Number.isFinite(keepUserTurns)) {
-    return 0;
-  }
-  return Math.max(0, Math.floor(keepUserTurns));
-};
-
 const dbg = (settings: MmCompactSettings, data: Record<string, unknown>) => {
   if (!settings.debug) {
     return;
@@ -143,144 +168,7 @@ const previewContent = (content: unknown): string => {
   return "";
 };
 
-interface EntryWithMessage {
-  entry: { id: string; type: string };
-  message: { role: string; content: unknown };
-}
-
-export type OwnCutCancelReason = "no_live_messages" | "too_few_live_messages";
-
-export type OwnCutResult =
-  | {
-      ok: true;
-      messages: any[];
-      firstKeptEntryId: string;
-      compactAll: boolean;
-      keptUserTurns: number;
-      totalUserTurns: number;
-      requestedKeepUserTurns: number;
-      keepFallbackToCompactAll: boolean;
-    }
-  | { ok: false; reason: OwnCutCancelReason };
-
-export function buildOwnCut(
-  branchEntries: any[],
-  keepUserTurns = 1,
-): OwnCutResult {
-  const normalizedKeepUserTurns = normalizeKeepUserTurns(keepUserTurns);
-  // Find the last compaction entry and its firstKeptEntryId
-  let lastCompactionIdx = -1;
-  let lastKeptId: string | undefined;
-  for (let i = branchEntries.length - 1; i >= 0; i--) {
-    if (branchEntries[i].type === "compaction") {
-      lastCompactionIdx = i;
-      lastKeptId = branchEntries[i].firstKeptEntryId;
-      break;
-    }
-  }
-
-  // Orphan recovery: triggers when lastKeptId is set to "" (sentinel from prior
-  // compact-all) OR set to an id that no longer exists in the branch. In both cases,
-  // start collecting from right after the last compaction entry.
-  const hasPriorCompaction = lastCompactionIdx >= 0;
-  const hasValidKeptId =
-    !!lastKeptId && branchEntries.some((e: any) => e.id === lastKeptId);
-  const orphanRecovery = hasPriorCompaction && !hasValidKeptId;
-
-  // Collect live messages
-  const liveMessages: EntryWithMessage[] = [];
-  if (orphanRecovery) {
-    for (let i = lastCompactionIdx + 1; i < branchEntries.length; i++) {
-      const e = branchEntries[i];
-      if (e.type === "compaction") {
-        continue;
-      }
-      if (e.type === "message" && e.message) {
-        liveMessages.push({ entry: e, message: e.message });
-      }
-    }
-  } else {
-    let foundKept = !lastKeptId; // if no prior compaction, start collecting immediately
-    for (const e of branchEntries) {
-      if (!foundKept && e.id === lastKeptId) {
-        foundKept = true;
-      }
-      if (!foundKept) {
-        continue;
-      }
-      if (e.type === "compaction") {
-        continue;
-      }
-      if (e.type === "message" && e.message) {
-        liveMessages.push({ entry: e, message: e.message });
-      }
-    }
-  }
-
-  if (liveMessages.length === 0) {
-    return { ok: false, reason: "no_live_messages" };
-  }
-  if (liveMessages.length <= 2) {
-    return { ok: false, reason: "too_few_live_messages" };
-  }
-
-  const userIndices = liveMessages.reduce<number[]>((acc, e, i) => {
-    if (e.message.role === "user") {
-      acc.push(i);
-    }
-    return acc;
-  }, []);
-  const compactAll = (keepFallbackToCompactAll: boolean) => ({
-    ok: true as const,
-    messages: liveMessages.map((e) => e.message),
-    firstKeptEntryId: "",
-    compactAll: true,
-    keptUserTurns: 0,
-    totalUserTurns: userIndices.length,
-    requestedKeepUserTurns: normalizedKeepUserTurns,
-    keepFallbackToCompactAll,
-  });
-
-  if (normalizedKeepUserTurns <= 0) {
-    return compactAll(false);
-  }
-
-  // Summarize all messages before the requested kept user-turn tail.
-  const targetUserIdx = userIndices.length - normalizedKeepUserTurns;
-  const rawCutIdx = targetUserIdx >= 0 ? userIndices[targetUserIdx] : undefined;
-  const cutIdx = rawCutIdx ?? -1;
-
-  if (cutIdx <= 0) {
-    // Keep request cannot form a safe boundary (single user prompt, no user prompt,
-    // or keep larger than available user turns), so compact EVERYTHING and keep no tail.
-    // firstKeptEntryId="" is a sentinel: pi-core's buildSessionContext won't match it
-    // (so 0 kept from pre-compaction), and next buildOwnCut triggers orphan recovery.
-    return compactAll(true);
-  }
-
-  const firstKept = liveMessages[cutIdx];
-  if (!firstKept) {
-    return compactAll(true);
-  }
-
-  return {
-    ok: true,
-    messages: liveMessages.slice(0, cutIdx).map((e) => e.message),
-    firstKeptEntryId: firstKept.entry.id,
-    compactAll: false,
-    keptUserTurns: userIndices.length - targetUserIdx,
-    totalUserTurns: userIndices.length,
-    requestedKeepUserTurns: normalizedKeepUserTurns,
-    keepFallbackToCompactAll: false,
-  };
-}
-
-const REASON_MESSAGES: Record<OwnCutCancelReason, string> = {
-  no_live_messages: "mm-compact: Nothing to compact (no live messages)",
-  too_few_live_messages: "mm-compact: Too few messages to compact",
-};
-
-export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
+function registerHookWithState(pi: ExtensionAPI, state: BeforeCompactState) {
   pi.on("session_before_compact", (event, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const { reason, willRetry } = readCompactionEventContext(event);
@@ -294,56 +182,23 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       keepUserTurnsExplicit,
       followUpPrompt,
     } = parseCompactionInstructions(customInstructions);
-    pendingFollowUpPrompt = null;
+    state.pendingFollowUpPrompt = null;
     if (!isMmCompact && !settings.overrideDefaultCompaction) {
       return;
     }
 
-    const ownCut = buildOwnCut(branchEntries as any[], keepUserTurns);
+    const ownCut = buildOwnCut(branchEntries as BranchEntry[], keepUserTurns);
     if (!ownCut.ok) {
       const lastComp = [...branchEntries]
         .reverse()
-        .find((e: any) => e.type === "compaction");
+        .find((e) => e.type === "compaction");
       const lastCompIdx = lastComp
-        ? (branchEntries as any[]).indexOf(lastComp)
+        ? (branchEntries as BranchEntry[]).indexOf(lastComp)
         : -1;
 
-      // Recompute liveMessages view (same logic as buildOwnCut) for diagnostic
-      const lastKeptId: string | undefined = (lastComp as any)
-        ?.firstKeptEntryId;
-      const hasPriorCompaction = lastCompIdx >= 0;
-      const hasValidKeptId =
-        !!lastKeptId &&
-        (branchEntries as any[]).some((e: any) => e.id === lastKeptId);
-      const diagOrphan = hasPriorCompaction && !hasValidKeptId;
-      const liveRoles: string[] = [];
-      if (diagOrphan) {
-        for (let i = lastCompIdx + 1; i < branchEntries.length; i++) {
-          const e = (branchEntries as any[])[i];
-          if (e.type === "compaction") {
-            continue;
-          }
-          if (e.type === "message" && e.message) {
-            liveRoles.push(e.message.role);
-          }
-        }
-      } else {
-        let foundKept = !lastKeptId;
-        for (const e of branchEntries as any[]) {
-          if (!foundKept && e.id === lastKeptId) {
-            foundKept = true;
-          }
-          if (!foundKept) {
-            continue;
-          }
-          if (e.type === "compaction") {
-            continue;
-          }
-          if (e.type === "message" && e.message) {
-            liveRoles.push(e.message.role);
-          }
-        }
-      }
+      // Reuse collectLiveMessages for diagnostic data
+      const liveMessages = collectLiveMessages(branchEntries as BranchEntry[]);
+      const liveRoles = liveMessages.map((m) => m.message.role);
       const userIndices = liveRoles.reduce<number[]>((acc, r, i) => {
         if (r === "user") {
           acc.push(i);
@@ -351,7 +206,7 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
         return acc;
       }, []);
 
-      pendingFollowUpPrompt = null;
+      state.pendingFollowUpPrompt = null;
       const fallbackToCore =
         !isMmCompact && (reason === "overflow" || willRetry);
       dbg(settings, {
@@ -362,11 +217,11 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
         isMmCompact,
         counts: {
           total: branchEntries.length,
-          messages: (branchEntries as any[]).filter(
-            (e: any) => e.type === "message",
+          messages: (branchEntries as BranchEntry[]).filter(
+            (e) => e.type === "message",
           ).length,
-          compactions: (branchEntries as any[]).filter(
-            (e: any) => e.type === "compaction",
+          compactions: (branchEntries as BranchEntry[]).filter(
+            (e) => e.type === "compaction",
           ).length,
           entriesAfterLastCompaction:
             lastCompIdx >= 0 ? branchEntries.length - lastCompIdx - 1 : null,
@@ -383,15 +238,15 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
         },
         lastCompaction: lastComp
           ? {
-              hasFirstKeptEntryId: !!(lastComp as any).firstKeptEntryId,
-              foundInBranch: (lastComp as any).firstKeptEntryId
-                ? (branchEntries as any[]).some(
-                    (e: any) => e.id === (lastComp as any).firstKeptEntryId,
+              hasFirstKeptEntryId: !!lastComp.firstKeptEntryId,
+              foundInBranch: lastComp.firstKeptEntryId
+                ? (branchEntries as BranchEntry[]).some(
+                    (e) => e.id === lastComp.firstKeptEntryId,
                   )
                 : null,
             }
           : null,
-        tail: (branchEntries as any[]).slice(-5).map((e: any) => ({
+        tail: (branchEntries as BranchEntry[]).slice(-5).map((e) => ({
           type: e.type,
           role: e.type === "message" ? e.message?.role : undefined,
           hasContent:
@@ -411,22 +266,23 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       return { cancel: true };
     }
 
-    pendingFollowUpPrompt = followUpPrompt;
+    state.pendingFollowUpPrompt = followUpPrompt;
     const agentMessages = ownCut.messages;
     const firstKeptEntryId = ownCut.firstKeptEntryId;
-    const messages = convertToLlm(agentMessages);
+    // Cast: BranchEntryMessage[] is structurally compatible with pi-core's AgentMessage[]
+    const messages = convertToLlm(agentMessages as any[]);
 
     // Count kept messages and estimate tokens
-    const keptIdx = (branchEntries as any[]).findIndex(
-      (e: any) => e.id === firstKeptEntryId,
+    const keptIdx = (branchEntries as BranchEntry[]).findIndex(
+      (e) => e.id === firstKeptEntryId,
     );
     const keptEntries =
       keptIdx >= 0
-        ? (branchEntries as any[])
+        ? (branchEntries as BranchEntry[])
             .slice(keptIdx)
-            .filter((e: any) => e.type === "message")
+            .filter((e) => e.type === "message")
         : [];
-    const keptChars = keptEntries.reduce((sum: number, e: any) => {
+    const keptChars = keptEntries.reduce((sum, e) => {
       const c = e.message?.content;
       if (typeof c === "string") {
         return sum + c.length;
@@ -461,7 +317,7 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       }
       return sum;
     }, 0);
-    lastStats = {
+    state.lastStats = {
       summarized: agentMessages.length,
       kept: keptEntries.length,
       keptUserTurns: ownCut.keptUserTurns,
@@ -481,16 +337,21 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       previousSummary: preparation.previousSummary,
     });
 
-    const branchIds = branchEntries.map((e: any) => e.id);
+    const sectionNames = [...summary.matchAll(/^\[(.+?)\]/gm)]
+      .map((m) => m[1])
+      .filter((s): s is string => s != null);
+
+    const entries = branchEntries as BranchEntry[];
+    const branchIds = entries.map((e) => e.id);
     const cutIdx2 = branchIds.indexOf(firstKeptEntryId);
     const cutWindow =
       cutIdx2 >= 0
-        ? branchEntries
+        ? entries
             .slice(
               Math.max(0, cutIdx2 - 3),
-              Math.min(branchEntries.length, cutIdx2 + 3),
+              Math.min(entries.length, cutIdx2 + 3),
             )
-            .map((e: any) => ({
+            .map((e) => ({
               id: e.id,
               type: e.type,
               role: e.type === "message" ? e.message?.role : undefined,
@@ -505,11 +366,11 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       usedOwnCut: true,
       compaction: { reason, willRetry },
       messagesToSummarize: agentMessages.length,
-      messagesPreviewHead: agentMessages.slice(0, 3).map((m: any) => ({
+      messagesPreviewHead: agentMessages.slice(0, 3).map((m) => ({
         role: m.role,
         preview: previewContent(m.content),
       })),
-      messagesPreviewTail: agentMessages.slice(-3).map((m: any) => ({
+      messagesPreviewTail: agentMessages.slice(-3).map((m) => ({
         role: m.role,
         preview: previewContent(m.content),
       })),
@@ -519,24 +380,20 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       tokensBefore: preparation.tokensBefore,
       summaryLength: summary.length,
       summaryPreview: summary.slice(0, 500),
-      sections: [...summary.matchAll(/^\[(.+?)\]/gm)]
-        .map((m) => m[1])
-        .filter((s): s is string => s != null),
+      sections: sectionNames,
     });
 
     const details: MmCompactDetails = {
       compactor: "mm-compact",
       version: 1,
-      sections: [...summary.matchAll(/^\[(.+?)\]/gm)]
-        .map((m) => m[1])
-        .filter((s): s is string => s != null),
+      sections: sectionNames,
       sourceMessageCount: agentMessages.length,
       previousSummaryUsed: Boolean(preparation.previousSummary),
       reason,
       willRetry,
     };
 
-    lastCompactWasMmCompact = isMmCompact;
+    state.lastCompactWasMmCompact = isMmCompact;
 
     return {
       compaction: {
@@ -555,15 +412,15 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
     if (!event.fromExtension) {
       return;
     }
-    const followUpPrompt = pendingFollowUpPrompt;
-    pendingFollowUpPrompt = null;
-    if (lastCompactWasMmCompact) {
+    const followUpPrompt = state.pendingFollowUpPrompt;
+    state.pendingFollowUpPrompt = null;
+    if (state.lastCompactWasMmCompact) {
       return; // /mm-compact handles its own toast via onComplete
     }
     if (reason === "overflow" || willRetry) {
       return;
     }
-    const stats = lastStats;
+    const stats = state.lastStats;
     if (!stats) {
       return;
     }
@@ -578,4 +435,4 @@ export const registerBeforeCompactHook = (pi: ExtensionAPI) => {
       }
     }, 500);
   });
-};
+}

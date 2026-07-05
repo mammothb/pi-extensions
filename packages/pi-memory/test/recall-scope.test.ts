@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeRecallScope,
   parseRecallScope,
-} from "../src/core/recall-scope";
+} from "../src/lib/recall/recall-scope";
 
 describe("normalizeRecallScope", () => {
   it("defaults to active lineage", () => {

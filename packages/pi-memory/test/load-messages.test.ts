@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadAllMessages } from "../src/core/load-messages";
+import { loadAllMessages } from "../src/lib/recall/load-messages";
 
 describe("loadAllMessages", () => {
   it("loads all message entries when no lineage filter is provided", () => {
