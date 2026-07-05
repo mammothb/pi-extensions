@@ -74,6 +74,13 @@ export default defineConfig({
           root: "./packages/pi-office",
         },
       },
+      {
+        test: {
+          name: "pi-trigger",
+          root: "./packages/pi-trigger",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

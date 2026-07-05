@@ -212,6 +212,7 @@ export class AskComponent implements Component {
       },
 
       onRequestRender: () => {
+        this.invalidate();
         this.#tui.requestRender();
       },
     };
