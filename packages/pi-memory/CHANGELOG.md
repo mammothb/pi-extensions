@@ -1,5 +1,14 @@
 # @mammothb/pi-memory
 
+## 1.0.1
+
+### Patch Changes
+
+- 22ff42a: Refactor internal structure: flatten directory layout, extract shared modules
+  (`buildOwnCut`, `collectLiveMessages`, recall pipeline), eliminate dead code,
+  factory-wrap mutable state, reduce `any` casts via `BranchEntry` type, and
+  consolidate compact-domain types into `types.ts`. No behavioral changes.
+
 ## 1.0.0
 
 ### Major Changes
