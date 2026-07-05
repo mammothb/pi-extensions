@@ -52,6 +52,9 @@ pub struct CompileArgs {
     /// Parse input as Pi-format JSONL [default: Claude format]
     #[arg(long)]
     pub pi: bool,
+    /// Output JSON instead of human-readable text
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args)]

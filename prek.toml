@@ -1,16 +1,47 @@
-# prek configuration for pi-extensions monorepo
-# See CONTRIBUTING.md for development conventions.
-
+# General-purpose checks (Rust-native, zero-deps, instant)
 [[repos]]
 repo = "builtin"
 hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
   { id = "check-merge-conflict" },
   { id = "detect-private-key" },
   { id = "check-added-large-files", args = ["--maxkb=1024"] },
+  { id = "check-case-conflict" },
+  { id = "mixed-line-ending", args = ["--fix=no"] },
 ]
 
+# prek configuration for pi-extensions monorepo
+# See CONTRIBUTING.md for development conventions.
 [[repos]]
 repo = "local"
 hooks = [
-  { id = "biome", name = "biome", language = "system", entry = "pnpm run fix", files = "\\.(ts|tsx|js|jsx|json|jsonc)$", pass_filenames = false },
+  {
+    id = "biome",
+    name = "biome",
+    language = "system",
+    entry = "pnpm run fix",
+    files = "\\.(ts|tsx|js|jsx|json|jsonc)$",
+    pass_filenames = false
+  },
+  {
+    id = "cargo-fmt",
+    name = "cargo fmt",
+    language = "system",
+    entry = "cargo",
+    args = ["fmt", "--check"],
+    files = "\\.rs$",
+    pass_filenames = false,
+  },
+  {
+    id = "cargo-clippy",
+    name = "cargo clippy",
+    language = "system",
+    entry = "cargo",
+    args = ["clippy", "--", "-D", "warnings"],
+    files = "\\.rs$",
+    pass_filenames = false,
+  },
 ]

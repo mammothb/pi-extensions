@@ -12,6 +12,10 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
     pub is_error: bool,
+    /// Runtime bash execution fields (pi-format `bashExecution` role).
+    pub command: Option<String>,
+    pub output: Option<String>,
+    pub exit_code: Option<i32>,
 }
 
 impl Message {
@@ -86,13 +90,4 @@ pub enum NormalizedBlock {
         exit_code: Option<i32>,
         source_index: usize,
     },
-}
-
-pub struct SectionData {
-    pub session_goal: Vec<String>,
-    pub files_and_changes: Vec<String>,
-    pub commits: Vec<String>,
-    pub outstanding_context: Vec<String>,
-    pub user_preferences: Vec<String>,
-    pub brief_transcript: String,
 }

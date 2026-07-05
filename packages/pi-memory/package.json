@@ -1,9 +1,10 @@
 {
   "name": "@mammothb/pi-memory",
-  "version": "0.3.6",
-  "description": "A pi extension that gives the agent persistent memory across sessions",
+  "version": "0.4.0",
+  "description": "VCC conversation compaction for Pi, backed by mm-cli",
   "keywords": [
-    "pi-package"
+    "pi-package",
+    "pi-extension"
   ],
   "license": "MIT",
   "files": [
@@ -14,9 +15,6 @@
     "extensions": [
       "./index.ts"
     ]
-  },
-  "dependencies": {
-    "@mammothb/pi-shared": "workspace:*"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

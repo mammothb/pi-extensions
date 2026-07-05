@@ -42,6 +42,17 @@ fn normalize_one(msg: &Message, index: usize) -> Vec<NormalizedBlock> {
                 _ => None,
             })
             .collect(),
+        "bash_execution" => {
+            let command = msg.command.clone().unwrap_or_default();
+            let output = msg.output.clone().unwrap_or_default();
+            let exit_code = msg.exit_code;
+            vec![NormalizedBlock::Bash {
+                command: sanitize(&command),
+                output: sanitize(&output),
+                exit_code,
+                source_index: index,
+            }]
+        }
         "tool_result" => {
             // Tool result metadata comes from Message-level fields (pi format)
             // or from ContentBlock::ToolResult (Claude format - unwound by
@@ -95,6 +106,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -105,6 +119,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -119,6 +136,9 @@ mod tests {
             tool_call_id: None,
             tool_name: name.map(String::from),
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -131,6 +151,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -271,6 +294,65 @@ mod tests {
         );
     }
 
+    // ===========================
+    // bash_execution → Bash block
+    // ===========================
+
+    fn msg_bash_execution(command: &str, output: &str, exit_code: Option<i32>) -> Message {
+        Message {
+            role: "bash_execution".into(),
+            content: vec![ContentBlock::Text {
+                text: command.into(),
+            }],
+            tool_call_id: None,
+            tool_name: None,
+            is_error: false,
+            command: Some(command.into()),
+            output: Some(output.into()),
+            exit_code,
+        }
+    }
+
+    #[rstest]
+    fn normalize_bash_execution_yields_bash_block() {
+        let msgs = vec![msg_bash_execution("ls -la", "total 0", Some(0))];
+        let blocks = normalize(&msgs);
+        assert_eq!(blocks.len(), 1);
+        assert!(
+            matches!(&blocks[0], NormalizedBlock::Bash { command, output, exit_code, source_index: 0 }
+            if command == "ls -la" && output == "total 0" && *exit_code == Some(0))
+        );
+    }
+
+    #[rstest]
+    fn normalize_bash_execution_nonzero_exit() {
+        let msgs = vec![msg_bash_execution("false", "", Some(1))];
+        let blocks = normalize(&msgs);
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(&blocks[0], NormalizedBlock::Bash { exit_code, .. }
+            if *exit_code == Some(1)));
+    }
+
+    #[rstest]
+    fn normalize_bash_execution_missing_output() {
+        let msg = Message {
+            role: "bash_execution".into(),
+            content: vec![ContentBlock::Text { text: "ls".into() }],
+            tool_call_id: None,
+            tool_name: None,
+            is_error: false,
+            command: Some("ls".into()),
+            output: None,
+            exit_code: None,
+        };
+        let blocks = normalize(&[msg]);
+        assert_eq!(blocks.len(), 1);
+        assert!(
+            matches!(&blocks[0], NormalizedBlock::Bash { command, output, exit_code, .. }
+            if command == "ls" && output == "" && *exit_code == None)
+        );
+    }
+
     // ================================
     // system / unknown roles → skipped
     // ================================
@@ -282,6 +364,9 @@ mod tests {
         tool_call_id: None,
         tool_name: None,
         is_error: false,
+        command: None,
+        output: None,
+        exit_code: None,
     })]
     fn normalize_skips_non_standard_roles(#[case] msg: Message) {
         assert!(normalize(&[msg]).is_empty());

@@ -72,7 +72,7 @@ fn is_noise_user_block(text: &str) -> bool {
     is_noise_string(text) || strip_xml(text).trim().is_empty()
 }
 
-/// Check if text contains any noise substring (pi-vcc uses `.includes`).
+/// Check if text contains any noise substring.
 fn is_noise_string(text: &str) -> bool {
     let trimmed = text.trim();
     trimmed.is_empty() || NOISE_STRINGS.iter().any(|s| trimmed.contains(s))

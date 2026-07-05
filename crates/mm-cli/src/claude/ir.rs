@@ -34,7 +34,7 @@ const DOUBLE_SEP: &str =
 /// Line numbers are consecutive across the entire file (not per-chain).
 /// Chain headers only appear when there are multiple chains (compact_boundary
 /// splits).
-pub fn emit_full(messages: &[Message]) -> String {
+pub fn emit_full(messages: &[Message], no_stats: bool) -> String {
     let chains = split_chains(messages);
     let mut out = String::new();
     let mut global_line: usize = 0;
@@ -141,7 +141,69 @@ pub fn emit_full(messages: &[Message]) -> String {
         }
     }
 
+    if !no_stats {
+        let footer = stats_footer(messages);
+        if !footer.is_empty() {
+            out.push_str(SEPARATOR);
+            out.push('\n');
+            out.push_str(&footer);
+            out.push('\n');
+        }
+    }
+
     out
+}
+
+/// Build a stats footer: "N messages · T tool calls · ~X tokens"
+fn stats_footer(messages: &[Message]) -> String {
+    let msg_count = messages.len();
+    if msg_count == 0 {
+        return String::new();
+    }
+
+    let mut tool_calls = 0usize;
+    let mut tool_results = 0usize;
+    let mut char_count = 0usize;
+
+    for msg in messages {
+        if msg.role.as_str() == "tool_result" {
+            tool_results += 1
+        }
+        for block in &msg.content {
+            match block {
+                ContentBlock::Text { text } => char_count += text.len(),
+                ContentBlock::ToolCall { name, input, .. } => {
+                    tool_calls += 1;
+                    char_count += name.len();
+                    char_count += input.to_string().len();
+                }
+                ContentBlock::ToolResult { content, .. } => {
+                    char_count += content.len();
+                }
+                ContentBlock::Thinking { thinking, .. } => {
+                    char_count += thinking.len();
+                }
+            }
+        }
+    }
+
+    let tok_est = char_count / 4;
+    let tok = if tok_est >= 1000 {
+        format!("~{:.1}k", tok_est as f64 / 1000.0)
+    } else {
+        format!("~{tok_est}")
+    };
+
+    let mut parts = vec![format!("{msg_count} messages")];
+    if tool_calls > 0 {
+        parts.push(format!("{tool_calls} tool calls"));
+    }
+    if tool_results > 0 {
+        parts.push(format!("{tool_results} tool results"));
+    }
+    parts.push(format!("{tok} tokens"));
+
+    parts.join(" · ")
 }
 
 /// Build a one-line tool-call summary: `Name("arg")` or `Name`.
@@ -205,6 +267,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -215,6 +280,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -234,6 +302,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -247,6 +318,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -257,6 +331,9 @@ mod tests {
             tool_call_id: None,
             tool_name: Some(name.into()),
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -267,6 +344,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -277,6 +357,9 @@ mod tests {
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         }
     }
 
@@ -340,13 +423,13 @@ mod tests {
 
     #[rstest]
     fn emit_full_empty() {
-        assert_eq!(emit_full(&[]), "");
+        assert_eq!(emit_full(&[], false), "");
     }
 
     #[rstest]
     fn emit_full_single_user_message() {
         let msgs = vec![msg_user("hello world")];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
         assert!(out.contains("[1]  user"));
         assert!(out.contains("     hello world"));
     }
@@ -369,7 +452,7 @@ mod tests {
             ),
             msg_tool_result("Edit", "edit applied"),
         ];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
 
         // Line numbers present
         assert!(out.contains("[1]  user"));
@@ -396,7 +479,7 @@ mod tests {
     #[rstest]
     fn emit_full_thinking_block() {
         let msgs = vec![msg_assistant_thinking("hmm, let me think...")];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
         assert!(out.contains("[thinking]"));
         assert!(out.contains("hmm, let me think..."));
     }
@@ -404,7 +487,7 @@ mod tests {
     #[rstest]
     fn emit_full_system_message() {
         let msgs = vec![msg_system("compaction happened")];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
         assert!(out.contains("[1]  system"));
         assert!(out.contains("     compaction happened"));
     }
@@ -418,7 +501,7 @@ mod tests {
             msg_user("second question"),
             msg_assistant_text("second answer"),
         ];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
 
         // Chain headers present (2 chains)
         assert!(out.contains("══════════"));
@@ -432,7 +515,7 @@ mod tests {
     #[rstest]
     fn emit_full_no_chain_header_for_single_chain() {
         let msgs = vec![msg_user("hi"), msg_assistant_text("hey")];
-        let out = emit_full(&msgs);
+        let out = emit_full(&msgs, false);
         assert!(!out.contains("Chain"));
     }
 

@@ -153,9 +153,6 @@ importers:
       '@earendil-works/pi-tui':
         specifier: 0.79.4
         version: 0.79.4
-      '@mammothb/pi-shared':
-        specifier: workspace:*
-        version: link:../pi-shared
       typebox:
         specifier: '*'
         version: 1.3.3

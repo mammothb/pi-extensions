@@ -3,12 +3,17 @@
   "private": true,
   "packageManager": "pnpm@11.5.2",
   "scripts": {
-    "check": "biome check .",
     "format": "biome format --write .",
+    "format:rust": "cargo fmt",
+    "format:all": "pnpm run format && pnpm run format:rust",
     "lint": "biome check .",
+    "lint:rust": "cargo fmt --check && cargo +1.88 clippy -- -D warnings",
+    "lint:all": "pnpm run lint && pnpm run lint:rust",
     "fix": "biome check --write .",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:rust": "cargo test --workspace",
+    "test:all": "pnpm run test && pnpm run test:rust"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

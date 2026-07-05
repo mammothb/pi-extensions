@@ -28,3 +28,12 @@ predicates = { version = "3.1.4" }
 rstest = { version = "0.26.1" }
 serial_test = { version = "3.4.0" }
 tempfile = { version = "3.27.0" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false

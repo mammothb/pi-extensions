@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::pipeline::stats::count_tokens;
 use crate::types::NormalizedBlock;
 
 /// Full input from the TS shim via stdin.
@@ -10,26 +11,11 @@ pub struct PiRequest {
     pub messages: Vec<Value>, // pi-ai format message objects
     #[serde(default)]
     pub previous_summary: Option<String>,
-    #[serde(default)]
-    pub file_ops: Option<FileOps>,
-    #[serde(default)]
-    pub keep: Option<usize>,
-}
-
-/// File operations collected by the TS shim from tool calls.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FileOps {
-    #[serde(default)]
-    pub read: Vec<String>,
-    #[serde(default)]
-    pub written: Vec<String>,
-    #[serde(default)]
-    pub edited: Vec<String>,
 }
 
 /// Response written to stdout.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PiResponse {
     pub summary: String,
     pub stats: PiStats,
@@ -37,11 +23,30 @@ pub struct PiResponse {
 
 /// Normalization statistics for debugging/verification.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PiStats {
     pub messages_in: usize,
     pub blocks_out: usize,
     pub tool_calls: usize,
     pub tool_results: usize,
+    pub token_count: usize,
+}
+
+/// Extract text content from a block for token counting.
+fn block_token_text(block: &NormalizedBlock) -> String {
+    match block {
+        NormalizedBlock::User { text, .. } => text.clone(),
+        NormalizedBlock::Assistant { text, .. } => text.clone(),
+        NormalizedBlock::ToolCall { name, args, .. } => {
+            format!("{name} {}", serde_json::to_string(args).unwrap_or_default())
+        }
+        NormalizedBlock::ToolResult { text, .. } => text.clone(),
+        NormalizedBlock::Bash {
+            command, output, ..
+        } => {
+            format!("{command} {output}")
+        }
+    }
 }
 
 impl PiStats {
@@ -54,11 +59,16 @@ impl PiStats {
             .iter()
             .filter(|b| matches!(b, NormalizedBlock::ToolResult { .. }))
             .count();
+        let token_count = blocks
+            .iter()
+            .map(|b| count_tokens(&block_token_text(b)))
+            .sum();
         Self {
             messages_in,
             blocks_out: blocks.len(),
             tool_calls,
             tool_results,
+            token_count,
         }
     }
 }
@@ -80,13 +90,7 @@ mod tests {
                 {"role": "user", "content": "hello"},
                 {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}
             ],
-            "previousSummary": "[Session Goal]\n- fix bug",
-            "fileOps": {
-                "read": ["src/a.ts"],
-                "written": ["src/b.ts"],
-                "edited": ["src/c.ts"]
-            },
-            "keep": 3
+            "previousSummary": "[Session Goal]\n- fix bug"
         });
 
         let req: PiRequest = serde_json::from_value(json).unwrap();
@@ -95,11 +99,6 @@ mod tests {
             req.previous_summary.as_deref(),
             Some("[Session Goal]\n- fix bug")
         );
-        let ops = req.file_ops.unwrap();
-        assert_eq!(ops.read, vec!["src/a.ts"]);
-        assert_eq!(ops.written, vec!["src/b.ts"]);
-        assert_eq!(ops.edited, vec!["src/c.ts"]);
-        assert_eq!(req.keep, Some(3));
     }
 
     #[rstest]
@@ -111,37 +110,17 @@ mod tests {
         let req: PiRequest = serde_json::from_value(json).unwrap();
         assert_eq!(req.messages.len(), 1);
         assert!(req.previous_summary.is_none());
-        assert!(req.file_ops.is_none());
-        assert!(req.keep.is_none());
-    }
-
-    #[rstest]
-    fn file_ops_defaults_empty_missing_fields() {
-        let json = json!({
-            "messages": [],
-            "fileOps": {}
-        });
-
-        let req: PiRequest = serde_json::from_value(json).unwrap();
-        let ops = req.file_ops.unwrap();
-        assert!(ops.read.is_empty());
-        assert!(ops.written.is_empty());
-        assert!(ops.edited.is_empty());
     }
 
     #[rstest]
     fn deserialize_null_optional_fields() {
         let json = json!({
             "messages": [],
-            "previousSummary": null,
-            "fileOps": null,
-            "keep": null
+            "previousSummary": null
         });
 
         let req: PiRequest = serde_json::from_value(json).unwrap();
         assert!(req.previous_summary.is_none());
-        assert!(req.file_ops.is_none());
-        assert!(req.keep.is_none());
     }
 
     // ====================
@@ -157,15 +136,17 @@ mod tests {
                 blocks_out: 5,
                 tool_calls: 2,
                 tool_results: 1,
+                token_count: 42,
             },
         };
 
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["summary"], "test summary");
-        assert_eq!(json["stats"]["messages_in"], 3);
-        assert_eq!(json["stats"]["blocks_out"], 5);
-        assert_eq!(json["stats"]["tool_calls"], 2);
-        assert_eq!(json["stats"]["tool_results"], 1);
+        assert_eq!(json["stats"]["messagesIn"], 3);
+        assert_eq!(json["stats"]["blocksOut"], 5);
+        assert_eq!(json["stats"]["toolCalls"], 2);
+        assert_eq!(json["stats"]["toolResults"], 1);
+        assert_eq!(json["stats"]["tokenCount"], 42);
     }
 
     #[rstest]
@@ -177,6 +158,7 @@ mod tests {
                 blocks_out: 0,
                 tool_calls: 0,
                 tool_results: 0,
+                token_count: 0,
             },
         };
 
@@ -228,6 +210,7 @@ mod tests {
         assert_eq!(stats.blocks_out, 7);
         assert_eq!(stats.tool_calls, 3);
         assert_eq!(stats.tool_results, 2);
+        assert!(stats.token_count > 0);
     }
 
     #[rstest]
@@ -237,6 +220,7 @@ mod tests {
         assert_eq!(stats.blocks_out, 0);
         assert_eq!(stats.tool_calls, 0);
         assert_eq!(stats.tool_results, 0);
+        assert_eq!(stats.token_count, 0);
     }
 
     #[rstest]
@@ -247,5 +231,6 @@ mod tests {
         assert_eq!(stats.blocks_out, 3);
         assert_eq!(stats.tool_calls, 0);
         assert_eq!(stats.tool_results, 0);
+        assert_eq!(stats.token_count, 3); // "hello" × 3
     }
 }

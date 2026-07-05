@@ -22,7 +22,8 @@ fn parse_message(msg: &Value) -> Option<Message> {
     let raw_role = required_str(msg, "role")?;
     let role = normalize_role(&raw_role);
     let content = parse_content(&msg["content"]);
-    if content.is_empty() {
+    // bash_execution uses command/output fields, content is not required
+    if content.is_empty() && role != "bash_execution" {
         None
     } else {
         Some(Message {
@@ -31,6 +32,12 @@ fn parse_message(msg: &Value) -> Option<Message> {
             tool_call_id: optional_str(msg, "toolCallId"),
             tool_name: optional_str(msg, "toolName"),
             is_error: msg.get("isError").and_then(Value::as_bool).unwrap_or(false),
+            command: optional_str(msg, "command"),
+            output: optional_str(msg, "output"),
+            exit_code: msg
+                .get("exitCode")
+                .and_then(Value::as_i64)
+                .map(|n| n as i32),
         })
     }
 }
@@ -39,6 +46,7 @@ fn parse_message(msg: &Value) -> Option<Message> {
 fn normalize_role(raw: &str) -> String {
     match raw {
         "toolResult" => "tool_result".into(),
+        "bashExecution" => "bash_execution".into(),
         other => other.into(),
     }
 }
@@ -153,6 +161,54 @@ mod tests {
         let msgs = parse(&[record(msg)]);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, expected_role);
+    }
+
+    // ============================
+    // bashExecution normalization
+    // ============================
+
+    #[rstest]
+    fn parse_normalizes_bash_execution_role() {
+        let records = vec![record(json!({
+            "role": "bashExecution",
+            "content": "ls -la",
+            "command": "ls -la",
+            "output": "total 0",
+            "exitCode": 0
+        }))];
+        let msgs = parse(&records);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].role, "bash_execution");
+        assert_eq!(msgs[0].command.as_deref(), Some("ls -la"));
+        assert_eq!(msgs[0].output.as_deref(), Some("total 0"));
+        assert_eq!(msgs[0].exit_code, Some(0));
+    }
+
+    #[rstest]
+    fn parse_bash_execution_without_optional_fields() {
+        let records = vec![record(json!({
+            "role": "bashExecution",
+            "content": "ls"
+        }))];
+        let msgs = parse(&records);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].role, "bash_execution");
+        assert!(msgs[0].command.is_none());
+        assert!(msgs[0].output.is_none());
+        assert!(msgs[0].exit_code.is_none());
+    }
+
+    #[rstest]
+    fn parse_bash_execution_nonzero_exit() {
+        let records = vec![record(json!({
+            "role": "bashExecution",
+            "command": "false",
+            "output": "",
+            "exitCode": 1
+        }))];
+        let msgs = parse(&records);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].exit_code, Some(1));
     }
 
     // =========================
@@ -359,9 +415,7 @@ mod tests {
         let msgs = parse_messages(&values);
         assert_eq!(msgs.len(), 1);
         assert!(msgs[0].is_user());
-        assert!(
-            matches!(&msgs[0].content[0], ContentBlock::Text { text } if text == "hello")
-        );
+        assert!(matches!(&msgs[0].content[0], ContentBlock::Text { text } if text == "hello"));
     }
 
     #[rstest]

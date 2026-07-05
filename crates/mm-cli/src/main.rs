@@ -19,7 +19,14 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Compile(args) => commands::compile::execute(args.paths, args.output_dir, args.pi),
+        Commands::Compile(args) => commands::compile::execute(
+            args.paths,
+            args.output_dir,
+            args.pi,
+            args.json,
+            args.no_stats,
+            args.engine.keep,
+        ),
         Commands::Pi(_args) => commands::pi::execute(),
     };
     match result {

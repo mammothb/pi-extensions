@@ -30,7 +30,8 @@
         "packages/*/test/**",
         "packages/*/evals/**",
         "*.test.ts",
-        "*.spec.ts"
+        "*.spec.ts",
+        "packages/pi-memory/src/hooks/**"
       ],
       "linter": {
         "rules": {

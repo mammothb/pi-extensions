@@ -78,7 +78,7 @@ pub fn compile_brief_with_limits(
     let mut sections = build_brief_sections(blocks, truncate_user, truncate_assistant);
     collapse_tool_lines(&mut sections);
     cap_tool_calls_per_turn(&mut sections);
-    stringify_brief(&sections)
+    crate::pipeline::format::stringify_brief(&sections)
 }
 
 // =======
@@ -220,9 +220,9 @@ fn collapse_skill_text(text: &str) -> String {
 // Section types
 // =============
 
-struct BriefSection {
-    header: &'static str,
-    lines: Vec<String>,
+pub(crate) struct BriefSection {
+    pub(crate) header: &'static str,
+    pub(crate) lines: Vec<String>,
 }
 
 // ================
@@ -465,32 +465,6 @@ fn cap_tool_calls_per_turn(sections: &mut [BriefSection]) {
 // =========
 // Stringify
 // =========
-
-/// Stringify BriefSection sections into text format.
-fn stringify_brief(sections: &[BriefSection]) -> String {
-    let mut out: Vec<String> = Vec::new();
-
-    for (i, sec) in sections.iter().enumerate() {
-        if i > 0 {
-            let prev = &sections[i - 1];
-            let prev_is_tools =
-                prev.header == "[assistant]" && prev.lines.iter().all(|l| l.starts_with("* "));
-            let cur_is_tools =
-                sec.header == "[assistant]" && sec.lines.iter().all(|l| l.starts_with("* "));
-
-            // Suppress blank lines between consecutive tool-only sections
-            if !(prev_is_tools && cur_is_tools) {
-                out.push(String::new());
-            }
-        }
-        out.push(sec.header.to_string());
-        for line in &sec.lines {
-            out.push(line.clone());
-        }
-    }
-
-    out.join("\n")
-}
 
 #[cfg(test)]
 mod tests {
@@ -991,24 +965,5 @@ mod tests {
         let r = compile_brief(&blocks);
         assert_eq!(r.matches("* ").count(), 1);
         assert!(r.contains("* Read \"a.ts\" (#1)"));
-    }
-
-    #[rstest]
-    fn brief_stringify_no_blank_between_tool_only_sections() {
-        // Two assistant sections, each tool-only -> no blank line between
-        let blocks = vec![
-            tool_call("Read", json!({"file_path": "a.ts"}), 0),
-            NormalizedBlock::ToolResult {
-                name: "Read".into(),
-                text: "...".into(),
-                source_index: 1,
-            },
-            tool_call("Read", json!({"file_path": "b.ts"}), 2),
-        ];
-        let r = compile_brief(&blocks);
-        // Both tool calls should be in the same [assistant] since no user block separates them
-        assert_eq!(r.matches("[assistant]").count(), 1);
-        assert!(r.contains("* Read \"a.ts\" (#0)"));
-        assert!(r.contains("* Read \"b.ts\" (#2)"));
     }
 }

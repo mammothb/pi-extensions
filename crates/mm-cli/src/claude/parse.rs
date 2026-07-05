@@ -149,6 +149,9 @@ fn parse_merged(records: &[ClaudeRecord]) -> Vec<Message> {
                             tool_call_id: None,
                             tool_name: None,
                             is_error: false,
+                            command: None,
+                            output: None,
+                            exit_code: None,
                         });
                     }
                     Some("init") => {} // skip
@@ -171,6 +174,9 @@ fn parse_merged(records: &[ClaudeRecord]) -> Vec<Message> {
                                 tool_call_id: None,
                                 tool_name: None,
                                 is_error: false,
+                                command: None,
+                                output: None,
+                                exit_code: None,
                             });
                         }
                     }
@@ -200,6 +206,9 @@ fn parse_user_message(content: &Value, tool_id_to_name: &HashMap<String, String>
                     tool_call_id: None,
                     tool_name: None,
                     is_error: false,
+                    command: None,
+                    output: None,
+                    exit_code: None,
                 }];
             }
             return vec![];
@@ -227,6 +236,9 @@ fn parse_user_message(content: &Value, tool_id_to_name: &HashMap<String, String>
             tool_call_id: None,
             tool_name: None,
             is_error: false,
+            command: None,
+            output: None,
+            exit_code: None,
         });
     }
 
@@ -255,6 +267,9 @@ fn parse_user_message(content: &Value, tool_id_to_name: &HashMap<String, String>
             tool_call_id: Some(tool_use_id),
             tool_name: name,
             is_error,
+            command: None,
+            output: None,
+            exit_code: None,
         });
     }
 
@@ -293,6 +308,9 @@ fn parse_assistant_message(
         tool_call_id: None,
         tool_name: None,
         is_error: false,
+        command: None,
+        output: None,
+        exit_code: None,
     }]
 }
 
