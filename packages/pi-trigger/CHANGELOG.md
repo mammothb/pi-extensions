@@ -1,5 +1,17 @@
 # @mammothb/pi-trigger
 
+## 1.1.0
+
+### Minor Changes
+
+- b1df743: Add `#skill:name` and `#prompt:name` mid-text autocomplete via
+  `AutocompleteProviderFactory`. Switch trigger prefix from `/` to `#`
+  so autocomplete fires on any line, not just line 0 (editor restricts
+  `/`-triggered autocomplete to the first line only).
+
+  Also replace local `homePath` with `expandTilde` from `@mammothb/pi-shared`,
+  and use `getAgentDir()` instead of hardcoded `~/.pi/agent` paths.
+
 ## 1.0.0
 
 - Initial release: mid-text `/skill:name` and `/prompt:name` trigger expansion
