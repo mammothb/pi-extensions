@@ -4,6 +4,7 @@ import { scaffoldSettings } from "./src/lib/compact/settings.js";
 import { registerMmCompactCommand } from "./src/mm-compact.js";
 import { registerMmRecallCommand } from "./src/mm-recall.js";
 import { registerRecallTool } from "./src/recall-tool.js";
+import { registerToolResultCleanup } from "./src/tool-result-cleanup.js";
 
 export default (pi: ExtensionAPI) => {
   scaffoldSettings();
@@ -11,4 +12,5 @@ export default (pi: ExtensionAPI) => {
   registerMmCompactCommand(pi);
   registerMmRecallCommand(pi);
   registerRecallTool(pi);
+  registerToolResultCleanup(pi);
 };
