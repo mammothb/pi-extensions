@@ -5,13 +5,18 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-import { extractTextContent, getExpandKey } from "@mammothb/pi-shared";
+import {
+  extractTextContent,
+  getCollapseHint,
+  getExpandHint,
+  PREVIEW_LINES,
+  renderError,
+} from "@mammothb/pi-shared";
 import Type from "typebox";
 import { buildHeaders } from "./lib/headers.js";
 import { toMarkdown, toText } from "./lib/processors.js";
 import { FormatSchema, type Header } from "./lib/types.js";
 
-const COLLAPSED_PREVIEW_LINES = 7;
 const DEFAULT_TIMEOUT = 30; // 30 seconds
 const MAX_TIMEOUT = 120; // 2 minutes
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -142,70 +147,68 @@ function renderWebfetchResult(
   expanded: boolean,
   theme: Theme,
 ): Container {
-  const container = new Container();
-
   const title = formatTitle(details);
   const format = details.format ? ` [${details.format}]` : "";
-  container.addChild(
-    new Text(
-      theme.fg("syntaxKeyword", "url: ") +
-        theme.fg("syntaxString", title + format),
-    ),
-  );
 
-  if (details.size !== undefined) {
-    container.addChild(
-      new Text(
+  const metaText =
+    theme.fg("syntaxKeyword", "url: ") +
+    theme.fg("syntaxString", title + format) +
+    (details.size !== undefined
+      ? "\n" +
         theme.fg("syntaxKeyword", "size: ") +
-          theme.fg("syntaxString", formatSizeOrUnknown(details.size)),
-      ),
-    );
-  }
+        theme.fg("syntaxString", formatSizeOrUnknown(details.size))
+      : "");
 
-  if (!textContent) {
+  // Expanded: full content + collapse hint
+  if (expanded) {
+    const container = new Container();
+    container.addChild(new Text(metaText));
+    container.addChild(new Spacer(1));
+    const fmt = details.format ?? "markdown";
+    if (fmt === "markdown") {
+      container.addChild(new Markdown(textContent, 0, 0, getMarkdownTheme()));
+    } else {
+      const highlighted = `\`\`\`${fmt}\n${textContent}\n\`\`\``;
+      container.addChild(new Markdown(highlighted, 0, 0, getMarkdownTheme()));
+    }
+    container.addChild(new Spacer(1));
+    container.addChild(new Text(getCollapseHint(theme)));
     return container;
   }
 
-  container.addChild(new Spacer(1));
+  // Collapsed: url+size as one Text child, then preview, then expand hint
+  const container = new Container();
+  container.addChild(new Text(metaText));
 
-  if (expanded) {
-    const format = details.format ?? "markdown";
-    if (format === "markdown") {
-      container.addChild(new Markdown(textContent, 0, 0, getMarkdownTheme()));
-    } else {
-      const highlighted = `\`\`\`${format}\n${textContent}\n\`\`\``;
-      container.addChild(new Markdown(highlighted, 0, 0, getMarkdownTheme()));
-    }
-  } else {
-    const lines = textContent
+  if (textContent) {
+    const stripped = textContent.replace(/^---\n[\s\S]*?\n---\n*/, "");
+    const lines = stripped
       .split("\n")
       .filter(
         (line, index, arr) =>
           line.length > 0 || index === 0 || index < arr.length - 1,
       );
-    const previewLines = lines.slice(0, COLLAPSED_PREVIEW_LINES);
+    const previewLines = lines.slice(0, PREVIEW_LINES);
     const remaining = Math.max(0, lines.length - previewLines.length);
 
-    const preview = previewLines.join("\n");
-    const format = details.format ?? "markdown";
-    if (format === "markdown") {
-      container.addChild(new Markdown(preview, 0, 0, getMarkdownTheme()));
-    } else {
-      container.addChild(new Text(preview));
+    if (previewLines.length > 0) {
+      container.addChild(new Spacer(1));
+      const fmt = details.format ?? "markdown";
+      if (fmt === "markdown") {
+        container.addChild(
+          new Markdown(previewLines.join("\n"), 0, 0, getMarkdownTheme()),
+        );
+      } else {
+        container.addChild(new Text(previewLines.join("\n")));
+      }
     }
 
     if (remaining > 0) {
       container.addChild(new Spacer(1));
-      const expandKey = getExpandKey();
-      container.addChild(
-        new Text(
-          theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("muted", expandKey) +
-            theme.fg("muted", " to expand)"),
-        ),
-      );
+      container.addChild(new Text(getExpandHint(theme, remaining)));
     }
   }
+
   return container;
 }
 
@@ -213,8 +216,10 @@ export function createWebfetchTool(): ToolDefinition<
   typeof Parameters,
   WebfetchDetails
 > {
+  const TOOL_NAME = "WebFetch";
+
   return {
-    name: "WebFetch",
+    name: TOOL_NAME,
     label: "Web Fetch",
     description:
       "Fetches content from a URL and converts to requested format (markdown, text, or HTML). " +
@@ -223,10 +228,18 @@ export function createWebfetchTool(): ToolDefinition<
       `Timeout configurable up to ${MAX_TIMEOUT}s (default ${DEFAULT_TIMEOUT}s).`,
     promptSnippet: "Fetch and convert web content",
     promptGuidelines: [
-      "WebFetch: format options are 'markdown' (default), 'text', or 'html'.",
-      "WebFetch: if another tool offers better web fetching (e.g., a provider-specific tool), prefer that instead.",
-      "WebFetch: results may be summarized if content is very large. Use timeout for slow endpoints.",
+      `${TOOL_NAME}: format options are 'markdown' (default), 'text', or 'html'.`,
+      `${TOOL_NAME}: if another tool offers better web fetching (e.g., a provider-specific tool), prefer that instead.`,
+      `${TOOL_NAME}: results may be summarized if content is very large. Use timeout for slow endpoints.`,
     ],
+    renderCall(args, theme, _ctx) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold(`${TOOL_NAME} `)) +
+          theme.fg("muted", args.url),
+        0,
+        0,
+      );
+    },
     parameters: Parameters,
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const url = params.url;
@@ -340,11 +353,17 @@ export function createWebfetchTool(): ToolDefinition<
         }
       }
     },
-    renderResult(result, options, theme, _ctx) {
+    renderResult(result, options, theme, ctx) {
       const details = result.details;
 
       if (options.isPartial && !details.url) {
         return new Text(theme.fg("muted", "Fetching..."));
+      }
+
+      if (ctx.isError) {
+        return renderError(extractTextContent(result), theme, {
+          toolLabel: TOOL_NAME,
+        });
       }
 
       if (details.isImage) {
@@ -357,9 +376,9 @@ export function createWebfetchTool(): ToolDefinition<
       }
 
       if (details.error) {
-        return new Text(
-          theme.fg("error", details.errorSummary ?? "Request failed"),
-        );
+        return renderError(details.errorSummary ?? "Request failed", theme, {
+          toolLabel: TOOL_NAME,
+        });
       }
 
       const textContent = extractTextContent(result);

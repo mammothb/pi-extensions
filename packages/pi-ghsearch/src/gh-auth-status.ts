@@ -21,8 +21,10 @@ export function createGhAuthStatusTool(
   pi: ExtensionAPI,
   config: GhSearchConfig,
 ): ToolDefinition<typeof GhAuthStatusParams, GhAuthStatusDetails> {
+  const TOOL_NAME = "gh_auth_status";
+
   return {
-    name: "gh_auth_status",
+    name: TOOL_NAME,
     label: "GitHub Auth Status",
     description:
       "Check GitHub CLI authentication status without exposing tokens. " +
@@ -31,23 +33,19 @@ export function createGhAuthStatusTool(
       "Supports --hostname for GHE and --active for active account only.",
     promptSnippet: "Check GitHub CLI authentication status",
     promptGuidelines: [
-      "On session start, if gh_auth_status reports 'not authenticated', tell the user to run `gh auth login`.",
-      "Do not call gh_auth_status proactively before every gh_search — only when you suspect auth issues.",
+      `On session start, if ${TOOL_NAME} reports 'not authenticated', tell the user to run \`gh auth login\`.`,
+      `Do not call ${TOOL_NAME} proactively before every gh_search — only when you suspect auth issues.`,
     ],
     parameters: GhAuthStatusParams,
     renderCall(_args, theme, _ctx) {
-      return new Text(
-        theme.fg("toolTitle", theme.bold("gh_auth_status")),
-        0,
-        0,
-      );
+      return new Text(theme.fg("toolTitle", theme.bold(TOOL_NAME)), 0, 0);
     },
     renderResult(result, _options, theme, ctx) {
       const details = result.details as GhAuthStatusDetails | undefined;
       const raw = firstTextBlock(result);
 
       if (ctx.isError) {
-        return renderError(raw, theme);
+        return renderError(raw, theme, { toolLabel: TOOL_NAME });
       }
 
       if (details?.authenticated) {

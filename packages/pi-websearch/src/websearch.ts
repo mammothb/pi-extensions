@@ -2,15 +2,15 @@ import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import {
   extractTextContent,
-  getExpandKey,
+  getCollapseHint,
+  getExpandHint,
+  PREVIEW_LINES,
   renderError,
 } from "@mammothb/pi-shared";
 import type { WebsearchConfig } from "./config";
 import { createProvider } from "./lib/providers";
 import type { SearchArgs } from "./lib/types";
 import { WebsearchParameters } from "./lib/types";
-
-const COLLAPSED_PREVIEW_LINES = 7;
 
 interface WebsearchDetails {
   query: string;
@@ -39,6 +39,8 @@ function renderExpandableResult(
 
   if (expanded) {
     container.addChild(new Text(textContent));
+    container.addChild(new Spacer(1));
+    container.addChild(new Text(getCollapseHint(theme)));
   } else {
     const lines = textContent
       .split("\n")
@@ -46,7 +48,7 @@ function renderExpandableResult(
         (line, index, arr) =>
           line.length > 0 || index === 0 || index < arr.length - 1,
       );
-    const previewLines = lines.slice(0, COLLAPSED_PREVIEW_LINES);
+    const previewLines = lines.slice(0, PREVIEW_LINES);
     const remaining = Math.max(0, lines.length - previewLines.length);
 
     const preview = previewLines.join("\n");
@@ -54,14 +56,7 @@ function renderExpandableResult(
 
     if (remaining > 0) {
       container.addChild(new Spacer(1));
-      const expandKey = getExpandKey();
-      container.addChild(
-        new Text(
-          theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("muted", expandKey) +
-            theme.fg("muted", " to expand)"),
-        ),
-      );
+      container.addChild(new Text(getExpandHint(theme, remaining)));
     }
   }
   return container;
@@ -74,10 +69,11 @@ export function createWebsearchTool(
   const { defaults } = config;
   const provider = createProvider(config);
 
+  const TOOL_NAME = "WebSearch";
   const usageNotes = provider.usageNotes;
 
   return {
-    name: "WebSearch",
+    name: TOOL_NAME,
     label: "Web Search",
     description: `- Search the web using the session's web search provider - performs real-time web searches and can scrape content from specific URLs.
 - Provides up-to-date information for current events and recent data.
@@ -89,8 +85,8 @@ Usage notes:${usageNotes}
   - Configurable context length for optimal LLM integration`,
     promptSnippet: "Search the web",
     promptGuidelines: [
-      "Use WebSearch to find current information, documentation, or answers that require up-to-date web data. Always cite sources from search results.",
-      `WebSearch: the current year is ${year}. Use this year when searching for recent information or current events.`,
+      `Use ${TOOL_NAME} to find current information, documentation, or answers that require up-to-date web data. Always cite sources from search results.`,
+      `${TOOL_NAME}: the current year is ${year}. Use this year when searching for recent information or current events.`,
     ],
     parameters: WebsearchParameters,
     execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {
@@ -119,12 +115,12 @@ Usage notes:${usageNotes}
         };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`Web search failed: ${message}`);
+        throw new Error(message);
       }
     },
     renderCall: (args, theme, _ctx) => {
       return new Text(
-        theme.fg("toolTitle", theme.bold("WebSearch ")) +
+        theme.fg("toolTitle", theme.bold(`${TOOL_NAME} `)) +
           theme.fg("muted", `"${args.query}"`),
       );
     },
@@ -134,7 +130,9 @@ Usage notes:${usageNotes}
       }
 
       if (ctx.isError) {
-        return renderError(extractTextContent(result), theme);
+        return renderError(extractTextContent(result), theme, {
+          toolLabel: TOOL_NAME,
+        });
       }
 
       const textContent = extractTextContent(result);

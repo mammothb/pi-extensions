@@ -8,7 +8,12 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { firstTextBlock, renderError } from "@mammothb/pi-shared";
+import {
+  firstTextBlock,
+  getCollapseHint,
+  getExpandHint,
+  renderError,
+} from "@mammothb/pi-shared";
 import { Type } from "typebox";
 import type { GhSearchConfig } from "./config.js";
 import { decodeGitHubContent } from "./lib/decode-contents.js";
@@ -28,8 +33,10 @@ export function createGhFetchTool(
   pi: ExtensionAPI,
   config: GhSearchConfig,
 ): ToolDefinition<typeof GhFetchParams, GhFetchDetails> {
+  const TOOL_NAME = "gh_fetch";
+
   return {
-    name: "gh_fetch",
+    name: TOOL_NAME,
     label: "GitHub Fetch",
     description:
       "Fetch full content of a GitHub resource (file, issue, PR, discussion, etc.) via `gh api`. " +
@@ -39,9 +46,9 @@ export function createGhFetchTool(
       `Truncated to ${DEFAULT_MAX_LINES} lines/${formatSize(DEFAULT_MAX_BYTES)}; full output saved to temp file.`,
     promptSnippet: "Fetch full GitHub resource details by URL",
     promptGuidelines: [
-      "gh_fetch: file contents from the GitHub Contents API are automatically decoded inline — no separate base64 decode step is needed.",
-      "gh_fetch: large responses are truncated; the full output path is in result details. Use bash read to access it if needed.",
-      "Do not use gh_fetch for URLs that are not from github.com, gist.github.com, or api.github.com.",
+      `${TOOL_NAME}: file contents from the GitHub Contents API are automatically decoded inline — no separate base64 decode step is needed.`,
+      `${TOOL_NAME}: large responses are truncated; the full output path is in result details. Use bash read to access it if needed.`,
+      `Do not use ${TOOL_NAME} for URLs that are not from github.com, gist.github.com, or api.github.com.`,
     ],
     parameters: GhFetchParams,
     renderCall(args, theme, _ctx) {
@@ -58,7 +65,7 @@ export function createGhFetchTool(
         // invalid URL — keep raw value
       }
 
-      let text = theme.fg("toolTitle", theme.bold("gh_fetch "));
+      let text = theme.fg("toolTitle", theme.bold(`${TOOL_NAME} `));
       text += theme.fg("muted", shortUrl);
 
       try {
@@ -75,11 +82,11 @@ export function createGhFetchTool(
       const rawText = firstTextBlock(result);
 
       if (ctx.isError) {
-        return renderError(rawText, theme);
+        return renderError(rawText, theme, { toolLabel: TOOL_NAME });
       }
 
       if (expanded) {
-        return new Text(rawText, 0, 0);
+        return new Text(`${rawText}\n${getCollapseHint(theme)}`, 0, 0);
       }
 
       const parsed = details?.parsed;
@@ -109,6 +116,7 @@ export function createGhFetchTool(
           );
       }
 
+      text += `\n${getExpandHint(theme)}`;
       return new Text(text, 0, 0);
     },
     execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
@@ -122,10 +130,11 @@ export function createGhFetchTool(
       });
 
       if (result.code !== 0) {
-        const message =
+        const rawMsg =
           result.stderr.trim() ||
           result.stdout.trim() ||
           `gh exited ${result.code}`;
+        const message = rawMsg.replace(/^gh:\s*/, "");
         throw new Error(message);
       }
 

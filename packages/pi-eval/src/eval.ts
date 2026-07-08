@@ -2,7 +2,12 @@ import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { extractTextContent, getExpandKey } from "@mammothb/pi-shared";
+import {
+  extractTextContent,
+  getCollapseHint,
+  getExpandKey,
+  PREVIEW_LINES,
+} from "@mammothb/pi-shared";
 import { Type } from "typebox";
 import { loadConfig } from "./lib/config.js";
 import { executeJavaScript } from "./lib/javascript.js";
@@ -26,8 +31,6 @@ const Parameters = Type.Object({
     }),
   ),
 });
-
-const PREVIEW_LINES = 5;
 
 interface ParsedOutput {
   stdout: string;
@@ -212,7 +215,11 @@ export function createEvalTool(): ToolDefinition<
           expandKey,
           false, // no expand hint in expanded mode
         );
-        return new Text(`${header}\n${rawText}`, 0, 0);
+        return new Text(
+          `${header}\n${rawText}\n${getCollapseHint(theme)}`,
+          0,
+          0,
+        );
       }
 
       // No output at all — just stats header, no Ctrl+O

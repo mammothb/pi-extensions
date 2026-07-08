@@ -9,7 +9,12 @@ import {
   formatSize,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { firstTextBlock, renderError } from "@mammothb/pi-shared";
+import {
+  firstTextBlock,
+  getCollapseHint,
+  getExpandHint,
+  renderError,
+} from "@mammothb/pi-shared";
 import { type Static, Type } from "typebox";
 import type { GhSearchConfig } from "./config.js";
 import { applyTruncation } from "./lib/truncation.js";
@@ -213,8 +218,10 @@ export function createGhSearchTool(
   pi: ExtensionAPI,
   config: GhSearchConfig,
 ): ToolDefinition<typeof GhSearchParamsSchema, GhSearchDetails> {
+  const TOOL_NAME = "gh_search";
+
   return {
-    name: "gh_search",
+    name: TOOL_NAME,
     label: "GitHub Search",
     description:
       "Search GitHub repos, issues, PRs, code, or commits via `gh search` with structured JSON output. " +
@@ -224,14 +231,14 @@ export function createGhSearchTool(
       `Output truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; full output spills to temp file.`,
     promptSnippet: "Search GitHub repos, issues, PRs, code, and commits",
     promptGuidelines: [
-      "gh_search: code scope uses separate rate limits — always quote the full query string to avoid shell escaping issues.",
-      "gh_search: for broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.",
-      "gh_search: use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.",
+      `${TOOL_NAME}: code scope uses separate rate limits — always quote the full query string to avoid shell escaping issues.`,
+      `${TOOL_NAME}: for broad searches use fewer filters; for precise lookups combine owner, repo, language, and label.`,
+      `${TOOL_NAME}: use gh_auth_status to diagnose auth failures; use gh_fetch to drill into specific URLs from search results.`,
     ],
     parameters: GhSearchParamsSchema,
     renderCall(args, theme, _ctx) {
       const text =
-        `${theme.fg("toolTitle", theme.bold("gh_search"))} ` +
+        `${theme.fg("toolTitle", theme.bold(TOOL_NAME))} ` +
         `${theme.fg("muted", args.scope)} ` +
         `${theme.fg("muted", args.query)}`;
       return new Text(text, 0, 0);
@@ -245,12 +252,12 @@ export function createGhSearchTool(
 
       // Handle errors
       if (ctx.isError) {
-        return renderError(rawText, theme);
+        return renderError(rawText, theme, { toolLabel: TOOL_NAME });
       }
 
       // Expanded: show raw output as sent to LLM
       if (expanded) {
-        return new Text(rawText, 0, 0);
+        return new Text(`${rawText}\n${getCollapseHint(theme)}`, 0, 0);
       }
 
       // Code scope: count file headers (non-indented lines), show full output
@@ -271,6 +278,7 @@ export function createGhSearchTool(
               `! truncated (${formatSize(details.truncation.outputBytes)} of ${formatSize(details.truncation.totalBytes)})`,
             );
         }
+        text += `\n${getExpandHint(theme)}`;
         return new Text(text, 0, 0);
       }
 
@@ -299,6 +307,7 @@ export function createGhSearchTool(
           );
       }
 
+      text += `\n${getExpandHint(theme)}`;
       return new Text(text, 0, 0);
     },
     execute: async (
@@ -344,10 +353,11 @@ export function createGhSearchTool(
       });
 
       if (result.code !== 0) {
-        const message =
+        const rawMsg =
           result.stderr.trim() ||
           result.stdout.trim() ||
           `gh exited ${result.code}`;
+        const message = rawMsg.replace(/^gh:\s*/, "");
         throw new Error(message);
       }
 
