@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-office",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A pi extension for reading and searching PDF, DOCX, and XLSX files — pure JS, zero system dependencies",
   "keywords": [
     "pi-package"

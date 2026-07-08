@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-trigger",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Mid-text trigger expansion for Pi skills and prompt templates",
   "keywords": [
     "pi-package"

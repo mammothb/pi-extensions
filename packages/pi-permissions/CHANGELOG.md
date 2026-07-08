@@ -1,5 +1,12 @@
 # @mammothb/pi-permissions
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [5de3594]
+  - @mammothb/pi-shared@1.4.0
+
 ## 0.2.1
 
 ### Patch Changes

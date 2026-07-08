@@ -1,5 +1,12 @@
 # @mammothb/pi-trigger
 
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [5de3594]
+  - @mammothb/pi-shared@1.4.0
+
 ## 1.1.0
 
 ### Minor Changes

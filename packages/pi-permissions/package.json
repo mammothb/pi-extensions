@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-permissions",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Permission enforcement extension for pi — gates tool calls, bash commands (via arbiter executable), and file paths",
   "keywords": [
     "pi-package"
