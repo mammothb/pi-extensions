@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-web",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "A pi extension that adds WebFetch and WebSearch tools for fetching and searching web content",
   "keywords": [
     "pi-package"
