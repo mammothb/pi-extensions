@@ -1,5 +1,11 @@
 # @mammothb/pi-web
 
+## 6.0.1
+
+### Patch Changes
+
+- ad39c9b: add .env
+
 ## 6.0.0
 
 ### Major Changes
