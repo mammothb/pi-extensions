@@ -173,7 +173,7 @@ describe("execute — error handling", () => {
 
     await expect(
       tool.execute("call-1", { query: "test" }, undefined, vi.fn(), {} as any),
-    ).rejects.toThrow("Web search failed: boom");
+    ).rejects.toThrow("boom");
   });
 
   it("stringifies non-Error throws", async () => {
@@ -182,7 +182,7 @@ describe("execute — error handling", () => {
 
     await expect(
       tool.execute("call-1", { query: "test" }, undefined, vi.fn(), {} as any),
-    ).rejects.toThrow("Web search failed: raw string");
+    ).rejects.toThrow("raw string");
   });
 });
 

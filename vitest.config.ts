@@ -81,6 +81,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-web",
+          root: "./packages/pi-web",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

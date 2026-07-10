@@ -7,19 +7,23 @@ import { vi } from "vitest";
  * The mock resolves to the given Response by default, but rejects with
  * an AbortError if the signal passed via `init.signal` fires before
  * the mock settles.
+ *
+ * When `body` is a Uint8Array, it is re-wrapped into a fresh
+ * `Uint8Array<ArrayBuffer>` for BodyInit compatibility with recent
+ * @types/node + lib.dom types.
  */
 export function mockFetch(opts: {
   status?: number;
   statusText?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   /** If true, the returned promise never settles (useful for timeout tests). */
   neverResolves?: boolean;
 }): ReturnType<typeof vi.fn> {
   const status = opts.status ?? 200;
   const statusText = opts.statusText ?? "";
   const headers = new Headers(opts.headers ?? {});
-  const body = opts.body ?? "";
+  const rawBody = opts.body ?? "";
 
   const mock = vi
     .fn()
@@ -44,10 +48,26 @@ export function mockFetch(opts: {
           reject(new DOMException("The operation was aborted.", "AbortError"));
         });
 
-        resolve(new Response(body, { status, statusText, headers }));
+        // Re-wrap Uint8Array for BodyInit compatibility
+        const responseBody: BodyInit =
+          typeof rawBody === "string" ? rawBody : new Uint8Array(rawBody);
+
+        resolve(new Response(responseBody, { status, statusText, headers }));
       });
     });
 
   vi.stubGlobal("fetch", mock);
   return mock;
+}
+
+/**
+ * Mocks globalThis.fetch for a single call (no AbortSignal support needed).
+ * Convenience alias for {@link mockFetch}. Does not support neverResolves.
+ */
+export function mockFetchOnce(opts: {
+  status?: number;
+  headers?: Record<string, string>;
+  body?: string | Uint8Array;
+}): ReturnType<typeof vi.fn> {
+  return mockFetch({ ...opts, statusText: "" });
 }

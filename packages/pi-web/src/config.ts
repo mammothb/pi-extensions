@@ -96,11 +96,11 @@ function mergeConfig(
 }
 
 /**
- * Load config from JSON files. Project config (`.pi/pi-websearch.json`)
- * overrides global config (`~/.pi/agent/pi-websearch.json`).
+ * Load config from JSON files. Project config (`.pi/pi-web.json`)
+ * overrides global config (`~/.pi/agent/pi-web.json`).
  *
  * Returns the default config if no config files exist.
  */
 export function loadConfig(cwd: string): WebsearchConfig {
-  return loadPiConfig("pi-websearch.json", cwd, DEFAULT_CONFIG, mergeConfig);
+  return loadPiConfig("pi-web.json", cwd, DEFAULT_CONFIG, mergeConfig);
 }

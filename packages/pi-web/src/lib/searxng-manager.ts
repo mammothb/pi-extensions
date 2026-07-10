@@ -127,7 +127,7 @@ export function runScript(
       child.unref();
       child.on("error", (err) => {
         console.error(
-          `pi-websearch: failed to run searxng ${command}: ${err.message}`,
+          `pi-web: failed to run searxng ${command}: ${err.message}`,
         );
       });
     } else {
@@ -138,7 +138,7 @@ export function runScript(
       child.unref();
       child.on("error", (err) => {
         console.error(
-          `pi-websearch: failed to run searxng ${command}: ${err.message}`,
+          `pi-web: failed to run searxng ${command}: ${err.message}`,
         );
       });
     }
@@ -253,7 +253,7 @@ export async function registerInstance(scriptPath?: string): Promise<void> {
     await runScript("up", scriptPath);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`pi-websearch: failed to start SearXNG: ${message}`);
+    console.error(`pi-web: failed to start SearXNG: ${message}`);
   }
 }
 

@@ -15,7 +15,7 @@ let projectDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-websearch-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-web-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   agentDir = join(tmpDir, "agent");
   projectDir = join(tmpDir, "project");
@@ -32,15 +32,12 @@ afterEach(() => {
 });
 
 function writeGlobal(config: Partial<WebsearchConfig>): void {
-  writeFileSync(
-    join(agentDir, "pi-websearch.json"),
-    JSON.stringify(config, null, 2),
-  );
+  writeFileSync(join(agentDir, "pi-web.json"), JSON.stringify(config, null, 2));
 }
 
 function writeProject(config: Partial<WebsearchConfig>): void {
   writeFileSync(
-    join(projectDir, ".pi", "pi-websearch.json"),
+    join(projectDir, ".pi", "pi-web.json"),
     JSON.stringify(config, null, 2),
   );
 }
@@ -177,7 +174,7 @@ describe("loadConfig", () => {
   });
 
   it("handles malformed global JSON gracefully (falls back)", () => {
-    writeFileSync(join(agentDir, "pi-websearch.json"), "{ not json }");
+    writeFileSync(join(agentDir, "pi-web.json"), "{ not json }");
     writeProject({ timeoutMs: 9999 });
 
     const config = loadConfig(projectDir);
@@ -190,7 +187,7 @@ describe("loadConfig", () => {
 
   it("handles malformed project JSON gracefully (falls back)", () => {
     writeGlobal({ timeoutMs: 5000 });
-    writeFileSync(join(projectDir, ".pi", "pi-websearch.json"), "{ not json }");
+    writeFileSync(join(projectDir, ".pi", "pi-web.json"), "{ not json }");
 
     const config = loadConfig(projectDir);
 

@@ -18,8 +18,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development, testing, and release i
 | `@mammothb/pi-stats` | Tracks tool, skill, and extension usage statistics per session |
 | `@mammothb/pi-toast` | Desktop toast notifications on agent events (tmux-aware) |
 | `@mammothb/pi-tokyonight-storm` | Tokyo Night Storm theme — colors corrected to match folke/tokyonight.nvim |
-| `@mammothb/pi-webfetch` | Fetch and convert web content to markdown, text, or HTML |
-| `@mammothb/pi-websearch` | Web search via SearXNG or Exa MCP |
+| `@mammothb/pi-web` | Fetch and search the web — `WebFetch` + `WebSearch` tools |
 
 ### Crates (Rust)
 

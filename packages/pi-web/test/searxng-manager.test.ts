@@ -93,7 +93,7 @@ let agentDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-websearch-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-web-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   agentDir = join(tmpDir, "agent");
   mkdirSync(agentDir, { recursive: true });
@@ -320,7 +320,7 @@ describe("runScript", () => {
       return new Promise<void>((resolve) => {
         setImmediate(() => {
           expect(consoleSpy).toHaveBeenCalledWith(
-            "pi-websearch: failed to run searxng down: ENOENT: bash not found",
+            "pi-web: failed to run searxng down: ENOENT: bash not found",
           );
           consoleSpy.mockRestore();
           resolve();
@@ -411,7 +411,7 @@ describe("runScript", () => {
         return new Promise<void>((resolve) => {
           setImmediate(() => {
             expect(consoleSpy).toHaveBeenCalledWith(
-              "pi-websearch: failed to run searxng down: ENOENT: bash not found",
+              "pi-web: failed to run searxng down: ENOENT: bash not found",
             );
             consoleSpy.mockRestore();
             resolve();
@@ -622,7 +622,7 @@ describe("registerInstance", () => {
     await expect(registerInstance()).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("pi-websearch: failed to start SearXNG"),
+      expect.stringContaining("pi-web: failed to start SearXNG"),
     );
     consoleSpy.mockRestore();
   });
@@ -634,7 +634,7 @@ describe("registerInstance", () => {
     await expect(registerInstance()).resolves.toBeUndefined();
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      "pi-websearch: failed to start SearXNG: something bad happened",
+      "pi-web: failed to start SearXNG: something bad happened",
     );
     consoleSpy.mockRestore();
   });
@@ -733,7 +733,7 @@ describe("unregisterInstance", () => {
     await new Promise<void>((resolve) => {
       setImmediate(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining("pi-websearch: failed to run searxng down"),
+          expect.stringContaining("pi-web: failed to run searxng down"),
         );
         consoleSpy.mockRestore();
         resolve();
