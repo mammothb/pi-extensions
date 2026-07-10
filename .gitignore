@@ -1,5 +1,6 @@
 *.tsbuildinfo
 .env
+!packages/pi-web/searxng/.env
 .env.*
 .pnpm-store/
 coverage/
