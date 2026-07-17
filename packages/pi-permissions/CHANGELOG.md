@@ -1,5 +1,11 @@
 # @mammothb/pi-permissions
 
+## 0.3.0
+
+### Minor Changes
+
+- bd3d307: Add `bw` CLI — config-driven bwrap sandbox for pi. Replaces the old bash script with a Node.js CLI supporting JSON config files, `binds` / `binds_extra` merge strategy, WSL2 auto-detection, env var injection with `$VAR` host references, and custom PATH entries.
+
 ## 0.2.2
 
 ### Patch Changes
