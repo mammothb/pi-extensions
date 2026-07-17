@@ -10,6 +10,9 @@
     "index.ts",
     "src"
   ],
+  "bin": {
+    "bw": "./src/bw/bin.ts"
+  },
   "pi": {
     "extensions": [
       "./index.ts"
