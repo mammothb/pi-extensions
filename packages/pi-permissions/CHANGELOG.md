@@ -1,5 +1,11 @@
 # @mammothb/pi-permissions
 
+## 0.3.1
+
+### Patch Changes
+
+- b141e42: Revert `bw` CLI — the npm bin entry pointed to TypeScript source which fails with Node v24's `--experimental-strip-types` in `node_modules`. Removed until a working bin strategy is in place.
+
 ## 0.3.0
 
 ### Minor Changes
