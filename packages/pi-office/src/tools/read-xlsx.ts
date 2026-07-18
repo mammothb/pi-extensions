@@ -82,6 +82,7 @@ export function createReadXlsxTool(): ToolDefinition<
       "read_xlsx: omit sheet name to see sheet index with preview rows first.",
       "read_xlsx: provide a sheet name to read full data for that sheet as JSON.",
       "read_xlsx: use search_xlsx to find specific values across sheets.",
+      "read_xlsx: set raw: false to get display-formatted values (dates as '3/15/24', currencies as '$1,234.56', percentages as '8.50%').",
     ],
     parameters: ReadXlsxSchema,
 
