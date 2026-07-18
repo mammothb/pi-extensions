@@ -1,11 +1,12 @@
 {
   "hooks": {
-    "PreCompact": [
+    "SessionStart": [
       {
+        "matcher": "compact",
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'mm compile --brief \"$(jq -r .transcript_path)\" &'"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start-compact.sh"
           }
         ]
       }

@@ -7,13 +7,13 @@ description: "Compile and search Claude Code conversation logs with algorithmic 
 
 ### After /compact — recover context
 
-Pre-compiled views are usually available (PreCompact hook). Read them directly:
+A structured summary is automatically injected into context after every compaction (SessionStart hook). No manual step needed.
+
+To refresh it manually:
 
 ```bash
 mm compile --brief path/to/current-session.jsonl
 ```
-
-If not pre-compiled, `mm compile` runs in ~30ms — no API calls.
 
 ### /mm:recall — search current session with ranking
 
@@ -66,5 +66,5 @@ mm compile --brief path/to/session.jsonl
 
 - Forward slashes only in bash commands — even on Windows.
 - Do NOT use `grep` on JSONL files. Always use `mm search`.
-- After `/compact`, check for pre-compiled views first (PreCompact hook builds them automatically).
+- After `/compact`, a structured summary is automatically injected into context (SessionStart hook). Run `mm compile --brief` manually only to refresh it.
 - For regex patterns, use standard syntax: `hook|inject`, `fail.*build`, `auth.*token`.
