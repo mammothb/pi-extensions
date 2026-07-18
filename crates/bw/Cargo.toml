@@ -13,11 +13,14 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
 fs-err = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 shellexpand = { workspace = true }
 
 [dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
