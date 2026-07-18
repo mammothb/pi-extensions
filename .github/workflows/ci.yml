@@ -1,11 +1,14 @@
-name: Release
+name: CI
 on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 jobs:
   changes:
-    name: Detect changed packages
+    name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.filter.outputs.changes }}
@@ -16,21 +19,23 @@ jobs:
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
-          base: ${{ github.ref }}
           filters: |
             npm:
               - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             cargo:
               - 'crates/**'
-  publish-npm:
-    name: Publish npm packages
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+  npm:
+    name: npm
     needs: changes
     if: ${{ contains(needs.changes.outputs.packages, 'npm') }}
-    uses: ./.github/workflows/reusable-release-npm.yml
-    secrets: inherit
-  publish-cargo:
-    name: Publish cargo crates
+    uses: ./.github/workflows/reusable-ci-npm.yml
+  cargo:
+    name: cargo
     needs: changes
     if: ${{ contains(needs.changes.outputs.packages, 'cargo') }}
-    uses: ./.github/workflows/reusable-release-cargo.yml
-    secrets: inherit
+    uses: ./.github/workflows/reusable-ci-cargo.yml
