@@ -280,11 +280,15 @@ fn regex_search(
         }
     };
 
-    let hits: Vec<&SearchEntry> = entries
+    let hits: Vec<(&SearchEntry, String)> = entries
         .iter()
-        .filter(|e| {
+        .filter_map(|e| {
             let hay = format!("{} {}", e.role, e.full_text);
-            regex.is_match(&hay)
+            if regex.is_match(&hay) {
+                Some((e, hay))
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -300,13 +304,13 @@ fn regex_search(
 
     let results: Vec<SearchResult> = page_hits
         .iter()
-        .map(|e| {
+        .map(|(e, hay)| {
             let snippet = line_snippet(&e.full_text, &regex, 2);
             SearchResult {
                 index: e.index,
                 score: None,
                 snippet,
-                match_count: 1,
+                match_count: regex.find_iter(hay).count(),
                 role: e.role.clone(),
                 summary: e.summary(),
                 source: e.source_path.clone(),
