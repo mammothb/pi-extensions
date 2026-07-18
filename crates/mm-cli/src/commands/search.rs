@@ -92,19 +92,35 @@ struct Bm25Context {
     df: HashMap<String, usize>,
 }
 
+/// Regex compiled from a query term, keeping the original term for IDF lookup.
+struct TermRegex {
+    re: Regex,
+    raw: String,
+}
+
+fn compile_term_res(terms: &[&str]) -> Vec<TermRegex> {
+    terms
+        .iter()
+        .filter_map(|t| {
+            safe_regex(t).map(|re| TermRegex {
+                re,
+                raw: t.to_string(),
+            })
+        })
+        .collect()
+}
+
 /// Precompute IDF and average doc length across all docs.
-fn build_bm25_context(docs: &[String], terms: &[&str]) -> Bm25Context {
+fn build_bm25_context(docs: &[String], term_res: &[TermRegex]) -> Bm25Context {
     let n = docs.len();
     let mut df = HashMap::new();
-    let mut total_len = 0usize;
+    let mut total_len = 0;
 
     for doc in docs {
         total_len += doc.split_whitespace().count();
-        for t in terms {
-            if let Some(re) = safe_regex(t)
-                && re.is_match(doc)
-            {
-                *df.entry(t.to_string()).or_insert(0) += 1;
+        for tr in term_res {
+            if tr.re.is_match(doc) {
+                *df.entry(tr.raw.clone()).or_insert(0) += 1;
             }
         }
     }
@@ -117,21 +133,17 @@ fn build_bm25_context(docs: &[String], terms: &[&str]) -> Bm25Context {
 }
 
 /// BM25 score for a single doc against query terms.
-fn bm25_score(doc: &str, terms: &[&str], ctx: &Bm25Context) -> f64 {
+fn bm25_score(doc: &str, term_res: &[TermRegex], ctx: &Bm25Context) -> f64 {
     let dl = doc.split_whitespace().count() as f64;
     let mut score = 0.0;
 
-    for t in terms {
-        let re = match safe_regex(t) {
-            Some(r) => r,
-            None => continue,
-        };
-        let tf = term_freq(doc, &re) as f64;
+    for tr in term_res {
+        let tf = term_freq(doc, &tr.re) as f64;
         if tf == 0.0 {
             continue;
         }
 
-        let doc_freq = ctx.df.get(*t).copied().unwrap_or(0) as f64;
+        let doc_freq = ctx.df.get(&tr.raw).copied().unwrap_or(0) as f64;
         // IDF: log((N - df + 0.5) / (df + 0.5) + 1)
         let idf = ((ctx.n as f64 - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0).ln();
         // TF saturation with length normalization
@@ -264,10 +276,9 @@ fn regex_search(
         }
     };
 
-    let hits: Vec<(usize, &SearchEntry)> = entries
+    let hits: Vec<&SearchEntry> = entries
         .iter()
-        .enumerate()
-        .filter(|(_, e)| {
+        .filter(|e| {
             let hay = format!("{} {}", e.role, e.full_text);
             regex.is_match(&hay)
         })
@@ -285,7 +296,7 @@ fn regex_search(
 
     let results: Vec<SearchResult> = page_hits
         .iter()
-        .map(|(_, e)| {
+        .map(|e| {
             let snippet = line_snippet(&e.full_text, &regex, 2);
             SearchResult {
                 index: e.index,
@@ -322,27 +333,28 @@ fn bm25_search(
 ) -> Result<ExitStatus> {
     let raw_terms: Vec<&str> = raw_query.split_whitespace().collect();
     let terms = filter_stopwords(&raw_terms);
+    let term_res: Vec<TermRegex> = compile_term_res(&terms);
     let snip_re = snippet_regex(&terms);
 
-    // Build docs for BM25 context
-    let docs: Vec<String> = entries
+    // Pre-compute haystack per entry (role + full_text)
+    let entries_with_hay: Vec<(&SearchEntry, String)> = entries
         .iter()
-        .map(|e| format!("{} {}", e.role, e.full_text))
+        .map(|e| (e, format!("{} {}", e.role, e.full_text)))
         .collect();
 
-    let ctx = build_bm25_context(&docs, &terms);
+    let docs: Vec<String> = entries_with_hay.iter().map(|(_, h)| h.clone()).collect();
+    let ctx = build_bm25_context(&docs, &term_res);
 
-    // Score all entries
-    let mut scored: Vec<(f64, &SearchEntry)> = entries
+    // Score all entries, keeping match_count for later reuse
+    let mut scored: Vec<(f64, &SearchEntry, usize)> = entries_with_hay
         .iter()
-        .filter_map(|e| {
-            let hay = format!("{} {}", e.role, e.full_text);
-            let mc = count_matches(&hay, &terms);
+        .filter_map(|(e, hay)| {
+            let mc = count_matches(hay, &term_res);
             if mc == 0 {
                 return None;
             }
-            let score = bm25_score(&hay, &terms, &ctx);
-            Some((score, e))
+            let score = bm25_score(hay, &term_res, &ctx);
+            Some((score, *e, mc))
         })
         .collect();
 
@@ -361,14 +373,13 @@ fn bm25_search(
 
     let results: Vec<SearchResult> = page_hits
         .iter()
-        .map(|(score, e)| {
-            let mc = count_matches(&format!("{} {}", e.role, e.full_text), &terms);
+        .map(|(score, e, mc)| {
             let snippet = line_snippet(&e.full_text, &snip_re, 2);
             SearchResult {
                 index: e.index,
                 score: Some(*score),
                 snippet,
-                match_count: mc,
+                match_count: *mc,
                 role: e.role.clone(),
                 summary: e.summary(),
                 source: e.source_path.clone(),
@@ -524,11 +535,8 @@ fn filter_stopwords<'a>(terms: &[&'a str]) -> Vec<&'a str> {
 }
 
 /// Count distinct query terms that match the haystack.
-fn count_matches(hay: &str, terms: &[&str]) -> usize {
-    terms
-        .iter()
-        .filter(|t| safe_regex(t).is_some_and(|re| re.is_match(hay)))
-        .count()
+fn count_matches(hay: &str, term_res: &[TermRegex]) -> usize {
+    term_res.iter().filter(|tr| tr.re.is_match(hay)).count()
 }
 
 /// Count occurrences of a regex pattern in text.
@@ -538,6 +546,10 @@ fn term_freq(text: &str, pattern: &Regex) -> usize {
 
 #[cfg(test)]
 mod tests {
+    fn compile_terms(terms: &[&str]) -> Vec<TermRegex> {
+        super::compile_term_res(terms)
+    }
+
     use super::*;
     use rstest::rstest;
     use serde_json::json;
@@ -727,7 +739,7 @@ mod tests {
     fn test_bm25_context_avg_dl() {
         let docs: Vec<String> = vec!["a b c".into(), "d e".into(), "f g h i".into()];
         let terms: Vec<&str> = vec!["a", "b"];
-        let ctx = build_bm25_context(&docs, &terms);
+        let ctx = build_bm25_context(&docs, &compile_terms(&terms));
         // avg word count: (3 + 2 + 4) / 3 = 3
         assert_eq!(ctx.avg_dl, 3.0);
     }
@@ -736,7 +748,7 @@ mod tests {
     fn test_bm25_context_df() {
         let docs: Vec<String> = vec!["hello world".into(), "hello there".into(), "goodbye".into()];
         let terms: Vec<&str> = vec!["hello", "goodbye"];
-        let ctx = build_bm25_context(&docs, &terms);
+        let ctx = build_bm25_context(&docs, &compile_terms(&terms));
         assert_eq!(ctx.df.get("hello"), Some(&2));
         assert_eq!(ctx.df.get("goodbye"), Some(&1));
     }
@@ -745,11 +757,11 @@ mod tests {
     fn test_bm25_score_orders_rare_term_higher() {
         let docs: Vec<String> = vec!["common common rare".into(), "common common common".into()];
         let terms: Vec<&str> = vec!["common"];
-        let ctx = build_bm25_context(&docs, &terms);
+        let ctx = build_bm25_context(&docs, &compile_terms(&terms));
         // Doc with "common" x2 vs x3 — rare term "rare" only in doc 0
         // But BM25 with just "common": doc[1] has higher term freq
-        let s0 = bm25_score(&docs[0], &terms, &ctx);
-        let s1 = bm25_score(&docs[1], &terms, &ctx);
+        let s0 = bm25_score(&docs[0], &compile_terms(&terms), &ctx);
+        let s1 = bm25_score(&docs[1], &compile_terms(&terms), &ctx);
         // Doc with more occurrences of "common" should score higher
         assert!(s1 > s0);
     }
@@ -761,9 +773,9 @@ mod tests {
             "the rare_zircon sits alone".into(),
         ];
         let terms: Vec<&str> = vec!["cat", "rare_zircon"];
-        let ctx = build_bm25_context(&docs, &terms);
-        let s0 = bm25_score(&docs[0], &terms, &ctx);
-        let s1 = bm25_score(&docs[1], &terms, &ctx);
+        let ctx = build_bm25_context(&docs, &compile_terms(&terms));
+        let s0 = bm25_score(&docs[0], &compile_terms(&terms), &ctx);
+        let s1 = bm25_score(&docs[1], &compile_terms(&terms), &ctx);
         // "rare_zircon" has higher IDF than "cat" (appears in fewer docs)
         assert!(s1 > s0);
     }
@@ -775,9 +787,9 @@ mod tests {
     #[rstest]
     fn test_count_matches() {
         let terms: Vec<&str> = vec!["hello", "world", "nonexistent"];
-        assert_eq!(count_matches("hello world", &terms), 2);
-        assert_eq!(count_matches("goodbye", &terms), 0);
-        assert_eq!(count_matches("HELLO", &terms), 1);
+        assert_eq!(count_matches("hello world", &compile_terms(&terms)), 2);
+        assert_eq!(count_matches("goodbye", &compile_terms(&terms)), 0);
+        assert_eq!(count_matches("HELLO", &compile_terms(&terms)), 1);
     }
 
     // =========
