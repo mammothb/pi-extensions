@@ -90,9 +90,9 @@ export function createReadXlsxTool(): ToolDefinition<
         throw new Error("Cancelled");
       }
 
-      const { path, sheet, maxRows, headerRow } = params;
+      const { path, sheet, maxRows, headerRow, raw } = params;
 
-      const result = await parseXlsx(path, { sheet, maxRows, headerRow });
+      const result = await parseXlsx(path, { sheet, maxRows, headerRow, raw });
 
       if (signal?.aborted) {
         throw new Error("Cancelled");
