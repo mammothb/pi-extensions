@@ -154,51 +154,10 @@ fn find_node_dir() -> Option<String> {
 }
 
 /// Replace `$VAR`, `${VAR}`, and `$$` in a string using host environment
-/// variables.
+/// variables. Unknown variables are left as-is so that misconfigured
+/// references are visible in `--print-args` output.
 fn resolve_env_vars(raw: &str) -> String {
-    let mut result = String::with_capacity(raw.len());
-    let mut chars = raw.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '$' {
-            match chars.peek() {
-                Some('$') => {
-                    chars.next();
-                    result.push('$');
-                }
-                Some('{') => {
-                    chars.next();
-                    let mut name = String::new();
-                    for c in chars.by_ref() {
-                        if c == '}' {
-                            break;
-                        }
-                        name.push(c);
-                    }
-                    result.push_str(&std::env::var(&name).unwrap_or_default());
-                }
-                Some(&c) if c.is_ascii_alphabetic() || c == '_' => {
-                    let mut name = String::new();
-                    while let Some(&c) = chars.peek() {
-                        if c.is_ascii_alphanumeric() || c == '_' {
-                            name.push(c);
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    result.push_str(&std::env::var(&name).unwrap_or_default());
-                }
-                _ => {
-                    result.push('$');
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
+    shellexpand::env_with_context_no_errors(raw, |name| std::env::var(name).ok()).into_owned()
 }
 
 #[cfg(test)]
@@ -256,14 +215,19 @@ mod tests {
     }
 
     #[rstest]
-    fn unresolved_var_becomes_empty() {
-        assert_eq!(resolve_env_vars("$NO_SUCH_VAR_12345"), "");
-        assert_eq!(resolve_env_vars("${NO_SUCH_VAR_12345}"), "");
+    fn unresolved_var_left_as_is() {
+        // shellexpand leaves unknown vars unchanged — visible in --print-args
+        assert_eq!(resolve_env_vars("$NO_SUCH_VAR_12345"), "$NO_SUCH_VAR_12345");
+        assert_eq!(
+            resolve_env_vars("${NO_SUCH_VAR_12345}"),
+            "${NO_SUCH_VAR_12345}"
+        );
     }
 
     #[rstest]
-    fn non_identifier_stops_var_name() {
-        // $ followed by non-alpha/non-underscore should be literal $
+    fn numeric_var_left_as_is() {
+        // shellexpand treats digits as valid var name chars (is_alphanumeric).
+        // Since $42 is never a real env var, it's left unchanged.
         assert_eq!(resolve_env_vars("$42"), "$42");
     }
 
