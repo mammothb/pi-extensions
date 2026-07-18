@@ -26,6 +26,7 @@ fn load_and_resolve(
     let mut resolved = raw_to_resolved(raw);
     expand_paths(&mut resolved, cwd)?;
     validate(&resolved)?;
+    crate::wsl2::apply_wsl2(&mut resolved);
     Ok(resolved)
 }
 
