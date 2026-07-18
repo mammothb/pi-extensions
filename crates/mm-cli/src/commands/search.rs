@@ -777,14 +777,14 @@ mod tests {
     #[rstest]
     fn test_bm25_score_rare_term_wins() {
         let docs: Vec<String> = vec![
-            "the cat sat on the mat".into(),
-            "the rare_zircon sits alone".into(),
+            "common cat sat on mat".into(),
+            "common rare_zircon sits alone".into(),
         ];
-        let terms: Vec<&str> = vec!["cat", "rare_zircon"];
+        let terms: Vec<&str> = vec!["common", "rare_zircon"];
         let ctx = build_bm25_context(&docs, &compile_terms(&terms));
         let s0 = bm25_score(&docs[0], &compile_terms(&terms), &ctx);
         let s1 = bm25_score(&docs[1], &compile_terms(&terms), &ctx);
-        // "rare_zircon" has higher IDF than "cat" (appears in fewer docs)
+        // "rare_zircon" has higher IDF than "common" (appears in fewer docs)
         assert!(s1 > s0);
     }
 
