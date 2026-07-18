@@ -1,0 +1,33 @@
+name: PR — Changesets
+on:
+  push:
+    branches:
+      - master
+jobs:
+  version-packages:
+    name: Version Packages
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'mammothb'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup - Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Setup - pnpm
+        run: corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: PR - changesets
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: pnpm run version
+          publish: echo "PR only — publish handled by release.yml"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

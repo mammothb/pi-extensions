@@ -1,0 +1,34 @@
+name: Release
+on:
+  push:
+    branches:
+      - master
+jobs:
+  changes:
+    name: Detect changed packages
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            npm:
+              - 'packages/**'
+            cargo:
+              - 'crates/**'
+  publish-npm:
+    name: Publish npm packages
+    needs: changes
+    if: ${{ contains(needs.changes.outputs.packages, 'npm') }}
+    uses: ./.github/workflows/reusable-release-npm.yml
+    secrets: inherit
+  publish-cargo:
+    name: Publish cargo crates
+    needs: changes
+    if: ${{ contains(needs.changes.outputs.packages, 'cargo') }}
+    uses: ./.github/workflows/reusable-release-cargo.yml
+    secrets: inherit
