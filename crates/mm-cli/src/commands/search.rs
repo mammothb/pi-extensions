@@ -103,7 +103,10 @@ fn compile_term_res(terms: &[&str]) -> Vec<TermRegex> {
     terms
         .iter()
         .filter_map(|t| {
-            safe_regex(t).map(|re| TermRegex {
+            // Escape to avoid metacharacters silently altering match semantics.
+            // Terms that look like regex are already routed to regex_search.
+            let escaped = regex::escape(t);
+            safe_regex(&escaped).map(|re| TermRegex {
                 re,
                 raw: t.to_string(),
             })
