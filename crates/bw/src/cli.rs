@@ -68,7 +68,7 @@ fn print_args(args: &[String]) {
     println!("{cmdline}");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn exec_bwrap(args: &[String]) -> ! {
     use std::os::unix::process::CommandExt;
 
@@ -78,7 +78,7 @@ fn exec_bwrap(args: &[String]) -> ! {
     std::process::exit(1);
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn exec_bwrap(_args: &[String]) -> ! {
     eprintln!("bw: bwrap requires Linux");
     std::process::exit(1);
