@@ -529,7 +529,7 @@ mod tests {
         // Still default
         assert!(opts.env.is_empty());
         // Default path includes ~/.cargo/bin
-        assert!(!opts.path.is_empty());
+        assert!(opts.path.contains(&"~/.cargo/bin".to_string()));
         assert!(!opts.unshare_net);
     }
 
