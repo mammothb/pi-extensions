@@ -12,12 +12,12 @@ use crate::types::{
 pub fn load_config(cwd: &Path) -> Result<BwResolvedConfig> {
     let global_path = global_config_path();
     let workspace_path = cwd.join(".pi").join("bw.json");
-    load_and_resolve(&global_path, &workspace_path, cwd)
+    load_and_resolve(global_path.as_deref(), &workspace_path, cwd)
 }
 
 /// Full pipeline (merge + expand + validate) with explicit paths for testing.
 fn load_and_resolve(
-    global_path: &Path,
+    global_path: Option<&Path>,
     workspace_path: &Path,
     cwd: &Path,
 ) -> Result<BwResolvedConfig> {
@@ -30,11 +30,17 @@ fn load_and_resolve(
 }
 
 /// Load and merge from explicit file paths (testable without env vars).
+/// Pass `None` for global_path to skip the global config layer.
 /// Returns the merged but unexpanded config.
-pub(crate) fn load_config_from(global_path: &Path, workspace_path: &Path) -> Result<BwRawConfig> {
+pub(crate) fn load_config_from(
+    global_path: Option<&Path>,
+    workspace_path: &Path,
+) -> Result<BwRawConfig> {
     let mut acc = default_config();
 
-    if let Some(global) = load_layer(global_path)? {
+    if let Some(path) = global_path
+        && let Some(global) = load_layer(path)?
+    {
         apply_layer(&mut acc, &global);
     }
     if let Some(workspace) = load_layer(workspace_path)? {
@@ -58,17 +64,14 @@ fn load_layer(path: &Path) -> Result<Option<BwRawConfig>> {
 }
 
 /// Compute the global config path: `$XDG_CONFIG_HOME/bw/config.json` or
-/// `$HOME/.config/bw/config.json`.
-fn global_config_path() -> PathBuf {
-    if let Ok(base) = std::env::var("XDG_CONFIG_HOME") {
-        PathBuf::from(base).join("bw").join("config.json")
-    } else {
-        let home = std::env::var("HOME").unwrap_or_default();
-        PathBuf::from(home)
-            .join(".config")
-            .join("bw")
-            .join("config.json")
-    }
+/// `$HOME/.config/bw/config.json`. Returns `None` if neither env var is set.
+fn global_config_path() -> Option<PathBuf> {
+    let base = std::env::var("XDG_CONFIG_HOME").ok().or_else(|| {
+        std::env::var("HOME")
+            .ok()
+            .map(|home| format!("{home}/.config"))
+    });
+    base.map(|b| PathBuf::from(b).join("bw").join("config.json"))
 }
 
 /// Apply a single config layer on top of the accumulator.
@@ -305,7 +308,7 @@ mod tests {
     #[rstest]
     fn defaults_only(dir: TempDir) {
         let cfg = load_config_from(
-            &dir.path().join("nonexistent-global.json"),
+            Some(&dir.path().join("nonexistent-global.json")),
             &dir.path().join("nonexistent-workspace.json"),
         )
         .unwrap();
@@ -333,7 +336,7 @@ mod tests {
             r#"{"binds": {"ro": ["/custom"], "rw": ["/custom-rw"]}}"#,
         );
 
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let cfg = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let binds = cfg.binds.unwrap();
 
         // Default ro ("/bin", "/usr", ...) discarded — only "/custom" remains
@@ -355,7 +358,7 @@ mod tests {
             r#"{"binds": {"ro": ["/from-workspace-only"]}}"#,
         );
 
-        let cfg = load_config_from(&global, &workspace).unwrap();
+        let cfg = load_config_from(Some(&global), &workspace).unwrap();
         let binds = cfg.binds.unwrap();
 
         // Global binds_extra was discarded because workspace used `binds` (full replace)
@@ -374,7 +377,7 @@ mod tests {
             r#"{"binds_extra": {"ro": ["/extra"]}}"#,
         );
 
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let cfg = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let binds = cfg.binds.unwrap();
 
         // Default ro paths PLUS "/extra"
@@ -396,7 +399,7 @@ mod tests {
             r#"{"binds_extra": {"ro": ["/from-workspace"]}}"#,
         );
 
-        let cfg = load_config_from(&global, &workspace).unwrap();
+        let cfg = load_config_from(Some(&global), &workspace).unwrap();
         let binds = cfg.binds.unwrap();
 
         // All three layers: defaults + global + workspace
@@ -431,7 +434,7 @@ mod tests {
             }"#,
         );
 
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let cfg = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let binds = cfg.binds.unwrap();
 
         // binds replaced defaults → only "/replaced", then binds_extra appended "/merged"
@@ -446,7 +449,7 @@ mod tests {
     fn docker_null_disables(dir: TempDir) {
         let global = write_config(&dir, "global.json", r#"{"binds": {"docker": null}}"#);
 
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let cfg = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let binds = cfg.binds.unwrap();
 
         assert_eq!(binds.docker, Some(crate::types::DockerConfig::Disabled));
@@ -460,7 +463,7 @@ mod tests {
             r#"{"binds_extra": {"docker": "/custom/sock"}}"#,
         );
 
-        let cfg = load_config_from(&dir.path().join("no-global.json"), &workspace).unwrap();
+        let cfg = load_config_from(Some(&dir.path().join("no-global.json")), &workspace).unwrap();
         let binds = cfg.binds.unwrap();
 
         assert_eq!(
@@ -472,7 +475,7 @@ mod tests {
     #[rstest]
     fn docker_absent_preserves_default(dir: TempDir) {
         let cfg = load_config_from(
-            &dir.path().join("no-global.json"),
+            Some(&dir.path().join("no-global.json")),
             &dir.path().join("no-workspace.json"),
         )
         .unwrap();
@@ -498,7 +501,7 @@ mod tests {
             r#"{"binds_extra": {"wsl2": {"ro": ["/init"]}}}"#,
         );
 
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let cfg = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let binds = cfg.binds.unwrap();
 
         assert_eq!(binds.wsl2.ro, vec!["/init"]);
@@ -518,7 +521,7 @@ mod tests {
             r#"{"options": {"clearenv": false}}"#,
         );
 
-        let cfg = load_config_from(&dir.path().join("no-global.json"), &workspace).unwrap();
+        let cfg = load_config_from(Some(&dir.path().join("no-global.json")), &workspace).unwrap();
         let opts = cfg.options.unwrap();
 
         // Overridden by workspace
@@ -538,7 +541,7 @@ mod tests {
             r#"{"options": {"env": {"B": "2"}}}"#,
         );
 
-        let cfg = load_config_from(&global, &workspace).unwrap();
+        let cfg = load_config_from(Some(&global), &workspace).unwrap();
         let opts = cfg.options.unwrap();
 
         assert_eq!(opts.env.get("A").map(String::as_str), Some("1"));
@@ -554,7 +557,7 @@ mod tests {
             r#"{"options": {"env": {"A": "2"}}}"#,
         );
 
-        let cfg = load_config_from(&global, &workspace).unwrap();
+        let cfg = load_config_from(Some(&global), &workspace).unwrap();
         let opts = cfg.options.unwrap();
 
         // Workspace overrides global for same key
@@ -588,7 +591,7 @@ mod tests {
             }
         };
 
-        let cfg = load_config_from(&global_path, &workspace_path).unwrap();
+        let cfg = load_config_from(Some(&global_path), &workspace_path).unwrap();
         let binds = cfg.binds.unwrap();
         // Defaults still present
         assert!(binds.ro.contains(&"/bin".to_string()));
@@ -619,7 +622,7 @@ mod tests {
                 write_config(&dir, "workspace.json", "not json"),
             ),
         };
-        let result = load_config_from(&global_path, &workspace_path);
+        let result = load_config_from(Some(&global_path), &workspace_path);
         assert!(result.is_err());
     }
 
@@ -644,7 +647,7 @@ mod tests {
 
         let global = write_config(&dir, "global.json", r#"{"binds": {"rw": ["./sub"]}}"#);
 
-        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let raw = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let mut resolved = raw_to_resolved(raw);
         expand_paths(&mut resolved, dir.path()).unwrap();
 
@@ -655,7 +658,7 @@ mod tests {
     fn absolute_passes_through(dir: TempDir) {
         let global = write_config(&dir, "global.json", r#"{"binds": {"ro": ["/usr"]}}"#);
 
-        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let raw = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let mut resolved = raw_to_resolved(raw);
         expand_paths(&mut resolved, dir.path()).unwrap();
 
@@ -703,7 +706,7 @@ mod tests {
             ),
         );
 
-        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let raw = load_config_from(Some(&global), &dir.path().join("no-workspace.json")).unwrap();
         let mut resolved = raw_to_resolved(raw);
         expand_paths(&mut resolved, dir.path()).unwrap();
 
@@ -884,7 +887,11 @@ mod tests {
             ),
         );
 
-        let result = load_and_resolve(&global, &dir.path().join("no-workspace.json"), dir.path());
+        let result = load_and_resolve(
+            Some(&global),
+            &dir.path().join("no-workspace.json"),
+            dir.path(),
+        );
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(resolved.binds.ro[0], sub);
@@ -903,7 +910,11 @@ mod tests {
             ),
         );
 
-        let result = load_and_resolve(&global, &dir.path().join("no-workspace.json"), dir.path());
+        let result = load_and_resolve(
+            Some(&global),
+            &dir.path().join("no-workspace.json"),
+            dir.path(),
+        );
         assert!(result.is_err());
         assert!(
             result
