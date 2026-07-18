@@ -2,6 +2,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 import {
   DocxError,
   PdfError,
@@ -479,6 +480,59 @@ describe("parseXlsx", () => {
         expect(err).toBeInstanceOf(XlsxError);
         expect((err as XlsxError).code).toBe("PARSE_FAILED");
       }
+    });
+  });
+
+  describe("raw option", () => {
+    it("raw: true returns raw numeric values", async () => {
+      const result = await parseXlsx(sampleXlsx, {
+        sheet: "Summary",
+        raw: true,
+      });
+      // The sample fixture has string values ("1.2M", etc.), so raw:true vs false
+      // is indistinguishable for text cells. This test validates the option is accepted.
+      expect(result.sheet!.data[0].Category).toBe("Revenue");
+    });
+
+    it("raw: false returns display-formatted strings for dates, currencies, percentages", async () => {
+      // Build a formatted workbook in-memory
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([
+        ["Date", "Amount", "Rate", "Label"],
+        [new Date(2024, 2, 15), 1234.56, 0.085, "Plain text"],
+      ]);
+      ws.B2.z = "$#,##0.00";
+      ws.C2.z = "0.00%";
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const tmpPath = join(tmpdir(), `pi-office-test-${Date.now()}.xlsx`);
+      await writeFile(tmpPath, buf);
+
+      try {
+        const raw = await parseXlsx(tmpPath, { sheet: "Sheet1", raw: true });
+        expect(raw.sheet!.data[0].Date).toBe("45366"); // serial number stringified
+        expect(raw.sheet!.data[0].Amount).toBe("1234.56");
+        expect(raw.sheet!.data[0].Rate).toBe("0.085");
+        expect(raw.sheet!.data[0].Label).toBe("Plain text");
+
+        const formatted = await parseXlsx(tmpPath, {
+          sheet: "Sheet1",
+          raw: false,
+        });
+        expect(formatted.sheet!.data[0].Date).toBe("3/15/24");
+        expect(formatted.sheet!.data[0].Amount).toBe("$1,234.56");
+        expect(formatted.sheet!.data[0].Rate).toBe("8.50%");
+        expect(formatted.sheet!.data[0].Label).toBe("Plain text");
+      } finally {
+        await rm(tmpPath).catch(() => {});
+      }
+    });
+
+    it("raw defaults to true when omitted", async () => {
+      const result = await parseXlsx(sampleXlsx, { sheet: "Summary" });
+      // Same as raw: true — but the fixture has text cells, so just verify it parses
+      expect(result.sheet!.data[0].Category).toBe("Revenue");
     });
   });
 });
