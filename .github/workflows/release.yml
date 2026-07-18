@@ -35,4 +35,6 @@ jobs:
     uses: ./.github/workflows/reusable-release-cargo.yml
     secrets: inherit
     permissions:
+      contents: write
+      pull-requests: write
       id-token: write
