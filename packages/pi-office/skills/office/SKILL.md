@@ -18,7 +18,7 @@ Do not fall back to manual CLI commands unless the extension tools are unavailab
 - Use `search_pdf` to find a phrase and get page numbers with surrounding context.
 - Use `read_docx` to extract text from Word documents as markdown.
 - Use `search_docx` to find a phrase in a Word document with character-offset context.
-- Use `read_xlsx` for Excel files — omit sheet name for index mode (sheet names + preview), provide sheet name for full single sheet.
+- Use `read_xlsx` for Excel files — omit sheet name for index mode (sheet names + preview), provide sheet name for full single sheet. Set `raw: false` to get display-formatted values (dates, currencies, percentages as shown in Excel).
 - Use `search_xlsx` to find a phrase across all sheets or a specific sheet.
 
 ## Recommended workflow

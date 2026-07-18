@@ -206,6 +206,8 @@ export interface ParseXlsxOptions {
   maxRows?: number;
   /** 0-indexed row number to use as headers. Auto-detected when omitted. */
   headerRow?: number;
+  /** Return raw values (true, default) or display-formatted strings (false). */
+  raw?: boolean;
 }
 
 export interface SearchXlsxOptions {
@@ -446,6 +448,7 @@ export async function parseXlsx(
     const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, {
       header: 1,
       defval: "",
+      raw: options?.raw ?? true,
     });
 
     // Unmerge cells: fill top-left values into all cells of merged ranges

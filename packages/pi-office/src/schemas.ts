@@ -92,6 +92,13 @@ export const ReadXlsxSchema = Type.Object({
         "0-indexed row number to use as headers. Auto-detected when omitted.",
     }),
   ),
+  raw: Type.Optional(
+    Type.Boolean({
+      description:
+        "Return raw values (true, default) or display-formatted strings (false). " +
+        "Set false to see dates, currencies, and percentages as formatted in Excel.",
+    }),
+  ),
 });
 
 export const SearchXlsxSchema = Type.Object({
