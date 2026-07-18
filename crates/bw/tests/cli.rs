@@ -130,9 +130,9 @@ fn print_args_output_format() {
         .arg("hello")
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("bwrap\n"))
+        .stdout(predicate::str::starts_with("bwrap"))
         .stdout(predicate::str::contains("--unshare-cgroup"))
-        .stdout(predicate::str::contains("  echo\n"));
+        .stdout(predicate::str::contains("echo hello"));
 }
 
 // =============================
@@ -188,7 +188,7 @@ fn no_command_defaults_to_shell() {
         .arg("--print-args")
         .assert()
         .success()
-        .stdout(predicate::str::contains(format!("  {shell}\n")));
+        .stdout(predicate::str::contains(format!("-- {shell}")));
 }
 
 // =========================

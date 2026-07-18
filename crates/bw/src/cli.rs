@@ -57,10 +57,15 @@ impl Cli {
 }
 
 fn print_args(args: &[String]) {
-    println!("bwrap");
+    let mut parts: Vec<&str> = vec!["bwrap"];
     for arg in args {
-        println!("  {arg}");
+        parts.push(arg.as_str());
     }
+    let cmdline = match shlex::try_join(parts.iter().copied()) {
+        Ok(s) => s,
+        Err(_) => parts.join(" "),
+    };
+    println!("{cmdline}");
 }
 
 #[cfg(unix)]
