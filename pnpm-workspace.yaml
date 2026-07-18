@@ -37,4 +37,4 @@ catalog:
   typescript: 6.0.3
   unpdf: 1.6.2
   vitest: 4.1.7
-  xlsx: 0.18.5
+  xlsx: npm:@e965/xlsx@0.20.3
