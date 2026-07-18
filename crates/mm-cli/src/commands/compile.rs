@@ -20,6 +20,7 @@ pub fn execute(
     json: bool,
     no_stats: bool,
     keep: u32,
+    brief: bool,
 ) -> Result<ExitStatus> {
     let paths = expand_paths(&inputs);
     let (valid, invalid): (Vec<_>, Vec<_>) = paths.iter().partition(|p| p.is_file());
@@ -33,7 +34,7 @@ pub fn execute(
     }
 
     for path in valid {
-        compile_one(path, output_dir.as_deref(), pi, json, no_stats, keep)?;
+        compile_one(path, output_dir.as_deref(), pi, json, no_stats, keep, brief)?;
     }
 
     Ok(ExitStatus::Success)
@@ -77,6 +78,7 @@ fn compile_one(
     json: bool,
     no_stats: bool,
     keep: u32,
+    brief: bool,
 ) -> Result<()> {
     let _output_dir = create_output_dir(path, output_dir)?;
     let stem = path
@@ -106,7 +108,7 @@ fn compile_one(
     // Summarize portion
     if !to_summarize.is_empty() {
         let blocks = filter_noise(normalize(to_summarize));
-        if pi {
+        if brief || pi {
             output.push_str(&compile_full(&blocks));
         } else {
             output.push_str(&claude::ir::emit_full(to_summarize, no_stats));

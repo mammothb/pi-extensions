@@ -57,6 +57,10 @@ pub struct CompileArgs {
     /// Output JSON instead of human-readable text
     #[arg(long)]
     pub json: bool,
+    /// Output structured summary (goals, files, commits, preferences + brief
+    /// transcript) instead of full line-numbered transcript.
+    #[arg(long, conflicts_with = "json")]
+    pub brief: bool,
 }
 
 #[derive(Args)]
