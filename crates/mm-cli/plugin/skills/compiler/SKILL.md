@@ -30,13 +30,13 @@ mm search path/to/current-session.jsonl --query "hook|inject"
 ### /mm:searchchat — search across sessions
 
 ```bash
-cd ~/.claude/projects/<project> && mm search *.jsonl --query "keyword"
+cd ~/.claude/projects/<project> && mm search "*.jsonl" --query "keyword"
 ```
 
 For broader search into subagents:
 
 ```bash
-cd ~/.claude/projects/<project> && mm search **/*.jsonl --query "keyword"
+cd ~/.claude/projects/<project> && mm search "**/*.jsonl" --query "keyword"
 ```
 
 ### /mm:readchat — read a specific session
