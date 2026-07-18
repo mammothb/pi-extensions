@@ -1,0 +1,26 @@
+[package]
+name = "bw-helper"
+version = "0.1.0"
+description = "Config-driven bubblewrap sandbox for pi"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "bw"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+fs-err = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shellexpand = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
