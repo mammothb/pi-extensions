@@ -20,8 +20,16 @@ jobs:
           filters: |
             npm:
               - 'packages/**'
+              - '.changeset/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
             cargo:
               - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
   publish-npm:
     name: Publish npm packages
     needs: changes
