@@ -20,7 +20,8 @@
       "!coverage",
       "!packages/*/dist",
       "!packages/*/coverage",
-      "!node_modules"
+      "!node_modules",
+      "!target"
     ]
   },
   "overrides": [

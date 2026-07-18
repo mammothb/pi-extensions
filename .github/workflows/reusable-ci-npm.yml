@@ -1,0 +1,26 @@
+name: Reusable CI (npm)
+on:
+  workflow_call:
+jobs:
+  check:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup - Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Setup - pnpm
+        run: corepack enable pnpm
+      - name: Setup - Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install mm-cli
+        run: cargo install --path crates/mm-cli
+      - name: Lint & format
+        run: pnpm exec biome ci .
+      - name: Test
+        run: pnpm run test

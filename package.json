@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:rust": "cargo test --workspace",
-    "test:all": "pnpm run test && pnpm run test:rust"
+    "test:all": "pnpm run test && pnpm run test:rust",
+    "version": "changeset version"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
