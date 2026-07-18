@@ -69,10 +69,17 @@ fn print_args(args: &[String]) {
             println!("  {arg}");
         } else if arg == "--" {
             println!("  --");
-        } else if arg.starts_with("--") && i + 1 < args.len() && !args[i + 1].starts_with("--") {
-            // Flag + value on one line
-            println!("  {arg} {} \\", args[i + 1]);
-            i += 1;
+        } else if arg.starts_with("--") {
+            // Flag + all following values on one line
+            let mut line = format!("  {arg}");
+            while i + 1 < args.len() && !args[i + 1].starts_with("--") {
+                i += 1;
+                line.push_str(&format!(" {}", args[i]));
+            }
+            if i < args.len() - 1 {
+                line.push_str(" \\");
+            }
+            println!("{line}");
         } else {
             println!("  {arg} \\");
         }
