@@ -5,7 +5,7 @@ use crate::types::BwResolvedConfig;
 
 /// Build the full bwrap argument array from a resolved config.
 pub fn build_bwrap_args(config: &BwResolvedConfig, cwd: &Path, command: &[String]) -> Vec<String> {
-    let mut args = vec!["bwrap".to_string()];
+    let mut args = Vec::new();
 
     // Hardcoded namespace / sandbox flags
     //
@@ -486,9 +486,8 @@ mod tests {
         let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
 
         // Structural checks
-        assert_eq!(args[0], "bwrap");
         // Hardcoded flags at the start
-        assert!(args[1..].starts_with(&[
+        assert!(args.starts_with(&[
             "--unshare-cgroup".into(),
             "--unshare-ipc".into(),
             "--unshare-user".into(),

@@ -132,7 +132,7 @@ fn print_args_output_format() {
         .success()
         .stdout(predicate::str::starts_with("bwrap\n"))
         .stdout(predicate::str::contains("--unshare-cgroup"))
-        .stdout(predicate::str::contains("  echo \\\n"));
+        .stdout(predicate::str::contains("  echo\n"));
 }
 
 // =============================
