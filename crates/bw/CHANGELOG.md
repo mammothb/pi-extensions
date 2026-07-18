@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/mammothb/pi-extensions/compare/bw-helper-v0.1.1...bw-helper-v0.1.2) - 2026-07-18
+
+### Other
+
+- use dep ([#14](https://github.com/mammothb/pi-extensions/pull/14))
+
 ## [0.1.1](https://github.com/mammothb/pi-extensions/compare/bw-helper-v0.1.0...bw-helper-v0.1.1) - 2026-07-18
 
 ### Fixed
