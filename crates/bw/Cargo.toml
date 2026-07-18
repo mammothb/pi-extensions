@@ -12,8 +12,11 @@ name = "bw"
 path = "src/main.rs"
 
 [dependencies]
+anyhow = { workspace = true }
+fs-err = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+tempfile = { workspace = true }

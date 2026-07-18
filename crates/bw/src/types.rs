@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::de::{self, Deserializer};
 
 /// Shape of a user-authored config file (global or workspace).
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct BwRawConfig {
     #[serde(default)]
     pub binds: Option<BwBinds>,
@@ -17,7 +17,7 @@ pub struct BwRawConfig {
 }
 
 /// Sub-structure for bind-mount configuration.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct BwBinds {
     #[serde(default)]
     pub ro: Vec<String>,
@@ -36,7 +36,7 @@ pub struct BwBinds {
 ///
 /// Serialized as `null` or a path string. Wrapped in `Option` at the field
 /// level to distinguish "not present" from "present but null".
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DockerConfig {
     /// JSON `null` — disable docker bind entirely.
     Disabled,
@@ -65,7 +65,7 @@ fn deserialize_docker<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DockerCo
 }
 
 /// WSL2-specific bind overrides.
-#[derive(Debug, Default, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct Wsl2Binds {
     #[serde(default)]
     pub ro: Vec<String>,
@@ -74,7 +74,7 @@ pub struct Wsl2Binds {
 }
 
 /// bwrap option knobs.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct BwOptions {
     #[serde(default = "default_true")]
     pub clearenv: bool,

@@ -115,9 +115,12 @@ dependencies = [
 name = "bw-helper"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "fs-err",
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
