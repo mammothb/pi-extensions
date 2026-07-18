@@ -1,22 +1,37 @@
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use crate::defaults::default_config;
-use crate::types::{BwBinds, BwOptions, BwRawConfig};
+use crate::types::{
+    BwBinds, BwOptions, BwRawConfig, BwResolvedConfig, DockerConfig, ResolvedBinds,
+    ResolvedOptions, ResolvedWsl2Binds,
+};
 
-/// Load and merge bw config: default → global → workspace.
-///
-/// Returns the merged config with string paths (unexpanded — expansion is
-/// Phase 3). Paths use `/` as separator on all platforms (Linux-only tool).
-pub fn load_config(cwd: &Path) -> Result<BwRawConfig> {
+/// Load, merge, expand, and validate config: default → global → workspace.
+pub fn load_config(cwd: &Path) -> Result<BwResolvedConfig> {
     let global_path = global_config_path();
     let workspace_path = cwd.join(".pi").join("bw.json");
-    load_config_from(&global_path, &workspace_path)
+    load_and_resolve(&global_path, &workspace_path, cwd)
+}
+
+/// Full pipeline (merge + expand + validate) with explicit paths for testing.
+fn load_and_resolve(
+    global_path: &Path,
+    workspace_path: &Path,
+    cwd: &Path,
+) -> Result<BwResolvedConfig> {
+    let raw = load_config_from(global_path, workspace_path)?;
+    let mut resolved = raw_to_resolved(raw);
+    expand_paths(&mut resolved, cwd)?;
+    validate(&resolved)?;
+    Ok(resolved)
 }
 
 /// Load and merge from explicit file paths (testable without env vars).
-fn load_config_from(global_path: &Path, workspace_path: &Path) -> Result<BwRawConfig> {
+/// Returns the merged but unexpanded config.
+pub(crate) fn load_config_from(global_path: &Path, workspace_path: &Path) -> Result<BwRawConfig> {
     let mut acc = default_config();
 
     if let Some(global) = load_layer(global_path)? {
@@ -106,6 +121,159 @@ fn merge_options_into(target: &mut BwOptions, source: &BwOptions) {
         target.path.clone_from(&source.path);
     }
     target.unshare_net = source.unshare_net;
+}
+
+// ============================
+// Path resolution & validation
+// ============================
+
+/// A path that should exist but doesn't.
+#[derive(Debug)]
+pub struct ValidationError {
+    pub path: PathBuf,
+    pub kind: BindKind,
+    pub index: usize,
+}
+
+#[derive(Debug)]
+pub enum BindKind {
+    Ro,
+    Rw,
+}
+
+impl fmt::Display for BindKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BindKind::Ro => f.write_str("ro"),
+            BindKind::Rw => f.write_str("rw"),
+        }
+    }
+}
+
+/// Convert merged raw config into resolved form (string paths → PathBuf).
+fn raw_to_resolved(raw: BwRawConfig) -> BwResolvedConfig {
+    let binds_raw = raw.binds.unwrap_or_default();
+    let opts_raw = raw.options.unwrap_or_default();
+
+    let docker = binds_raw.docker.map(|d| match d {
+        DockerConfig::Disabled => None,
+        DockerConfig::Enabled(p) => Some(PathBuf::from(p)),
+    });
+    // docker: None (not configured) → None (disabled).
+    // If the user used `binds` (full replace) and omitted docker, it's disabled.
+    let docker = docker.unwrap_or(None);
+
+    BwResolvedConfig {
+        binds: ResolvedBinds {
+            ro: binds_raw.ro.into_iter().map(PathBuf::from).collect(),
+            ro_try: binds_raw.ro_try.into_iter().map(PathBuf::from).collect(),
+            rw: binds_raw.rw.into_iter().map(PathBuf::from).collect(),
+            docker,
+            wsl2: ResolvedWsl2Binds {
+                ro: binds_raw.wsl2.ro.into_iter().map(PathBuf::from).collect(),
+                ro_try: binds_raw
+                    .wsl2
+                    .ro_try
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .collect(),
+            },
+        },
+        options: ResolvedOptions {
+            clearenv: opts_raw.clearenv,
+            env: opts_raw.env,
+            path: opts_raw.path.into_iter().map(PathBuf::from).collect(),
+            unshare_net: opts_raw.unshare_net,
+        },
+    }
+}
+
+/// Expand `~` and resolve relative paths in place.
+fn expand_paths(config: &mut BwResolvedConfig, cwd: &Path) -> Result<()> {
+    for p in &mut config.binds.ro {
+        *p = resolve_path(p, cwd)?;
+    }
+    for p in &mut config.binds.ro_try {
+        *p = resolve_path(p, cwd)?;
+    }
+    for p in &mut config.binds.rw {
+        *p = resolve_path(p, cwd)?;
+    }
+    if let Some(ref p) = config.binds.docker {
+        config.binds.docker = Some(resolve_path(p, cwd)?);
+    }
+    for p in &mut config.binds.wsl2.ro {
+        *p = resolve_path(p, cwd)?;
+    }
+    for p in &mut config.binds.wsl2.ro_try {
+        *p = resolve_path(p, cwd)?;
+    }
+    for p in &mut config.options.path {
+        *p = resolve_path(p, cwd)?;
+    }
+    Ok(())
+}
+
+/// Expand `~` and resolve relative paths against `cwd`.
+fn resolve_path(raw: &Path, cwd: &Path) -> Result<PathBuf> {
+    let raw_str = raw.to_string_lossy();
+    let expanded = shellexpand::full(&raw_str)
+        .with_context(|| format!("failed to expand path: {}", raw.display()))?;
+    let path = Path::new(expanded.as_ref());
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(cwd.join(path))
+    }
+}
+
+/// Check that required bind paths exist. `ro_try` paths are intentionally
+/// not validated — they may legitimately be absent.
+fn validate(config: &BwResolvedConfig) -> Result<()> {
+    let mut errors: Vec<ValidationError> = Vec::new();
+
+    for (i, p) in config.binds.ro.iter().enumerate() {
+        if !p.exists() {
+            errors.push(ValidationError {
+                path: p.clone(),
+                kind: BindKind::Ro,
+                index: i,
+            });
+        }
+    }
+    for (i, p) in config.binds.rw.iter().enumerate() {
+        if !p.exists() {
+            errors.push(ValidationError {
+                path: p.clone(),
+                kind: BindKind::Rw,
+                index: i,
+            });
+        }
+    }
+    if let Some(ref p) = config.binds.docker
+        && !p.exists()
+    {
+        errors.push(ValidationError {
+            path: p.clone(),
+            kind: BindKind::Rw,
+            index: 0,
+        });
+    }
+
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    let mut msg = String::from("path(s) not found:");
+    for e in &errors {
+        msg.push_str(&format!(
+            "\n  {} (binds.{}[{}])",
+            e.path.display(),
+            e.kind,
+            e.index
+        ));
+    }
+    Err(anyhow::anyhow!("{msg}"))
 }
 
 #[cfg(test)]
@@ -468,5 +636,295 @@ mod tests {
         let workspace = write_config(&dir, "workspace.json", "not json");
         let result = load_config_from(&dir.path().join("no-global.json"), &workspace);
         assert!(result.is_err());
+    }
+
+    // ===========
+    // path_expand
+    // ===========
+
+    #[rstest]
+    fn tilde_expands_to_home() {
+        // HOME is always set in dev/CI — just verify tilde resolves somewhere.
+        let raw = Path::new("~/something");
+        let result = resolve_path(raw, Path::new("/cwd")).unwrap();
+        let home = std::env::var("HOME").unwrap();
+        assert!(result.starts_with(&home));
+        assert!(result.ends_with("something"));
+    }
+
+    #[rstest]
+    fn relative_resolves_to_cwd(dir: TempDir) {
+        let sub = dir.path().join("sub");
+        fs_err::create_dir_all(&sub).unwrap();
+
+        let global = write_config(&dir, "global.json", r#"{"binds": {"rw": ["./sub"]}}"#);
+
+        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let mut resolved = raw_to_resolved(raw);
+        expand_paths(&mut resolved, dir.path()).unwrap();
+
+        assert_eq!(resolved.binds.rw[0], sub);
+    }
+
+    #[rstest]
+    fn absolute_passes_through(dir: TempDir) {
+        let global = write_config(&dir, "global.json", r#"{"binds": {"ro": ["/usr"]}}"#);
+
+        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let mut resolved = raw_to_resolved(raw);
+        expand_paths(&mut resolved, dir.path()).unwrap();
+
+        assert_eq!(resolved.binds.ro[0], PathBuf::from("/usr"));
+    }
+
+    #[rstest]
+    fn expand_paths_touches_all_fields(dir: TempDir) {
+        // Create a minimal config with a path in each bind category
+        let ro_dir = dir.path().join("ro_dir");
+        let ro_try_dir = dir.path().join("ro_try_dir");
+        let rw_dir = dir.path().join("rw_dir");
+        let wsl2_ro = dir.path().join("wsl2_ro");
+        let wsl2_ro_try = dir.path().join("wsl2_ro_try");
+        let path_dir = dir.path().join("path_dir");
+        fs_err::create_dir_all(&ro_dir).unwrap();
+        fs_err::create_dir_all(&ro_try_dir).unwrap();
+        fs_err::create_dir_all(&rw_dir).unwrap();
+        fs_err::create_dir_all(&wsl2_ro).unwrap();
+        fs_err::create_dir_all(&wsl2_ro_try).unwrap();
+        fs_err::create_dir_all(&path_dir).unwrap();
+
+        let global = write_config(
+            &dir,
+            "global.json",
+            &format!(
+                r#"{{
+                    "binds": {{
+                        "ro": ["{ro_dir}"],
+                        "ro_try": ["{ro_try_dir}"],
+                        "rw": ["{rw_dir}"],
+                        "wsl2": {{
+                            "ro": ["{wsl2_ro}"],
+                            "ro_try": ["{wsl2_ro_try}"]
+                        }}
+                    }},
+                    "options": {{"path": ["{path_dir}"]}}
+                }}"#,
+                ro_dir = ro_dir.display(),
+                ro_try_dir = ro_try_dir.display(),
+                rw_dir = rw_dir.display(),
+                wsl2_ro = wsl2_ro.display(),
+                wsl2_ro_try = wsl2_ro_try.display(),
+                path_dir = path_dir.display(),
+            ),
+        );
+
+        let raw = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
+        let mut resolved = raw_to_resolved(raw);
+        expand_paths(&mut resolved, dir.path()).unwrap();
+
+        assert_eq!(resolved.binds.ro[0], ro_dir);
+        assert_eq!(resolved.binds.ro_try[0], ro_try_dir);
+        assert_eq!(resolved.binds.rw[0], rw_dir);
+        assert_eq!(resolved.binds.wsl2.ro[0], wsl2_ro);
+        assert_eq!(resolved.binds.wsl2.ro_try[0], wsl2_ro_try);
+        assert_eq!(resolved.options.path[0], path_dir);
+    }
+
+    // =============
+    // path_validate
+    // =============
+
+    #[rstest]
+    fn ro_missing_is_error(dir: TempDir) {
+        let missing = dir.path().join("does-not-exist");
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![missing.clone()],
+                ro_try: vec![],
+                rw: vec![],
+                docker: None,
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        let result = validate(&resolved);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains(&missing.display().to_string()));
+        assert!(err.contains("binds.ro[0]"));
+    }
+
+    #[rstest]
+    fn rw_missing_is_error(dir: TempDir) {
+        let missing = dir.path().join("does-not-exist");
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![],
+                ro_try: vec![],
+                rw: vec![missing.clone()],
+                docker: None,
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        let result = validate(&resolved);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains(&missing.display().to_string()));
+        assert!(err.contains("binds.rw[0]"));
+    }
+
+    #[rstest]
+    fn ro_try_missing_is_ok(dir: TempDir) {
+        let missing = dir.path().join("does-not-exist");
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![],
+                ro_try: vec![missing],
+                rw: vec![],
+                docker: None,
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        // ro_try paths are never validated
+        validate(&resolved).unwrap();
+    }
+
+    #[rstest]
+    fn docker_missing_is_error(dir: TempDir) {
+        let missing = dir.path().join("does-not-exist");
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![],
+                ro_try: vec![],
+                rw: vec![],
+                docker: Some(missing.clone()),
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        let result = validate(&resolved);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains(&missing.display().to_string()));
+    }
+
+    #[rstest]
+    fn docker_null_is_ok() {
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![],
+                ro_try: vec![],
+                rw: vec![],
+                docker: None, // disabled — no validation
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        validate(&resolved).unwrap();
+    }
+
+    #[rstest]
+    fn existing_paths_no_errors(dir: TempDir) {
+        let a = dir.path().join("a");
+        let b = dir.path().join("b");
+        fs_err::create_dir_all(&a).unwrap();
+        fs_err::create_dir_all(&b).unwrap();
+
+        let resolved = BwResolvedConfig {
+            binds: ResolvedBinds {
+                ro: vec![a.clone()],
+                ro_try: vec![],
+                rw: vec![b.clone()],
+                docker: None,
+                wsl2: ResolvedWsl2Binds::default(),
+            },
+            options: ResolvedOptions {
+                clearenv: true,
+                env: Default::default(),
+                path: vec![],
+                unshare_net: false,
+            },
+        };
+
+        validate(&resolved).unwrap();
+    }
+
+    // =============
+    // full_pipeline
+    // =============
+
+    #[rstest]
+    fn load_and_resolve_success(dir: TempDir) {
+        let sub = dir.path().join("sub");
+        fs_err::create_dir_all(&sub).unwrap();
+
+        let global = write_config(
+            &dir,
+            "global.json",
+            &format!(
+                r#"{{"binds": {{"ro": ["{sub}"], "rw": []}}}}"#,
+                sub = sub.display(),
+            ),
+        );
+
+        let result = load_and_resolve(&global, &dir.path().join("no-workspace.json"), dir.path());
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(resolved.binds.ro[0], sub);
+    }
+
+    #[rstest]
+    fn load_and_resolve_missing_path_is_error(dir: TempDir) {
+        let missing = dir.path().join("does-not-exist");
+
+        let global = write_config(
+            &dir,
+            "global.json",
+            &format!(
+                r#"{{"binds": {{"ro": ["{missing}"]}}}}"#,
+                missing = missing.display(),
+            ),
+        );
+
+        let result = load_and_resolve(&global, &dir.path().join("no-workspace.json"), dir.path());
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("path(s) not found")
+        );
     }
 }
