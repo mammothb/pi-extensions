@@ -1,6 +1,6 @@
 [package]
 name = "bw-helper"
-version = "0.1.2"
+version = "0.1.3"
 description = "Config-driven bubblewrap sandbox for pi"
 edition.workspace = true
 license.workspace = true
