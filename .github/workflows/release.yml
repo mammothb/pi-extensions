@@ -34,3 +34,5 @@ jobs:
     if: ${{ contains(needs.changes.outputs.packages, 'cargo') }}
     uses: ./.github/workflows/reusable-release-cargo.yml
     secrets: inherit
+    permissions:
+      id-token: write
