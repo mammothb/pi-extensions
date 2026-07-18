@@ -8,13 +8,16 @@ pub fn build_bwrap_args(config: &BwResolvedConfig, cwd: &Path, command: &[String
     let mut args = vec!["bwrap".to_string()];
 
     // Hardcoded namespace / sandbox flags
+    //
+    // NOTE: --unshare-pid is intentionally omitted so that detached child
+    // processes (e.g. pi-web's docker compose down) survive bwrap exit.
+    // --die-with-parent requires --unshare-pid and is omitted for the
+    // same reason.
     args.extend_from_slice(&[
         "--unshare-cgroup".to_string(),
         "--unshare-ipc".to_string(),
-        "--unshare-pid".to_string(),
         "--unshare-user".to_string(),
         "--unshare-uts".to_string(),
-        "--die-with-parent".to_string(),
         "--dev".to_string(),
         "/dev".to_string(),
         "--proc".to_string(),
@@ -275,10 +278,8 @@ mod tests {
 
         assert!(args.contains(&"--unshare-cgroup".into()));
         assert!(args.contains(&"--unshare-ipc".into()));
-        assert!(args.contains(&"--unshare-pid".into()));
         assert!(args.contains(&"--unshare-user".into()));
         assert!(args.contains(&"--unshare-uts".into()));
-        assert!(args.contains(&"--die-with-parent".into()));
         assert!(args.contains(&"--dev".into()));
         assert!(args.contains(&"/dev".into()));
         assert!(args.contains(&"--proc".into()));
@@ -526,10 +527,8 @@ mod tests {
         assert!(args[1..].starts_with(&[
             "--unshare-cgroup".into(),
             "--unshare-ipc".into(),
-            "--unshare-pid".into(),
             "--unshare-user".into(),
             "--unshare-uts".into(),
-            "--die-with-parent".into(),
             "--dev".into(),
             "/dev".into(),
             "--proc".into(),
