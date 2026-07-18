@@ -86,26 +86,25 @@ mod tests {
     }
 
     #[rstest]
-    fn apply_wsl2_skips_when_user_configured() {
+    #[case::ro_custom("ro", "/custom")]
+    #[case::ro_try_custom("ro_try", "/custom-try")]
+    fn apply_wsl2_skips_when_user_configured(#[case] field: &str, #[case] path: &str) {
         let mut config = empty_config();
-        config.binds.wsl2.ro = vec![PathBuf::from("/custom")];
+        match field {
+            "ro" => config.binds.wsl2.ro = vec![PathBuf::from(path)],
+            _ => config.binds.wsl2.ro_try = vec![PathBuf::from(path)],
+        }
 
         apply_wsl2_config(&mut config, |_| None);
 
-        // User's value preserved, no auto-add
-        assert_eq!(config.binds.wsl2.ro, vec![PathBuf::from("/custom")]);
-        assert!(config.binds.wsl2.ro_try.is_empty());
-    }
-
-    #[rstest]
-    fn apply_wsl2_skips_when_ro_try_configured() {
-        let mut config = empty_config();
-        config.binds.wsl2.ro_try = vec![PathBuf::from("/custom-try")];
-
-        apply_wsl2_config(&mut config, |_| None);
-
-        assert!(config.binds.wsl2.ro.is_empty());
-        assert_eq!(config.binds.wsl2.ro_try, vec![PathBuf::from("/custom-try")]);
+        if field == "ro" {
+            // User's value preserved, no auto-add
+            assert_eq!(config.binds.wsl2.ro, vec![PathBuf::from(path)]);
+            assert!(config.binds.wsl2.ro_try.is_empty());
+        } else {
+            assert!(config.binds.wsl2.ro.is_empty());
+            assert_eq!(config.binds.wsl2.ro_try, vec![PathBuf::from(path)]);
+        }
     }
 
     #[rstest]

@@ -219,33 +219,13 @@ mod tests {
     // ============
 
     #[rstest]
-    fn docker_absent_is_none() {
-        let binds: BwBinds = serde_json::from_str("{}").unwrap();
-        assert_eq!(binds.docker, None);
-    }
-
-    #[rstest]
-    fn docker_null_is_disabled() {
-        let binds: BwBinds = serde_json::from_str(r#"{"docker": null}"#).unwrap();
-        assert_eq!(binds.docker, Some(DockerConfig::Disabled));
-    }
-
-    #[rstest]
-    fn docker_string_is_enabled() {
-        let binds: BwBinds = serde_json::from_str(r#"{"docker": "/var/run/docker.sock"}"#).unwrap();
-        assert_eq!(
-            binds.docker,
-            Some(DockerConfig::Enabled("/var/run/docker.sock".into()))
-        );
-    }
-
-    #[rstest]
-    fn docker_custom_path_is_enabled() {
-        let binds: BwBinds = serde_json::from_str(r#"{"docker": "/custom/sock"}"#).unwrap();
-        assert_eq!(
-            binds.docker,
-            Some(DockerConfig::Enabled("/custom/sock".into()))
-        );
+    #[case::absent("{}", None)]
+    #[case::null("{\"docker\": null}", Some(DockerConfig::Disabled))]
+    #[case::default_sock("{\"docker\": \"/var/run/docker.sock\"}", Some(DockerConfig::Enabled("/var/run/docker.sock".into())))]
+    #[case::custom("{\"docker\": \"/custom/sock\"}", Some(DockerConfig::Enabled("/custom/sock".into())))]
+    fn docker_deserialization(#[case] json: &str, #[case] expected: Option<DockerConfig>) {
+        let binds: BwBinds = serde_json::from_str(json).unwrap();
+        assert_eq!(binds.docker, expected);
     }
 
     // =========
@@ -280,15 +260,11 @@ mod tests {
     }
 
     #[rstest]
-    fn clearenv_false() {
-        let opts: BwOptions = serde_json::from_str(r#"{"clearenv": false}"#).unwrap();
-        assert!(!opts.clearenv);
-    }
-
-    #[rstest]
-    fn clearenv_defaults_true() {
-        let opts: BwOptions = serde_json::from_str("{}").unwrap();
-        assert!(opts.clearenv);
+    #[case::off(r#"{"clearenv": false}"#, false)]
+    #[case::default("{}", true)]
+    fn clearenv_deserialization(#[case] json: &str, #[case] expected: bool) {
+        let opts: BwOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.clearenv, expected);
     }
 
     #[rstest]
@@ -306,14 +282,10 @@ mod tests {
     }
 
     #[rstest]
-    fn options_unshare_net_true() {
-        let opts: BwOptions = serde_json::from_str(r#"{"unshare_net": true}"#).unwrap();
-        assert!(opts.unshare_net);
-    }
-
-    #[rstest]
-    fn options_unshare_net_defaults_false() {
-        let opts: BwOptions = serde_json::from_str("{}").unwrap();
-        assert!(!opts.unshare_net);
+    #[case::on("{\"unshare_net\": true}", true)]
+    #[case::default("{}", false)]
+    fn unshare_net_deserialization(#[case] json: &str, #[case] expected: bool) {
+        let opts: BwOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.unshare_net, expected);
     }
 }

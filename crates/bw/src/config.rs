@@ -566,35 +566,39 @@ mod tests {
     // ====================
 
     #[rstest]
-    fn missing_global_file_is_ok(dir: TempDir) {
-        let workspace = write_config(
-            &dir,
-            "workspace.json",
-            r#"{"binds_extra": {"ro": ["/from-workspace"]}}"#,
-        );
+    #[case::global_missing("global")]
+    #[case::workspace_missing("workspace")]
+    fn missing_layer_is_ok(#[case] which: &str, dir: TempDir) {
+        let (global_path, workspace_path) = match which {
+            "global" => {
+                let ws = write_config(
+                    &dir,
+                    "workspace.json",
+                    r#"{"binds_extra": {"ro": ["/from-workspace"]}}"#,
+                );
+                (dir.path().join("no-global.json"), ws)
+            }
+            _ => {
+                let gl = write_config(
+                    &dir,
+                    "global.json",
+                    r#"{"binds_extra": {"ro": ["/from-global"]}}"#,
+                );
+                (gl, dir.path().join("no-workspace.json"))
+            }
+        };
 
-        let cfg = load_config_from(&dir.path().join("no-global.json"), &workspace).unwrap();
+        let cfg = load_config_from(&global_path, &workspace_path).unwrap();
         let binds = cfg.binds.unwrap();
-
-        // Defaults still present + workspace merged
+        // Defaults still present
         assert!(binds.ro.contains(&"/bin".to_string()));
-        assert!(binds.ro.contains(&"/from-workspace".to_string()));
-    }
-
-    #[rstest]
-    fn missing_workspace_file_is_ok(dir: TempDir) {
-        let global = write_config(
-            &dir,
-            "global.json",
-            r#"{"binds_extra": {"ro": ["/from-global"]}}"#,
-        );
-
-        let cfg = load_config_from(&global, &dir.path().join("no-workspace.json")).unwrap();
-        let binds = cfg.binds.unwrap();
-
-        // Defaults still present + global merged
-        assert!(binds.ro.contains(&"/bin".to_string()));
-        assert!(binds.ro.contains(&"/from-global".to_string()));
+        // Layer-specific path present
+        let expected = if which == "global" {
+            "/from-workspace"
+        } else {
+            "/from-global"
+        };
+        assert!(binds.ro.contains(&expected.to_string()));
     }
 
     // ================
@@ -602,16 +606,20 @@ mod tests {
     // ================
 
     #[rstest]
-    fn malformed_global_is_error(dir: TempDir) {
-        let global = write_config(&dir, "global.json", "not json");
-        let result = load_config_from(&global, &dir.path().join("no-workspace.json"));
-        assert!(result.is_err());
-    }
-
-    #[rstest]
-    fn malformed_workspace_is_error(dir: TempDir) {
-        let workspace = write_config(&dir, "workspace.json", "not json");
-        let result = load_config_from(&dir.path().join("no-global.json"), &workspace);
+    #[case::global("global")]
+    #[case::workspace("workspace")]
+    fn malformed_layer_is_error(#[case] which: &str, dir: TempDir) {
+        let (global_path, workspace_path) = match which {
+            "global" => (
+                write_config(&dir, "global.json", "not json"),
+                dir.path().join("no-workspace.json"),
+            ),
+            _ => (
+                dir.path().join("no-global.json"),
+                write_config(&dir, "workspace.json", "not json"),
+            ),
+        };
+        let result = load_config_from(&global_path, &workspace_path);
         assert!(result.is_err());
     }
 

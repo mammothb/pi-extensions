@@ -301,30 +301,26 @@ mod tests {
     }
 
     #[rstest]
-    fn ro_try_existing_becomes_ro_bind_try(dir: TempDir) {
-        let existing = dir.path().join("exists");
-        fs_err::create_dir_all(&existing).unwrap();
+    #[case::existing(true, true)]
+    #[case::missing(false, false)]
+    fn ro_try_bind(#[case] create_dir: bool, #[case] expect_flag: bool, dir: TempDir) {
+        let path = dir.path().join("ro_try_target");
+        if create_dir {
+            fs_err::create_dir_all(&path).unwrap();
+        }
 
         let mut config = config_with(&[], &[]);
-        config.binds.ro_try = vec![existing.clone()];
+        config.binds.ro_try = vec![path.clone()];
 
         let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
 
-        let pos = args.iter().position(|a| a == "--ro-bind-try").unwrap();
-        assert_eq!(args[pos + 1], existing.to_string_lossy());
-        assert_eq!(args[pos + 2], existing.to_string_lossy());
-    }
-
-    #[rstest]
-    fn ro_try_missing_is_skipped(dir: TempDir) {
-        let missing = dir.path().join("does-not-exist");
-
-        let mut config = config_with(&[], &[]);
-        config.binds.ro_try = vec![missing];
-
-        let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
-
-        assert!(!args.contains(&"--ro-bind-try".into()));
+        if expect_flag {
+            let pos = args.iter().position(|a| a == "--ro-bind-try").unwrap();
+            assert_eq!(args[pos + 1], path.to_string_lossy());
+            assert_eq!(args[pos + 2], path.to_string_lossy());
+        } else {
+            assert!(!args.contains(&"--ro-bind-try".into()));
+        }
     }
 
     #[rstest]
@@ -385,41 +381,28 @@ mod tests {
     }
 
     #[rstest]
-    fn unshare_net_when_enabled(dir: TempDir) {
+    #[case::enabled(true, true)]
+    #[case::disabled(false, false)]
+    fn unshare_net(#[case] set: bool, #[case] expect_present: bool, dir: TempDir) {
         let mut config = config_with(&[], &[]);
-        config.options.unshare_net = true;
+        config.options.unshare_net = set;
 
         let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
 
-        assert!(args.contains(&"--unshare-net".into()));
+        assert_eq!(args.contains(&"--unshare-net".into()), expect_present);
     }
 
     #[rstest]
-    fn unshare_net_absent_when_disabled(dir: TempDir) {
-        let config = config_with(&[], &[]); // unshare_net: false by default
-        let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
-
-        assert!(!args.contains(&"--unshare-net".into()));
-    }
-
-    #[rstest]
-    fn clearenv_when_true(dir: TempDir) {
-        let config = config_with(&[], &[]); // clearenv: true
-        let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
-
-        assert!(args.contains(&"--clearenv".into()));
-    }
-
-    #[rstest]
-    fn clearenv_absent_when_false(dir: TempDir) {
+    #[case::on(true, true)]
+    #[case::off(false, false)]
+    fn clearenv(#[case] set: bool, #[case] expect_present: bool, dir: TempDir) {
         let mut config = config_with(&[], &[]);
-        config.options.clearenv = false;
+        config.options.clearenv = set;
 
         let args = build_bwrap_args(&config, dir.path(), &["pi".into()]);
 
-        assert!(!args.contains(&"--clearenv".into()));
+        assert_eq!(args.contains(&"--clearenv".into()), expect_present);
     }
-
     #[rstest]
     fn essential_env_vars_set(dir: TempDir) {
         let config = config_with(&[], &[]);
