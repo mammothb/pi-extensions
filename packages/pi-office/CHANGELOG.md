@@ -1,5 +1,11 @@
 # @mammothb/pi-office
 
+## 0.1.3
+
+### Patch Changes
+
+- 5ce9e7c: Bump pi dependencies to 0.80.10
+
 ## 0.1.2
 
 ### Patch Changes
