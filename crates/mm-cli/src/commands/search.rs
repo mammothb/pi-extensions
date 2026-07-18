@@ -48,10 +48,11 @@ struct SearchEntry {
 
 impl SearchEntry {
     fn summary(&self) -> String {
-        let text = if self.full_text.len() > 200 {
-            format!("{}...", &self.full_text[..200])
+        let truncated: String = self.full_text.chars().take(200).collect();
+        let text = if truncated.len() < self.full_text.len() {
+            format!("{truncated}...")
         } else {
-            self.full_text.clone()
+            truncated
         };
         text.replace('\n', " ")
     }
