@@ -9,17 +9,17 @@ allowBuilds:
   tree-sitter-typescript: true
   tree-sitter-yaml: true
 overrides:
-  "@earendil-works/pi-agent-core": "0.79.4"
-  "@earendil-works/pi-ai": "0.79.4"
-  "@earendil-works/pi-coding-agent": "0.79.4"
-  "@earendil-works/pi-tui": "0.79.4"
+  "@earendil-works/pi-agent-core": "0.80.10"
+  "@earendil-works/pi-ai": "0.80.10"
+  "@earendil-works/pi-coding-agent": "0.80.10"
+  "@earendil-works/pi-tui": "0.80.10"
 
 catalog:
   "@biomejs/biome": 2.4.14
   "@changesets/cli": 2.31.0
-  "@earendil-works/pi-ai": 0.79.4
-  "@earendil-works/pi-coding-agent": 0.79.4
-  "@earendil-works/pi-tui": 0.79.4
+  "@earendil-works/pi-ai": 0.80.10
+  "@earendil-works/pi-coding-agent": 0.80.10
+  "@earendil-works/pi-tui": 0.80.10
   "@types/node": 25.9.1
   "@types/turndown": 5.0.6
   "@vitest/coverage-v8": 4.1.7
