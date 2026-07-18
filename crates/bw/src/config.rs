@@ -1,12 +1,11 @@
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use crate::defaults::default_config;
 use crate::types::{
-    BwBinds, BwOptions, BwRawConfig, BwResolvedConfig, DockerConfig, ResolvedBinds,
-    ResolvedOptions, ResolvedWsl2Binds,
+    BindKind, BwBinds, BwOptions, BwRawConfig, BwResolvedConfig, DockerConfig, ResolvedBinds,
+    ResolvedOptions, ResolvedWsl2Binds, ValidationError,
 };
 
 /// Load, merge, expand, and validate config: default → global → workspace.
@@ -127,29 +126,6 @@ fn merge_options_into(target: &mut BwOptions, source: &BwOptions) {
 // ============================
 // Path resolution & validation
 // ============================
-
-/// A path that should exist but doesn't.
-#[derive(Debug)]
-pub struct ValidationError {
-    pub path: PathBuf,
-    pub kind: BindKind,
-    pub index: usize,
-}
-
-#[derive(Debug)]
-pub enum BindKind {
-    Ro,
-    Rw,
-}
-
-impl fmt::Display for BindKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BindKind::Ro => f.write_str("ro"),
-            BindKind::Rw => f.write_str("rw"),
-        }
-    }
-}
 
 /// Convert merged raw config into resolved form (string paths → PathBuf).
 fn raw_to_resolved(raw: BwRawConfig) -> BwResolvedConfig {

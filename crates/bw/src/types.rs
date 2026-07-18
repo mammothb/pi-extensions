@@ -132,6 +132,29 @@ pub struct ResolvedOptions {
     pub unshare_net: bool,
 }
 
+/// A bind path that should exist but doesn't.
+#[derive(Debug)]
+pub struct ValidationError {
+    pub path: PathBuf,
+    pub kind: BindKind,
+    pub index: usize,
+}
+
+#[derive(Debug)]
+pub enum BindKind {
+    Ro,
+    Rw,
+}
+
+impl std::fmt::Display for BindKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            BindKind::Ro => f.write_str("ro"),
+            BindKind::Rw => f.write_str("rw"),
+        }
+    }
+}
+
 // =====
 // Tests
 // =====
