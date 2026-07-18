@@ -5,6 +5,7 @@ jobs:
   publish:
     name: Publish cargo crates
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       id-token: write
     steps:
