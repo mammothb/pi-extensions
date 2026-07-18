@@ -15,6 +15,8 @@ pub struct Cli {
 pub enum Commands {
     /// Compile JSONL conversations logs into text files
     Compile(CompileArgs),
+    /// Search JSONL conversation logs with BM25-ranked queries
+    Search(SearchArgs),
     /// Run as a Pi extension backend (reads JSON on stdin, writes summary on
     /// stdout)
     Pi(PiArgs),
@@ -55,6 +57,29 @@ pub struct CompileArgs {
     /// Output JSON instead of human-readable text
     #[arg(long)]
     pub json: bool,
+    /// Output structured summary (goals, files, commits, preferences + brief
+    /// transcript) instead of full line-numbered transcript.
+    #[arg(long, conflicts_with = "json")]
+    pub brief: bool,
+}
+
+#[derive(Args)]
+pub struct SearchArgs {
+    /// JSONL files to search. Supports blob patterns like **/*.jsonl
+    #[arg(required = true, value_name = "INPUT")]
+    pub paths: Vec<String>,
+    /// Search query (BM25-ranked for natural language, regex if metacharacters present)
+    #[arg(short, long, value_name = "QUERY")]
+    pub query: String,
+    /// Page number (5 results per page)
+    #[arg(long, value_name = "N", default_value_t = 1)]
+    pub page: u32,
+    /// Output JSON instead of human-readable text
+    #[arg(long)]
+    pub json: bool,
+    /// Parse input as Pi-format JSONL [default: Claude format]
+    #[arg(long)]
+    pub pi: bool,
 }
 
 #[derive(Args)]

@@ -26,7 +26,11 @@ fn main() -> ExitCode {
             args.json,
             args.no_stats,
             args.engine.keep,
+            args.brief,
         ),
+        Commands::Search(args) => {
+            commands::search::execute(args.paths, args.query, args.page, args.json, args.pi)
+        }
         Commands::Pi(_args) => commands::pi::execute(),
     };
     match result {

@@ -1,0 +1,9 @@
+{
+  "name": "mm-skill",
+  "version": "0.1.0",
+  "description": "Algorithmic conversation compiler and BM25-ranked search for Claude Code — pre-compiles structured views before compaction, cross-session recall, lossless transcript rendering.",
+  "author": {
+    "name": "mmb L"
+  },
+  "license": "MIT"
+}

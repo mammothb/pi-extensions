@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 pub mod compile;
 pub mod pi;
+pub mod search;
 
 #[derive(Copy, Clone)]
 pub enum ExitStatus {
