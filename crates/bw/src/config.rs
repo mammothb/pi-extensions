@@ -528,7 +528,8 @@ mod tests {
         assert!(!opts.clearenv);
         // Still default
         assert!(opts.env.is_empty());
-        assert!(opts.path.is_empty());
+        // Default path includes ~/.cargo/bin
+        assert!(!opts.path.is_empty());
         assert!(!opts.unshare_net);
     }
 

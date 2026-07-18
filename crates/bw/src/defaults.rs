@@ -37,7 +37,7 @@ pub const DEFAULT_CONFIG_JSON: &str = r#"{
   "options": {
     "clearenv": true,
     "env": {},
-    "path": [],
+    "path": ["~/.cargo/bin"],
     "unshare_net": false
   }
 }"#;
