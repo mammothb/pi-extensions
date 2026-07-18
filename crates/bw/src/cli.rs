@@ -57,47 +57,28 @@ impl Cli {
 }
 
 fn print_args(args: &[String]) {
-    let mut i = 0;
-    while i < args.len() {
-        let arg = &args[i];
-
-        if i == 0 {
-            // "bwrap"
-            println!("{arg}");
-        } else if i == args.len() - 1 {
-            // Last arg — no continuation
-            println!("  {arg}");
-        } else if arg == "--" {
-            println!("  --");
-        } else if arg.starts_with("--") {
-            // Flag + all following values on one line
-            let mut line = format!("  {arg}");
-            while i + 1 < args.len() && !args[i + 1].starts_with("--") {
-                i += 1;
-                line.push_str(&format!(" {}", args[i]));
-            }
-            if i < args.len() - 1 {
-                line.push_str(" \\");
-            }
-            println!("{line}");
-        } else {
-            println!("  {arg} \\");
-        }
-        i += 1;
+    let mut parts: Vec<&str> = vec!["bwrap"];
+    for arg in args {
+        parts.push(arg.as_str());
     }
+    let cmdline = match shlex::try_join(parts.iter().copied()) {
+        Ok(s) => s,
+        Err(_) => parts.join(" "),
+    };
+    println!("{cmdline}");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn exec_bwrap(args: &[String]) -> ! {
     use std::os::unix::process::CommandExt;
 
-    let err = std::process::Command::new("bwrap").args(&args[1..]).exec();
+    let err = std::process::Command::new("bwrap").args(args).exec();
     // exec only returns on error
     eprintln!("bw: failed to exec bwrap: {err}");
     std::process::exit(1);
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn exec_bwrap(_args: &[String]) -> ! {
     eprintln!("bw: bwrap requires Linux");
     std::process::exit(1);
