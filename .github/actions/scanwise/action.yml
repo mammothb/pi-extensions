@@ -84,15 +84,7 @@ runs:
         ref: ${{ steps.setup.outputs.branch_ref }}
 
     - name: Prepare runner
-      env:
-        GH_TOKEN: ${{ github.token }}
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        mkdir -p reports/overall reports/new
-        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
-          PR_COMMITS_DATA=$(gh pr view ${{ steps.setup.outputs.pr_number }} --json commits --jq '.commits[] | "\(.committedDate) \(.authors[].email)"')
-          echo "$PR_COMMITS_DATA" > pr-commits-data.txt
-        fi
+      run: mkdir -p reports/overall reports/new
       shell: bash
 
     # ── Docker image cache ─────────────────────────────────────────────────
@@ -218,11 +210,7 @@ runs:
         SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
-        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
-          $ACTION_PATH/scripts/fetch-reports.sh create_pr_issues_report_json "reports/new/issues-report.json" "pr-commits-data.txt"
-        else
-          $ACTION_PATH/scripts/fetch-reports.sh create_n_days_issues_report_json "reports/new/issues-report.json" "${{ inputs.new-code-n-days }}"
-        fi
+        $ACTION_PATH/scripts/fetch-reports.sh create_n_days_issues_report_json "reports/new/issues-report.json" "${{ inputs.new-code-n-days }}"
         $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_issues_report_md \
           "reports/new/issues-report.json" "reports/new/issues-report.md"
       shell: bash
@@ -234,17 +222,10 @@ runs:
         SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
-        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
-          $ACTION_PATH/scripts/fetch-reports.sh create_pr_hotspots_report_json \
-            "reports/overall/hotspots-report.json" \
-            "reports/new/hotspots-report.json" \
-            "pr-commits-data.txt"
-        else
-          $ACTION_PATH/scripts/fetch-reports.sh create_n_days_hotspots_report_json \
-            "reports/overall/hotspots-report.json" \
-            "reports/new/hotspots-report.json" \
-            "${{ inputs.new-code-n-days }}"
-        fi
+        $ACTION_PATH/scripts/fetch-reports.sh create_n_days_hotspots_report_json \
+          "reports/overall/hotspots-report.json" \
+          "reports/new/hotspots-report.json" \
+          "${{ inputs.new-code-n-days }}"
         $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_hotspots_report_md \
           "reports/new/hotspots-report.json" "reports/new/hotspots-report.md"
       shell: bash
