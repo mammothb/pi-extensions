@@ -63,7 +63,7 @@ export function spawnPiChild(args: string[], cwd: string): ChildProcess {
 // JSONL parsing
 // =============================================================================
 
-interface CumulativeResult {
+export interface CumulativeResult {
   messages: Message[];
   usage: SubagentResult["tokens"] & { turns: number };
   model?: string;
@@ -188,6 +188,196 @@ export function parseJsonlStream(
       reject(err);
     });
   });
+}
+
+// =============================================================================
+// Launch integration
+// =============================================================================
+
+/**
+ * Launch a child pi subagent, parse its JSONL output, and return the result.
+ *
+ * Builds CLI args from agent config, resolves pi invocation, then delegates
+ * to launchChild for process management.
+ */
+export async function launchSubagent(
+  agent: AgentConfig,
+  task: string,
+  cwd: string,
+  signal: AbortSignal | undefined,
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  stuckTimeoutMs: number,
+): Promise<SubagentResult> {
+  const args = buildCliArgs(agent, task);
+  const invocation = getPiInvocation(args);
+  return launchChild(
+    invocation.command,
+    invocation.args,
+    agent,
+    task,
+    cwd,
+    signal,
+    onUpdate,
+    stuckTimeoutMs,
+  );
+}
+
+/**
+ * Launch a child process with given command + args, parse JSONL stdout,
+ * apply stuck detection and abort handling. Exported for testing with
+ * arbitrary commands (e.g. node scripts that simulate pi JSONL output).
+ */
+export async function launchChild(
+  command: string,
+  args: string[],
+  agent: AgentConfig,
+  task: string,
+  cwd: string,
+  signal: AbortSignal | undefined,
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  stuckTimeoutMs: number,
+): Promise<SubagentResult> {
+  const startedAt = Date.now();
+  const proc = spawnChild(command, args, cwd);
+
+  let stderr = "";
+  proc.stderr?.on("data", (data: Buffer) => {
+    stderr += data.toString();
+  });
+
+  // Stuck detection heartbeat
+  let lastActivity = Date.now();
+  let lastActivityDesc = "starting";
+  let stuckTimer: ReturnType<typeof setInterval> | undefined;
+
+  if (stuckTimeoutMs > 0) {
+    stuckTimer = setInterval(() => {
+      const idleMs = Date.now() - lastActivity;
+      if (idleMs > stuckTimeoutMs) {
+        onUpdate?.({
+          agent: agent.name,
+          task,
+          output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
+          exitCode: -1,
+          elapsed: Date.now() - startedAt,
+          tokens: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        });
+      }
+    }, 5000);
+  }
+
+  // Wrap onUpdate to track activity for stuck detection
+  const wrappedOnUpdate = onUpdate
+    ? (cumulative: CumulativeResult) => {
+        lastActivity = Date.now();
+        const lastMsg = cumulative.messages[cumulative.messages.length - 1];
+        if (lastMsg) {
+          if (lastMsg.role === "toolResult") {
+            lastActivityDesc = `tool:${lastMsg.toolName}`;
+          } else if (lastMsg.role === "assistant") {
+            lastActivityDesc = "assistant message";
+          }
+        }
+
+        onUpdate({
+          agent: agent.name,
+          task,
+          output: cumulative.finalOutput || "(running...)",
+          exitCode: -1,
+          elapsed: Date.now() - startedAt,
+          tokens: cumulative.usage,
+          model: cumulative.model,
+        });
+      }
+    : undefined;
+
+  // Abort signal handling
+  let wasAborted = false;
+  if (signal) {
+    const killProc = () => {
+      wasAborted = true;
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill("SIGKILL");
+        }
+      }, 5000);
+    };
+    if (signal.aborted) {
+      killProc();
+    } else {
+      signal.addEventListener("abort", killProc, { once: true });
+    }
+  }
+
+  // Capture exit code — set up before parsing to avoid race
+  const exitCodePromise = new Promise<number>((resolve) => {
+    proc.on("close", (code) => resolve(code ?? 0));
+    proc.on("error", () => resolve(1));
+  });
+
+  // Parse JSONL stdout (resolves when stdout stream ends)
+  let cumulative: CumulativeResult;
+  if (!proc.stdout) {
+    cumulative = emptyCumulativeResult();
+    cumulative.errorMessage = "child process has no stdout";
+  } else {
+    try {
+      cumulative = await parseJsonlStream(proc.stdout, wrappedOnUpdate);
+    } catch (err) {
+      cumulative = emptyCumulativeResult();
+      cumulative.errorMessage =
+        err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // Wait for process exit
+  const exitCode = await exitCodePromise;
+
+  // Cleanup
+  if (stuckTimer) {
+    clearInterval(stuckTimer);
+  }
+
+  const elapsed = Date.now() - startedAt;
+
+  if (wasAborted) {
+    return {
+      agent: agent.name,
+      task,
+      output: cumulative.finalOutput,
+      exitCode,
+      elapsed,
+      tokens: cumulative.usage,
+      model: cumulative.model,
+      error: "Subagent was aborted",
+    };
+  }
+
+  const error =
+    exitCode !== 0
+      ? cumulative.errorMessage ||
+        cumulative.stopReason ||
+        stderr.trim() ||
+        `exit code ${exitCode}`
+      : undefined;
+
+  return {
+    agent: agent.name,
+    task,
+    output: cumulative.finalOutput,
+    exitCode,
+    elapsed,
+    tokens: cumulative.usage,
+    model: cumulative.model,
+    error,
+  };
 }
 
 // =============================================================================

@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildCliArgs,
   getPiInvocation,
+  launchChild,
   parseJsonlStream,
   spawnChild,
 } from "../src/lib/launch.js";
-import type { AgentConfig } from "../src/lib/types.js";
+import type { AgentConfig, SubagentResult } from "../src/lib/types.js";
 
 const nodeBin = process.execPath;
 
@@ -391,5 +392,220 @@ describe("parseJsonlStream", () => {
     // No text content → finalOutput stays at previous value (empty)
     expect(result.finalOutput).toBe("");
     expect(result.messages).toHaveLength(1);
+  });
+});
+
+// =============================================================================
+// launchChild
+// =============================================================================
+
+/**
+ * Build a node -e script that writes JSONL events to stdout and exits.
+ */
+function jsonlScript(...events: object[]): string {
+  const lines = events.map((e) => JSON.stringify(e));
+  return `process.stdout.write(${JSON.stringify(`${lines.join("\n")}\n`)});`;
+}
+
+/**
+ * Build a node script that writes JSONL events to stdout, then exits with a
+ * specific code.
+ */
+function jsonlScriptWithExit(exitCode: number, ...events: object[]): string {
+  return `${jsonlScript(...events)}process.exit(${exitCode});`;
+}
+
+describe("launchChild", () => {
+  const agent: AgentConfig = {
+    name: "test-agent",
+    description: "",
+    model: "test/model",
+    thinking: "",
+    tools: [],
+    mode: "clean",
+    sandbox: false,
+    noSession: true,
+    body: "",
+  };
+
+  it("runs a child that outputs JSONL and returns the result", async () => {
+    const script = jsonlScript(makeAssistantMessage("hello from child"));
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "do something",
+      process.cwd(),
+      undefined,
+      undefined,
+      0,
+    );
+
+    expect(result.agent).toBe("test-agent");
+    expect(result.task).toBe("do something");
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("hello from child");
+    expect(result.tokens.turns).toBe(1);
+    expect(result.tokens.input).toBe(100);
+    expect(result.elapsed).toBeGreaterThan(0);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns error for non-zero exit code", async () => {
+    const script = jsonlScriptWithExit(
+      1,
+      makeAssistantMessage("partial output"),
+    );
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "do something",
+      process.cwd(),
+      undefined,
+      undefined,
+      0,
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toBeDefined();
+    expect(result.output).toBe("partial output");
+  });
+
+  it("calls onUpdate for each event", async () => {
+    const updates: SubagentResult[] = [];
+    const script = jsonlScript(
+      makeAssistantMessage("first"),
+      makeToolResult("t1", "read", "file contents"),
+      makeAssistantMessage("done"),
+    );
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "do something",
+      process.cwd(),
+      undefined,
+      (r) => updates.push({ ...r }),
+      0,
+    );
+
+    // onUpdate should fire for each assistant message and tool result
+    expect(updates.length).toBeGreaterThanOrEqual(3);
+    // Final result should match last update
+    expect(result.output).toBe("done");
+    expect(result.tokens.turns).toBe(2);
+  });
+
+  it("captures stderr", async () => {
+    const script =
+      jsonlScript(makeAssistantMessage("ok")) +
+      "process.stderr.write('error output\\n');";
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      { ...agent, name: "stderr-agent" },
+      "task",
+      process.cwd(),
+      undefined,
+      undefined,
+      0,
+    );
+
+    expect(result.exitCode).toBe(0);
+    // stderr doesn't appear in result unless there's an error
+  });
+
+  it("handles process that produces no output", async () => {
+    const script = "process.exit(0);";
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "do nothing",
+      process.cwd(),
+      undefined,
+      undefined,
+      0,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("");
+  });
+
+  it("emits stuck warning when no progress for timeout period", {
+    timeout: 15_000,
+  }, async () => {
+    // Script that sleeps longer than the stuck timer interval (5s)
+    const script = `setTimeout(() => { ${jsonlScript(makeAssistantMessage("finally"))} }, 7000);`;
+    const updates: SubagentResult[] = [];
+
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "slow task",
+      process.cwd(),
+      undefined,
+      (r) => updates.push({ ...r }),
+      1000, // 1 second stuck timeout (script sleeps 7s, timer checks every 5s)
+    );
+
+    // Should have gotten at least one stuck warning
+    const stuckWarnings = updates.filter((u) =>
+      u.output.includes("No progress"),
+    );
+    expect(stuckWarnings.length).toBeGreaterThan(0);
+    // Final result should still succeed
+    expect(result.output).toBe("finally");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("aborts child process when signal is triggered", {
+    timeout: 10_000,
+  }, async () => {
+    const controller = new AbortController();
+    // Script that runs forever
+    const script = "setInterval(() => {}, 1000);";
+
+    const resultPromise = launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "infinite task",
+      process.cwd(),
+      controller.signal,
+      undefined,
+      0,
+    );
+
+    // Abort after a short delay
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    controller.abort();
+
+    const result = await resultPromise;
+    expect(result.error).toBe("Subagent was aborted");
+  });
+
+  it("respects stuckTimeoutMs of 0 (disables stuck detection)", async () => {
+    const script = `setTimeout(() => { ${jsonlScript(makeAssistantMessage("done"))} }, 500);`;
+    const updates: SubagentResult[] = [];
+
+    const result = await launchChild(
+      nodeBin,
+      ["-e", script],
+      agent,
+      "task",
+      process.cwd(),
+      undefined,
+      (r) => updates.push({ ...r }),
+      0,
+    );
+
+    const stuckWarnings = updates.filter((u) =>
+      u.output.includes("No progress"),
+    );
+    expect(stuckWarnings).toHaveLength(0);
+    expect(result.output).toBe("done");
   });
 });
