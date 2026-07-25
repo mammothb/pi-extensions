@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildCliArgs } from "../src/lib/launch.js";
+import {
+  buildCliArgs,
+  getPiInvocation,
+  spawnChild,
+} from "../src/lib/launch.js";
 import type { AgentConfig } from "../src/lib/types.js";
+
+const nodeBin = process.execPath;
 
 const baseAgent: AgentConfig = {
   name: "test-agent",
@@ -70,5 +76,129 @@ describe("buildCliArgs", () => {
     expect(args[0]).toBe("-p");
     expect(args[1]).toBe("--mode");
     expect(args[2]).toBe("json");
+  });
+});
+
+// =============================================================================
+// getPiInvocation
+// =============================================================================
+
+describe("getPiInvocation", () => {
+  it("returns an object with command and args", () => {
+    const result = getPiInvocation(["-p", "--help"]);
+    expect(result).toHaveProperty("command");
+    expect(result).toHaveProperty("args");
+    expect(typeof result.command).toBe("string");
+    expect(Array.isArray(result.args)).toBe(true);
+    expect(result.command.length).toBeGreaterThan(0);
+  });
+
+  it("includes the provided args in the result", () => {
+    const result = getPiInvocation(["-p", "--mode", "json"]);
+    // The args should contain the provided args somewhere in the array
+    const allArgs = result.args.join(" ");
+    expect(allArgs).toContain("-p");
+    expect(allArgs).toContain("--mode");
+    expect(allArgs).toContain("json");
+  });
+
+  it("returns a runnable command (starts with a path or 'pi')", () => {
+    const result = getPiInvocation(["--version"]);
+    // The command should either be 'pi' or an absolute/relative path
+    expect(
+      result.command === "pi" ||
+        result.command.startsWith("/") ||
+        result.command.includes("node") ||
+        result.command.includes("bun"),
+    ).toBe(true);
+  });
+});
+
+// =============================================================================
+// spawnChild (low-level)
+// =============================================================================
+
+describe("spawnChild", () => {
+  it("spawns a process that exits successfully", async () => {
+    const proc = spawnChild(
+      nodeBin,
+      ["-e", "console.log('hello')"],
+      process.cwd(),
+    );
+
+    const exitCode = await new Promise<number>((resolve) => {
+      proc.on("close", resolve);
+      proc.on("error", () => resolve(1));
+    });
+
+    expect(exitCode).toBe(0);
+  });
+
+  it("captures stdout from the child process", async () => {
+    const proc = spawnChild(
+      nodeBin,
+      ["-e", "console.log('hello stdout')"],
+      process.cwd(),
+    );
+
+    const stdout = await new Promise<string>((resolve) => {
+      let output = "";
+      proc.stdout?.on("data", (data: Buffer) => {
+        output += data.toString();
+      });
+      proc.on("close", () => resolve(output));
+      proc.on("error", () => resolve(""));
+    });
+
+    expect(stdout).toContain("hello stdout");
+  });
+
+  it("captures stderr from the child process", async () => {
+    const proc = spawnChild(
+      nodeBin,
+      ["-e", "console.error('hello stderr')"],
+      process.cwd(),
+    );
+
+    const stderr = await new Promise<string>((resolve) => {
+      let output = "";
+      proc.stderr?.on("data", (data: Buffer) => {
+        output += data.toString();
+      });
+      proc.on("close", () => resolve(output));
+      proc.on("error", () => resolve(""));
+    });
+
+    expect(stderr).toContain("hello stderr");
+  });
+
+  it("returns non-zero exit code for failing process", async () => {
+    const proc = spawnChild(nodeBin, ["-e", "process.exit(42)"], process.cwd());
+
+    const exitCode = await new Promise<number>((resolve) => {
+      proc.on("close", resolve);
+      proc.on("error", () => resolve(-1));
+    });
+
+    expect(exitCode).toBe(42);
+  });
+
+  it("respects cwd parameter", async () => {
+    const proc = spawnChild(
+      nodeBin,
+      ["-e", "console.log(process.cwd())"],
+      "/tmp",
+    );
+
+    const stdout = await new Promise<string>((resolve) => {
+      let output = "";
+      proc.stdout?.on("data", (data: Buffer) => {
+        output += data.toString();
+      });
+      proc.on("close", () => resolve(output.trim()));
+      proc.on("error", () => resolve(""));
+    });
+
+    expect(stdout).toBe("/tmp");
   });
 });
