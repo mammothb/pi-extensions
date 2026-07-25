@@ -9,13 +9,13 @@ export function stripAnsi(text: string): string {
     text
       // Standard ANSI escape sequences (CSI)
       // biome-ignore lint/suspicious/noControlCharactersInRegex: looking for ansi escape sequences
-      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "") // NOSONAR
       // OSC sequences (e.g., terminal title, hyperlinks)
       // biome-ignore lint/suspicious/noControlCharactersInRegex: looking for ansi escape sequences
-      .replace(/\x1b\][0-9;]*(?:\x07|\x1b\\)/g, "")
+      .replace(/\x1b\][0-9;]*(?:\x07|\x1b\\)/g, "") // NOSONAR
       // Other escape sequences
       // biome-ignore lint/suspicious/noControlCharactersInRegex: looking for ansi escape sequences
-      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "") // NOSONAR
   );
 }
 
