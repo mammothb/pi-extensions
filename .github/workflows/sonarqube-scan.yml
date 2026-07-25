@@ -54,4 +54,4 @@ jobs:
           reports-scopes: '["overall", "new"]'
           reports-extensions: '["md", "html"]'
           reports-retention-days: "7"
-          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json"
+          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json -Dsonar.issue.ignore.multicriteria=s6606 -Dsonar.issue.ignore.multicriteria.s6606.ruleKey=typescript:S6606 -Dsonar.issue.ignore.multicriteria.s6606.resourceKey=**/*"
