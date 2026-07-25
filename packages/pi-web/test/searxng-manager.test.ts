@@ -202,6 +202,13 @@ describe("cleanStaleLocks", () => {
 // ---------------------------------------------------------------------------
 
 describe("runScript", () => {
+  /** Shared setup for shutdownPidDir tests — creates instances dir. */
+  function setupInstancesDir(): string {
+    const dir = join(tmpDir, "instances");
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
   it("resolves on successful exit (code 0)", async () => {
     givenSpawn({ exitCode: 0 });
 
@@ -351,106 +358,106 @@ describe("runScript", () => {
       consoleLogSpy.mockRestore();
     });
 
-    describe("with shutdownPidDir", () => {
-      let instancesDir: string;
+    // ── shutdownPidDir variants ──
 
-      beforeEach(() => {
-        instancesDir = join(tmpDir, "instances");
-        mkdirSync(instancesDir, { recursive: true });
+    it("spawns a bash wrapper with PID tracking when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
+
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("spawns a bash wrapper with PID tracking", () => {
-        givenSpawn({ exitCode: 0 });
+      expect(spawnMock).toHaveBeenCalledWith(
+        "bash",
+        ["-c", expect.stringContaining("shutdown-$$.pid")],
+        { stdio: "ignore", detached: true },
+      );
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("calls unref on the child when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        expect(spawnMock).toHaveBeenCalledWith(
-          "bash",
-          ["-c", expect.stringContaining("shutdown-$$.pid")],
-          { stdio: "ignore", detached: true },
-        );
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("calls unref on the child", () => {
-        givenSpawn({ exitCode: 0 });
+      const child = spawnMock.mock.results[0]!.value as SpawnChild;
+      expect(child.unref).toHaveBeenCalled();
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("returns void when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        const child = spawnMock.mock.results[0]!.value as SpawnChild;
-        expect(child.unref).toHaveBeenCalled();
+      const result = runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("returns void", () => {
-        givenSpawn({ exitCode: 0 });
+      expect(result).toBeUndefined();
+    });
 
-        const result = runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("logs spawn errors via console.error when shutdownPidDir is set", async () => {
+      const instancesDir = setupInstancesDir();
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      givenSpawn({ error: new Error("ENOENT: bash not found") });
 
-        expect(result).toBeUndefined();
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("logs spawn errors via console.error", async () => {
-        const consoleSpy = vi
-          .spyOn(console, "error")
-          .mockImplementation(() => {});
-        givenSpawn({ error: new Error("ENOENT: bash not found") });
+      await waitImmediate();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "pi-web: failed to run searxng down: ENOENT: bash not found",
+      );
+      consoleSpy.mockRestore();
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("includes the instances dir in the bash wrapper when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        await waitImmediate();
-        expect(consoleSpy).toHaveBeenCalledWith(
-          "pi-web: failed to run searxng down: ENOENT: bash not found",
-        );
-        consoleSpy.mockRestore();
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("includes the instances dir in the bash wrapper", () => {
-        givenSpawn({ exitCode: 0 });
+      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
+      expect(wrapperScript).toContain(instancesDir);
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("includes the custom script path (tilde-expanded) in the wrapper when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
+      const customPath = "~/my-searxng-script";
 
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain(instancesDir);
+      runScript("down", customPath, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("includes the custom script path (tilde-expanded) in the wrapper", () => {
-        givenSpawn({ exitCode: 0 });
-        const customPath = "~/my-searxng-script";
+      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
+      expect(wrapperScript).toContain(join(homedir(), "my-searxng-script"));
+    });
 
-        runScript("down", customPath, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("uses the default built-in script when no scriptPath is provided with shutdownPidDir set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain(join(homedir(), "my-searxng-script"));
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("uses the default built-in script when no scriptPath is provided", () => {
-        givenSpawn({ exitCode: 0 });
-
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
-
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain("bin/searxng");
-      });
+      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
+      expect(wrapperScript).toContain("bin/searxng");
     });
   });
 });
