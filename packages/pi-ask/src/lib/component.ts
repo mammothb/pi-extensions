@@ -39,14 +39,14 @@ function activePair(
 }
 
 export class AskComponent implements Component {
-  #questions: Question[];
-  #theme: Theme;
-  #tui: TUI;
-  #kb: KeybindingsManager;
-  #editor: EditorAdapter;
-  #done: (result: AskResult | null) => void;
+  readonly #questions: Question[];
+  readonly #theme: Theme;
+  readonly #tui: TUI;
+  readonly #kb: KeybindingsManager;
+  readonly #editor: EditorAdapter;
+  readonly #done: (result: AskResult | null) => void;
 
-  #states: QuestionState[];
+  readonly #states: QuestionState[];
   #activeTab = 0;
   #resolved = false;
 

@@ -62,7 +62,7 @@ export function aggregate(records: UsageRecord[]): UsageStats {
 }
 
 export class StatsTracker {
-  private logFile: string;
+  private readonly logFile: string;
 
   constructor(logFile?: string) {
     this.logFile = logFile ?? LOG_FILE;
