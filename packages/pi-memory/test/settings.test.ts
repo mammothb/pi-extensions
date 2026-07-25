@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ let tmpDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-memory-settings-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-memory-settings-${Date.now()}-${randomUUID().slice(0, 8)}`,
   );
   mkdirSync(tmpDir, { recursive: true });
   process.env.PI_MEMORY_CONFIG_PATH = join(tmpDir, "pi-memory.json");

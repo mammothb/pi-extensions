@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +12,7 @@ let projectDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-shared-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-shared-config-test-${Date.now()}-${randomUUID().slice(0, 8)}`,
   );
   agentDir = join(tmpDir, "agent");
   projectDir = join(tmpDir, "project");

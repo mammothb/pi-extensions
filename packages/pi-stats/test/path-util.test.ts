@@ -84,7 +84,7 @@ describe("getLocalEntryExtensionName", () => {
   });
 
   it("falls back to parent dir name when no package.json", () => {
-    const result = getLocalEntryExtensionName("/tmp/my-extension/index.ts");
+    const result = getLocalEntryExtensionName("/opt/my-extension/index.ts");
     expect(result).toBe("my-extension");
   });
 });
