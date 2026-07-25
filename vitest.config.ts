@@ -62,6 +62,13 @@ export default defineConfig({
       },
       {
         test: {
+          name: "pi-shared",
+          root: "./packages/pi-shared",
+          include: ["test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "pi-stats",
           root: "./packages/pi-stats",
           include: ["test/**/*.test.ts"],
