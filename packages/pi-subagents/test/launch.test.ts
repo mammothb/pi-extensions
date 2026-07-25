@@ -428,7 +428,8 @@ describe("parseJsonlStream", () => {
  */
 function jsonlScript(...events: object[]): string {
   const lines = events.map((e) => JSON.stringify(e));
-  return `process.stdout.write(${JSON.stringify(`${lines.join("\n")}\n`)});`;
+  const output = `${lines.join("\n")}\n`;
+  return `process.stdout.write(${JSON.stringify(output)});`;
 }
 
 /**

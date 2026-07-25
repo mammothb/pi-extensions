@@ -168,13 +168,15 @@ export function renderQuestionBody(
       ? theme.fg("dim", " (Recommended)")
       : "";
 
+    const label = `${i + 1}. ${opt.label}`;
+
     if (q.multi && !isOther) {
       // Checkbox style
       const checked = state.selectedIndices.has(i);
       const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
       const labelColor = isHighlighted ? "accent" : "text";
       add(
-        `${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
+        `${prefix} ${box} ${theme.fg(labelColor, label)}${recommendedSuffix}`,
       );
     } else if (isOther) {
       const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
@@ -184,14 +186,10 @@ export function renderQuestionBody(
         const box = hasFreeText
           ? theme.fg("success", "[x]")
           : theme.fg("dim", "[ ]");
-        add(
-          `${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${suffix}`,
-        );
+        add(`${prefix} ${box} ${theme.fg(labelColor, label)}${suffix}`);
       } else {
         const check = hasFreeText ? theme.fg("success", "✓") : " ";
-        add(
-          `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${suffix}`,
-        );
+        add(`${prefix} ${check} ${theme.fg(labelColor, label)}${suffix}`);
       }
       // Preview of saved text below
       if (hasFreeText) {
@@ -200,7 +198,8 @@ export function renderQuestionBody(
           state.freeTextValue ?? "",
           width - indent.length,
         );
-        add(`${indent}${theme.fg("dim", `"${preview}"`)}`);
+        const quotedPreview = `"${preview}"`;
+        add(`${indent}${theme.fg("dim", quotedPreview)}`);
       }
     } else {
       // Single-select — show ✓ on the confirmed selection
@@ -208,7 +207,7 @@ export function renderQuestionBody(
       const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
       const labelColor = isHighlighted ? "accent" : "text";
       add(
-        `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
+        `${prefix} ${check} ${theme.fg(labelColor, label)}${recommendedSuffix}`,
       );
     }
 

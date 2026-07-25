@@ -21,10 +21,11 @@ function formatIndexPreview(
   sheets: XlsxSheetData[],
   outputDir: string,
 ): string {
+  const sheetList = sheetNames.map((s) => `'${s}'`).join(", ");
   const lines = [
     `# Read XLSX: ${fileName}`,
     "",
-    `${sheetNames.length} sheet${sheetNames.length === 1 ? "" : "s"}: ${sheetNames.map((s) => `'${s}'`).join(", ")}`,
+    `${sheetNames.length} sheet${sheetNames.length === 1 ? "" : "s"}: ${sheetList}`,
     "",
   ];
 

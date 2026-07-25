@@ -295,7 +295,8 @@ export function createGhSearchTool(
 
       let text = `${theme.fg("accent", String(count))} ${theme.fg("muted", scopeLabel)} — ${preview}`;
       if (count > 1) {
-        text += `, ${theme.fg("muted", `+${count - 1} more`)}`;
+        const moreLabel = `+${count - 1} more`;
+        text += `, ${theme.fg("muted", moreLabel)}`;
       }
 
       if (details?.truncation) {
