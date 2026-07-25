@@ -120,6 +120,11 @@ function givenSpawn(behavior: {
   mockSpawnImpl = (_cmd, _args, _opts) => createChild(behavior);
 }
 
+/** Resolves after setImmediate, flushing the microtask queue. */
+function waitImmediate(): Promise<void> {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 // ---------------------------------------------------------------------------
 // expandTilde
 // ---------------------------------------------------------------------------
@@ -308,7 +313,7 @@ describe("runScript", () => {
       expect(result).toBeUndefined();
     });
 
-    it("logs spawn errors via console.error", () => {
+    it("logs spawn errors via console.error", async () => {
       const consoleSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
@@ -316,16 +321,11 @@ describe("runScript", () => {
 
       runScript("down", undefined, { detached: true });
 
-      // Wait for the setImmediate error event
-      return new Promise<void>((resolve) => {
-        setImmediate(() => {
-          expect(consoleSpy).toHaveBeenCalledWith(
-            "pi-web: failed to run searxng down: ENOENT: bash not found",
-          );
-          consoleSpy.mockRestore();
-          resolve();
-        });
-      });
+      await waitImmediate();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "pi-web: failed to run searxng down: ENOENT: bash not found",
+      );
+      consoleSpy.mockRestore();
     });
 
     it("uses custom scriptPath with tilde expansion", () => {
@@ -397,7 +397,7 @@ describe("runScript", () => {
         expect(result).toBeUndefined();
       });
 
-      it("logs spawn errors via console.error", () => {
+      it("logs spawn errors via console.error", async () => {
         const consoleSpy = vi
           .spyOn(console, "error")
           .mockImplementation(() => {});
@@ -408,15 +408,11 @@ describe("runScript", () => {
           shutdownPidDir: instancesDir,
         });
 
-        return new Promise<void>((resolve) => {
-          setImmediate(() => {
-            expect(consoleSpy).toHaveBeenCalledWith(
-              "pi-web: failed to run searxng down: ENOENT: bash not found",
-            );
-            consoleSpy.mockRestore();
-            resolve();
-          });
-        });
+        await waitImmediate();
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "pi-web: failed to run searxng down: ENOENT: bash not found",
+        );
+        consoleSpy.mockRestore();
       });
 
       it("includes the instances dir in the bash wrapper", () => {

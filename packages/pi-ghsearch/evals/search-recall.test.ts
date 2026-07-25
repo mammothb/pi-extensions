@@ -53,16 +53,19 @@ function loadQueries(): SearchQuery[] {
 // Execute a gh search
 // ---------------------------------------------------------------------------
 
-function runGhSearch(q: SearchQuery): SearchResult {
-  const flags = ["search", q.scope, q.query, "--limit", String(q.limit)];
-
-  // Use scope-appropriate --json fields
-  const jsonFields: Record<string, string> = {
+function buildJsonFields(_scope: string): Record<string, string> {
+  return {
     repos: "fullName,description,stargazersCount",
     issues: "number,title,state,repository",
     prs: "number,title,state,repository",
     commits: "sha,commit",
   };
+}
+
+function runGhSearch(q: SearchQuery): SearchResult {
+  const flags = ["search", q.scope, q.query, "--limit", String(q.limit)];
+
+  const jsonFields = buildJsonFields(q.scope);
   if (q.scope !== "code" && jsonFields[q.scope]) {
     flags.push("--json", jsonFields[q.scope]!);
   }
