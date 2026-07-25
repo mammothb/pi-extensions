@@ -5,6 +5,13 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+enum Category {
+    Modified,
+    Created,
+    Read,
+}
+
 /// Section headers in the order they appear in formatted summaries.
 const HEADER_NAMES: &[&str] = &[
     "Session Goal",
@@ -150,71 +157,78 @@ fn parse_section_lines(text: &str) -> Vec<&str> {
 ///
 /// `prev` and `fresh` are full sections including the `[Files & Changes]` header.
 fn merge_file_lines(prev: &str, fresh: &str) -> String {
-    // Strip the [Files & Changes] header from both sections
-    let prev_body = section_body(prev);
-    let fresh_body = section_body(fresh);
-    #[derive(Hash, Eq, PartialEq, Clone, Copy)]
-    enum Category {
-        Modified,
-        Created,
-        Read,
+    let mut merged = parse_file_entries(section_body(prev));
+    for (cat, paths) in parse_file_entries(section_body(fresh)) {
+        merged.entry(cat).or_default().extend(paths);
     }
 
-    let mut merged: HashMap<Category, HashSet<String>> = HashMap::new();
-    merged.insert(Category::Modified, HashSet::new());
-    merged.insert(Category::Created, HashSet::new());
-    merged.insert(Category::Read, HashSet::new());
+    dedup_modified_over_created(&mut merged);
+    format_file_section(&merged)
+}
 
+/// Parse file entries from a section body into category→paths map.
+fn parse_file_entries(text: &str) -> HashMap<Category, HashSet<String>> {
+    let mut map: HashMap<Category, HashSet<String>> = HashMap::new();
     let cat_prefixes = [
         (Category::Modified, "- Modified: "),
         (Category::Created, "- Created: "),
         (Category::Read, "- Read: "),
     ];
 
-    for text in [prev_body, fresh_body] {
-        for line in text.lines() {
-            for (cat, prefix) in &cat_prefixes {
-                if let Some(rest) = line.strip_prefix(prefix) {
-                    // Strip "(+N more)" suffix
-                    let rest = rest.split(" (+").next().unwrap_or(rest);
-                    for path in rest.split(',') {
-                        let trimmed = path.trim();
-                        if !trimmed.is_empty() {
-                            merged.get_mut(cat).unwrap().insert(trimmed.to_string());
-                        }
+    for line in text.lines() {
+        for (cat, prefix) in &cat_prefixes {
+            if let Some(rest) = line.strip_prefix(prefix) {
+                // Strip "(+N more)" suffix
+                let rest = rest.split(" (+").next().unwrap_or(rest);
+                for path in rest.split(',') {
+                    let trimmed = path.trim();
+                    if !trimmed.is_empty() {
+                        map.entry(*cat).or_default().insert(trimmed.to_string());
                     }
                 }
             }
         }
     }
+    map
+}
 
-    // Dedup: if a path is in Modified, drop it from Created
-    let modified: Vec<String> = merged[&Category::Modified].iter().cloned().collect();
+/// If a path appears in Modified, drop it from Created (Modified takes priority).
+fn dedup_modified_over_created(merged: &mut HashMap<Category, HashSet<String>>) {
+    let modified: Vec<String> = merged
+        .get(&Category::Modified)
+        .map(|s| s.iter().cloned().collect())
+        .unwrap_or_default();
     for p in &modified {
-        merged.get_mut(&Category::Created).unwrap().remove(p);
+        if let Some(created) = merged.get_mut(&Category::Created) {
+            created.remove(p);
+        }
     }
+}
 
-    let cap = |set: &HashSet<String>, limit: usize| -> String {
-        let mut arr: Vec<&String> = set.iter().collect();
-        arr.sort();
-        if arr.len() <= limit {
-            arr.iter()
+/// Format a set of paths with a cap and overflow message.
+fn format_capped_paths(set: &HashSet<String>, limit: usize) -> String {
+    let mut arr: Vec<&String> = set.iter().collect();
+    arr.sort();
+    if arr.len() <= limit {
+        arr.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    } else {
+        format!(
+            "{} (+{} more)",
+            arr[..limit]
+                .iter()
                 .map(|s| s.as_str())
                 .collect::<Vec<_>>()
-                .join(", ")
-        } else {
-            format!(
-                "{} (+{} more)",
-                arr[..limit]
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                arr.len() - limit
-            )
-        }
-    };
+                .join(", "),
+            arr.len() - limit
+        )
+    }
+}
 
+/// Build the formatted `[Files & Changes]` section from a merged category map.
+fn format_file_section(merged: &HashMap<Category, HashSet<String>>) -> String {
     let mut lines: Vec<String> = Vec::new();
     let cat_order = [
         (Category::Modified, "Modified"),
@@ -222,16 +236,15 @@ fn merge_file_lines(prev: &str, fresh: &str) -> String {
         (Category::Read, "Read"),
     ];
     for (cat, label) in &cat_order {
-        let set = &merged[cat];
-        if !set.is_empty() {
-            lines.push(format!("- {label}: {}", cap(set, 10)));
+        if let Some(set) = merged.get(cat)
+            && !set.is_empty()
+        {
+            lines.push(format!("- {label}: {}", format_capped_paths(set, 10)));
         }
     }
-
     if lines.is_empty() {
         return String::new();
     }
-
     format!("[Files & Changes]\n{}", lines.join("\n"))
 }
 
