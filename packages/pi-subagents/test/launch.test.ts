@@ -657,15 +657,16 @@ describe("createSubagentTool", () => {
     expect(tool.description.length).toBeGreaterThan(0);
   });
 
-  it("has agent, task, and optional cwd parameters", () => {
+  it("has agent, task, tasks, and optional cwd parameters", () => {
     const tool = createSubagentTool();
     const props = (tool.parameters as any).properties;
     expect(props).toHaveProperty("agent");
     expect(props).toHaveProperty("task");
+    expect(props).toHaveProperty("tasks");
     expect(props).toHaveProperty("cwd");
   });
 
-  it("returns error for unknown agent", async () => {
+  it("returns error for unknown agent (single mode)", async () => {
     const tool = createSubagentTool();
     const result = await tool.execute(
       "tc-1",
@@ -681,5 +682,72 @@ describe("createSubagentTool", () => {
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
     ).toContain("nonexistent-agent");
+  });
+
+  it("returns error when both agent and tasks are provided", async () => {
+    const tool = createSubagentTool();
+    const result = await tool.execute(
+      "tc-1",
+      { agent: "foo", task: "bar", tasks: [] },
+      undefined,
+      undefined,
+      { cwd: tmpDir },
+    );
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("not both");
+  });
+
+  it("returns error when neither agent nor tasks are provided", async () => {
+    const tool = createSubagentTool();
+    const result = await tool.execute("tc-1", {}, undefined, undefined, {
+      cwd: tmpDir,
+    });
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("Provide either");
+  });
+
+  it("returns error for unknown agent in parallel tasks", async () => {
+    const tool = createSubagentTool();
+    const result = await tool.execute(
+      "tc-1",
+      {
+        tasks: [
+          { agent: "unknown-1", task: "do A" },
+          { agent: "unknown-2", task: "do B" },
+        ],
+      },
+      undefined,
+      undefined,
+      { cwd: tmpDir },
+    );
+
+    const details = result.details;
+    expect(details.agent).toBe("parallel");
+    expect(details.results).toBeDefined();
+    if (!details.results) {
+      throw new Error("expected results to be defined");
+    }
+    expect(details.results).toHaveLength(2);
+    expect(details.results[0]?.error ?? "").toContain("Unknown agent");
+    expect(details.results[1]?.error ?? "").toContain("Unknown agent");
+    expect((result.content[0] as { type: "text"; text: string }).text).toBe(
+      "Parallel: 0/2 succeeded.",
+    );
+  });
+
+  it("returns error for empty tasks array", async () => {
+    const tool = createSubagentTool();
+    const result = await tool.execute(
+      "tc-1",
+      { tasks: [] },
+      undefined,
+      undefined,
+      { cwd: tmpDir },
+    );
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("must not be empty");
   });
 });
