@@ -107,17 +107,14 @@ export function runScript(
       // removes the file. If the file remains on next startup, the
       // shutdown was unclean.
       const child = spawn(
-        "bash", // NOSONAR — CLI tool, PATH is user-controlled
+        "bash",
         [
           "-c",
-          `
-          PID_FILE="${opts.shutdownPidDir}/shutdown-$$.pid"
-          echo $$ > "$PID_FILE"
-          "${script}" ${command}
-          EXIT=$?
-          rm -f "$PID_FILE"
-          exit $EXIT
-          `,
+          'PID_FILE="$1/shutdown-$$.pid"\necho $$ > "$PID_FILE"\n"$2" "$3"\nEXIT=$?\nrm -f "$PID_FILE"\nexit $EXIT',
+          "sh",
+          opts.shutdownPidDir,
+          script,
+          command,
         ],
         {
           stdio: "ignore",

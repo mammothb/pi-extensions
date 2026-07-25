@@ -4,6 +4,7 @@ import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import {
   buildOwnCut,
   collectLiveMessages,
+  findLastCompaction,
   REASON_MESSAGES,
 } from "./lib/compact/build-own-cut";
 import {
@@ -178,8 +179,9 @@ function buildFailedCutDiagnostics(
   settings: MmCompactSettings,
 ): void {
   const entries = branchEntries as BranchEntry[];
-  const lastComp = [...entries].reverse().find((e) => e.type === "compaction");
-  const lastCompIdx = lastComp ? entries.indexOf(lastComp) : -1;
+  const lastCompResult = findLastCompaction(entries);
+  const lastComp = lastCompResult?.entry;
+  const lastCompIdx = lastCompResult?.idx ?? -1;
 
   const liveMessages = collectLiveMessages(entries);
   const liveRoles = liveMessages.map((m) => m.message.role);

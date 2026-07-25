@@ -32,7 +32,7 @@ function invalidExpandIndices(
 function handleExpandMode(
   expand: number[],
   sessionFile: string,
-  lineageEntryIds: string[] | undefined,
+  lineageEntryIds: Set<string> | undefined,
   scope: string | undefined,
   scopePrefix: string,
 ): RecallPipelineOutput {
@@ -60,7 +60,7 @@ function handleSearchMode(
   page: number,
   scope: string | undefined,
   sessionFile: string,
-  lineageEntryIds: string[] | undefined,
+  lineageEntryIds: Set<string> | undefined,
   continuationPrompt: string | undefined,
 ): RecallPipelineOutput {
   const { rendered, rawMessages } = loadAllMessages(

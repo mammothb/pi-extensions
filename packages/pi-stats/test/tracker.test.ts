@@ -153,20 +153,76 @@ describe("StatsTracker — error resilience", () => {
 // ===========================================================================
 
 describe("appendRecord", () => {
-  it("writes a record to the default LOG_FILE", () => {
-    // Can't easily test default LOG_FILE without clobbering real data.
-    // Just verify it doesn't throw.
+  const isolatedLog = path.join(os.tmpdir(), "pi-stats-append-test.jsonl");
+
+  afterEach(() => {
+    try {
+      fs.unlinkSync(isolatedLog);
+    } catch {
+      // ok
+    }
+  });
+
+  it("writes a record to the isolated log file", () => {
+    appendRecord({ ts: 1, ext: "test-ext", kind: "tool" }, isolatedLog);
+
+    const content = fs.readFileSync(isolatedLog, "utf-8");
+    expect(content).toContain('"ext":"test-ext"');
+    expect(content).toContain('"kind":"tool"');
+  });
+
+  it("survives unwritable path without throwing", () => {
     expect(() =>
-      appendRecord({ ts: Date.now(), ext: "test-ext", kind: "tool" }),
+      appendRecord(
+        { ts: 2, ext: "x", kind: "ext-cmd" },
+        "/nonexistent/dir/stats.jsonl",
+      ),
     ).not.toThrow();
   });
 });
 
 describe("readRecords", () => {
+  const isolatedLog = path.join(os.tmpdir(), "pi-stats-read-test.jsonl");
+
+  afterEach(() => {
+    try {
+      fs.unlinkSync(isolatedLog);
+    } catch {
+      // ok
+    }
+  });
+
   it("returns empty array when file does not exist", () => {
-    const records = readRecords();
-    // Default LOG_FILE may or may not exist, but the function shouldn't throw
-    expect(Array.isArray(records)).toBe(true);
+    const records = readRecords(undefined, isolatedLog);
+    expect(records).toEqual([]);
+  });
+
+  it("reads records filtered by sinceMs", () => {
+    const now = Date.now();
+    fs.writeFileSync(
+      isolatedLog,
+      `${[
+        JSON.stringify({ ts: now - 10000, ext: "old", kind: "tool" }),
+        JSON.stringify({ ts: now - 1000, ext: "new", kind: "tool" }),
+      ].join("\n")}\n`,
+    );
+
+    const recent = readRecords(now - 5000, isolatedLog);
+    expect(recent).toHaveLength(1);
+    expect(recent[0]!.ext).toBe("new");
+  });
+
+  it("skips malformed lines", () => {
+    fs.writeFileSync(
+      isolatedLog,
+      "not-json\n" +
+        JSON.stringify({ ts: 1, ext: "good", kind: "tool" }) +
+        "\n",
+    );
+
+    const records = readRecords(undefined, isolatedLog);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.ext).toBe("good");
   });
 });
 

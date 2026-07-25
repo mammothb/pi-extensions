@@ -115,16 +115,20 @@ async function runGuard(
   result: { action: string; reason?: string },
   details: DialogDetails,
   sessionKey: string,
-  confirm: ConfirmFn,
-  store: ApprovalCache,
-  pi: ExtensionAPI,
-  hasUI: boolean,
+  ctx: RunContext,
 ): Promise<ToolCallEventResult | undefined> {
   if (result.action === "deny") {
     return deny(result.reason ?? "unknown");
   }
   if (result.action === "ask") {
-    return handleAsk(confirm, store, sessionKey, details, pi, hasUI);
+    return handleAsk(
+      ctx.confirm,
+      ctx.store,
+      sessionKey,
+      details,
+      ctx.pi,
+      ctx.hasUI,
+    );
   }
 }
 
@@ -160,10 +164,7 @@ async function runPathBearingChecks(
           : undefined,
       },
       makeSessionKey(toolName, targetPath),
-      ctx.confirm,
-      ctx.store,
-      ctx.pi,
-      ctx.hasUI,
+      ctx,
     );
   }
   if (toolResult.action === "ask") {
@@ -175,13 +176,10 @@ async function runPathBearingChecks(
         summary: "",
         reason: toolResult.matchedRule
           ? `matched rule "${toolResult.matchedRule}"`
-          : undefined,
+          : toolResult.reason,
       },
       makeSessionKey(toolName, targetPath),
-      ctx.confirm,
-      ctx.store,
-      ctx.pi,
-      ctx.hasUI,
+      ctx,
     );
   }
 }
@@ -189,10 +187,7 @@ async function runPathBearingChecks(
 async function runToolOnlyCheck(
   toolName: string,
   config: ResolvedConfig,
-  confirm: ConfirmFn,
-  store: ApprovalCache,
-  pi: ExtensionAPI,
-  hasUI: boolean,
+  ctx: RunContext,
 ): Promise<ToolCallEventResult | undefined> {
   const toolResult = checkTool(toolName, config);
   return runGuard(
@@ -206,20 +201,14 @@ async function runToolOnlyCheck(
         : toolResult.reason,
     },
     makeSessionKey(toolName),
-    confirm,
-    store,
-    pi,
-    hasUI,
+    ctx,
   );
 }
 
 async function runBashCheck(
   command: string,
   config: ResolvedConfig,
-  confirm: ConfirmFn,
-  store: ApprovalCache,
-  pi: ExtensionAPI,
-  hasUI: boolean,
+  ctx: RunContext,
 ): Promise<ToolCallEventResult | undefined> {
   const bashResult = await checkBash(command, config);
   return runGuard(
@@ -231,10 +220,7 @@ async function runBashCheck(
       reason: bashResult.reason || undefined,
     },
     makeSessionKey("bash", command),
-    confirm,
-    store,
-    pi,
-    hasUI,
+    ctx,
   );
 }
 
@@ -261,6 +247,7 @@ export function registerGuards(
 
     const targetPath = extractPath(event);
     let block: ToolCallEventResult | undefined;
+    const runCtx: RunContext = { confirm, store, pi, hasUI: ctx.hasUI };
 
     if (targetPath !== undefined) {
       block = await runPathBearingChecks(
@@ -268,17 +255,10 @@ export function registerGuards(
         toolName,
         ctx.cwd,
         config,
-        { confirm, store, pi, hasUI: ctx.hasUI },
+        runCtx,
       );
     } else {
-      block = await runToolOnlyCheck(
-        toolName,
-        config,
-        confirm,
-        store,
-        pi,
-        ctx.hasUI,
-      );
+      block = await runToolOnlyCheck(toolName, config, runCtx);
     }
     if (block) {
       return block;
@@ -286,14 +266,7 @@ export function registerGuards(
 
     if (toolName === "bash") {
       const bashEvent = event as BashToolCallEvent;
-      block = await runBashCheck(
-        bashEvent.input.command,
-        config,
-        confirm,
-        store,
-        pi,
-        ctx.hasUI,
-      );
+      block = await runBashCheck(bashEvent.input.command, config, runCtx);
       if (block) {
         return block;
       }

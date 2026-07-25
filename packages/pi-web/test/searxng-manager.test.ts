@@ -371,7 +371,10 @@ describe("runScript", () => {
 
       expect(spawnMock).toHaveBeenCalledWith(
         "bash",
-        ["-c", expect.stringContaining("shutdown-$$.pid")],
+        expect.arrayContaining([
+          "-c",
+          expect.stringContaining("shutdown-$$.pid"),
+        ]),
         { stdio: "ignore", detached: true },
       );
     });
@@ -429,8 +432,9 @@ describe("runScript", () => {
         shutdownPidDir: instancesDir,
       });
 
-      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-      expect(wrapperScript).toContain(instancesDir);
+      // shutdownPidDir is passed as positional arg $1 (index 3)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[3]).toBe(instancesDir);
     });
 
     it("includes the custom script path (tilde-expanded) in the wrapper when shutdownPidDir is set", () => {
@@ -443,8 +447,9 @@ describe("runScript", () => {
         shutdownPidDir: instancesDir,
       });
 
-      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-      expect(wrapperScript).toContain(join(homedir(), "my-searxng-script"));
+      // script path is passed as positional arg $2 (index 4)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[4]).toBe(join(homedir(), "my-searxng-script"));
     });
 
     it("uses the default built-in script when no scriptPath is provided with shutdownPidDir set", () => {
@@ -456,8 +461,9 @@ describe("runScript", () => {
         shutdownPidDir: instancesDir,
       });
 
-      const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-      expect(wrapperScript).toContain("bin/searxng");
+      // script path is passed as positional arg $2 (index 4)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[4]).toContain("bin/searxng");
     });
   });
 });
@@ -686,10 +692,11 @@ describe("unregisterInstance", () => {
 
     await unregisterInstance();
 
-    // Spawns a bash wrapper that runs the down command with PID tracking
+    // Spawns a bash wrapper that runs the down command with PID tracking.
+    // The -c script uses positional $2/$3 for script path and command.
     expect(spawnMock).toHaveBeenCalledWith(
       "bash",
-      ["-c", expect.stringContaining(`" down`)],
+      expect.arrayContaining(["-c", expect.stringContaining('"$2" "$3"')]),
       { stdio: "ignore", detached: true },
     );
   });
@@ -757,9 +764,9 @@ describe("unregisterInstance", () => {
 
     await unregisterInstance(customScript);
 
-    // The custom script path appears inside the bash wrapper
-    const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-    expect(wrapperScript).toContain(customScript);
+    // The custom script path is passed as positional arg $2 (index 4)
+    const args = spawnMock.mock.calls[0]![1]! as string[];
+    expect(args[4]).toBe(customScript);
   });
 
   it("returns immediately without waiting for the detached down process", async () => {
@@ -797,7 +804,7 @@ describe("unregisterInstance", () => {
     // Detached down with PID tracking should be called since all other locks are irrelevant
     expect(spawnMock).toHaveBeenCalledWith(
       "bash",
-      ["-c", expect.stringContaining(`" down`)],
+      expect.arrayContaining(["-c", expect.stringContaining('"$2" "$3"')]),
       { stdio: "ignore", detached: true },
     );
   });

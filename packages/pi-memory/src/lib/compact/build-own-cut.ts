@@ -32,13 +32,16 @@ const normalizeKeepUserTurns = (keepUserTurns: number): number => {
   return Math.max(0, Math.floor(keepUserTurns));
 };
 
-/** Find the last compaction entry's index and its firstKeptEntryId. */
-function findLastCompaction(
-  branchEntries: BranchEntry[],
-): { idx: number; firstKeptEntryId: string | undefined } | null {
+/** Find the last compaction entry, its index, and firstKeptEntryId. */
+export function findLastCompaction(branchEntries: BranchEntry[]): {
+  idx: number;
+  entry: BranchEntry;
+  firstKeptEntryId: string | undefined;
+} | null {
   for (let i = branchEntries.length - 1; i >= 0; i--) {
-    if (branchEntries[i]?.type === "compaction") {
-      return { idx: i, firstKeptEntryId: branchEntries[i]?.firstKeptEntryId };
+    const e = branchEntries[i];
+    if (e?.type === "compaction") {
+      return { idx: i, entry: e, firstKeptEntryId: e.firstKeptEntryId };
     }
   }
   return null;

@@ -244,8 +244,11 @@ export interface SearchXlsxResult {
 function unmergeRange(raw: unknown[][], merge: XLSX.Range): void {
   const { s, e } = merge;
   const topVal = raw[s.r]?.[s.c];
-  if (topVal === undefined || topVal === null || String(topVal).trim() === "") {
-    // NOSONAR — String() handles unknown→string, value is always a primitive
+  if (
+    topVal === undefined ||
+    topVal === null ||
+    String(topVal).trim() === "" // NOSONAR — String() handles unknown→string, value is always a primitive
+  ) {
     return;
   }
   for (let r = s.r; r <= e.r; r++) {
@@ -388,6 +391,9 @@ async function readXlsxBuffer(filePath: string): Promise<ArrayBuffer> {
 }
 
 function validateZipMagic(buffer: ArrayBuffer): void {
+  if (buffer.byteLength < 4) {
+    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+  }
   const header = new Uint8Array(buffer, 0, 4);
   const isZip =
     header[0] === 0x50 &&
@@ -538,11 +544,6 @@ export async function parseXlsx(
   return { sheetNames, sheets, sheet: foundSheet };
 }
 
-/**
- * Search for text in an XLSX file.
- * Performs case-insensitive substring matching across all cell values in every row.
- * Returns matches with sheet name, row number, and row data.
- */
 function searchSheetRows(
   sheet: XlsxSheetData,
   sheetName: string,
@@ -576,6 +577,11 @@ function searchSheetRows(
   return found;
 }
 
+/**
+ * Search for text in an XLSX file.
+ * Performs case-insensitive substring matching across all cell values in every row.
+ * Returns matches with sheet name, row number, and row data.
+ */
 export async function searchXlsx(
   filePath: string,
   options: SearchXlsxOptions,
@@ -682,10 +688,8 @@ async function loadPdfDocument(
     pdfOptions.password = password;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pdf: Awaited<ReturnType<typeof getDocumentProxy>>;
   try {
-    pdf = await getDocumentProxy(new Uint8Array(buffer), pdfOptions);
+    return await getDocumentProxy(new Uint8Array(buffer), pdfOptions);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("password") || msg.includes("Password")) {
@@ -699,7 +703,6 @@ async function loadPdfDocument(
     }
     throw new PdfError(`Failed to parse PDF: ${msg}`, "PARSE_FAILED");
   }
-  return pdf;
 }
 
 /**

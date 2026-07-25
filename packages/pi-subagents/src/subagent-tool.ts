@@ -232,23 +232,12 @@ async function executeParallel(
         failedResult(t.agent, t.task, "Subagent was aborted"),
       );
     } else {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       results = tasks.map(
-        (t, i) =>
-          settled.get(i) ??
-          failedResult(t.agent, t.task, "Subagent was aborted"),
+        (t, i) => settled.get(i) ?? failedResult(t.agent, t.task, errorMessage),
       );
     }
   }
-
-  results = results.map(
-    (r, i) =>
-      r ??
-      failedResult(
-        tasks[i]?.agent ?? "unknown",
-        tasks[i]?.task ?? "",
-        "Subagent was aborted",
-      ),
-  );
 
   const summary = summaryText(results);
   return {

@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-const LOG_FILE = path.join(
+/** Default log file path. */
+export const LOG_FILE = path.join(
   os.homedir(),
   ".pi",
   "agent",
@@ -20,18 +21,20 @@ export interface UsageStats {
   extensions: Record<string, number>;
 }
 
-export function appendRecord(rec: UsageRecord): void {
+export function appendRecord(rec: UsageRecord, logFile?: string): void {
+  const target = logFile ?? LOG_FILE;
   try {
-    fs.appendFileSync(LOG_FILE, `${JSON.stringify(rec)}\n`);
+    fs.appendFileSync(target, `${JSON.stringify(rec)}\n`);
   } catch {
     // never let metrics break the agent
   }
 }
 
-export function readRecords(sinceMs?: number): UsageRecord[] {
+export function readRecords(sinceMs?: number, logFile?: string): UsageRecord[] {
+  const target = logFile ?? LOG_FILE;
   let raw: string;
   try {
-    raw = fs.readFileSync(LOG_FILE, "utf8");
+    raw = fs.readFileSync(target, "utf8");
   } catch {
     return [];
   }

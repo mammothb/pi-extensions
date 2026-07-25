@@ -91,17 +91,21 @@ fn needs_separator(prev_role: Option<&str>, current_role: &str) -> bool {
     )
 }
 
-fn emit_user(out: &mut String, global_line: &mut usize, msg: &Message) {
-    *global_line += 1;
-    let gl = *global_line;
-    out.push_str(&format!("[{gl}]  user\n"));
-    for block in &msg.content {
+fn emit_text_lines(out: &mut String, blocks: &[ContentBlock]) {
+    for block in blocks {
         if let ContentBlock::Text { text } = block {
             for line in text.lines() {
                 out.push_str(&format!("     {line}\n"));
             }
         }
     }
+}
+
+fn emit_user(out: &mut String, global_line: &mut usize, msg: &Message) {
+    *global_line += 1;
+    let gl = *global_line;
+    out.push_str(&format!("[{gl}]  user\n"));
+    emit_text_lines(out, &msg.content);
 }
 
 fn emit_assistant(out: &mut String, global_line: &mut usize, msg: &Message) {
@@ -144,26 +148,14 @@ fn emit_tool_result(out: &mut String, global_line: &mut usize, msg: &Message) {
     let gl = *global_line;
     let name = msg.tool_name.as_deref().unwrap_or("<unknown>");
     out.push_str(&format!("[{gl}]  tool_result [{name}]\n"));
-    for block in &msg.content {
-        if let ContentBlock::Text { text } = block {
-            for line in text.lines() {
-                out.push_str(&format!("     {line}\n"));
-            }
-        }
-    }
+    emit_text_lines(out, &msg.content);
 }
 
 fn emit_system(out: &mut String, global_line: &mut usize, msg: &Message) {
     *global_line += 1;
     let gl = *global_line;
     out.push_str(&format!("[{gl}]  system\n"));
-    for block in &msg.content {
-        if let ContentBlock::Text { text } = block {
-            for line in text.lines() {
-                out.push_str(&format!("     {line}\n"));
-            }
-        }
-    }
+    emit_text_lines(out, &msg.content);
 }
 
 /// Append stats footer if not suppressed and non-empty.

@@ -10,7 +10,7 @@
  *   - Result stability: queries return consistent counts across runs
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -144,17 +144,15 @@ function parseSearchOutput(
 
 function runGhSearch(q: SearchQuery): SearchResult {
   const flags = buildSearchFlags(q);
-  const cmd = [
-    "gh",
-    ...flags.map((f) => (f.includes(" ") ? `'${f}'` : f)),
-  ].join(" ");
 
   try {
-    const stdout = execSync(cmd, { encoding: "utf-8", timeout: 30_000 }); // NOSONAR — eval test, args from test fixtures
+    const stdout = execFileSync("gh", flags, {
+      encoding: "utf-8",
+      timeout: 30_000,
+    });
     const raw = stdout.trim();
     const parsed = parseSearchOutput(raw, q);
 
-    // Error result from parseSearchOutput — return directly
     if (!("query" in parsed)) {
       const { count, containsPass } = parsed;
       return {
@@ -166,6 +164,7 @@ function runGhSearch(q: SearchQuery): SearchResult {
       };
     }
 
+    // Error result from parseSearchOutput — return directly
     return parsed;
   } catch (err: any) {
     return {
