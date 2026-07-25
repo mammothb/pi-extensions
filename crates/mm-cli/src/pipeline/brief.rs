@@ -379,32 +379,39 @@ fn collapse_tool_lines(sections: &mut [BriefSection]) {
             // Extract (#ref) suffix and base text
             let (base, ref_num) = strip_ref_suffix(line);
 
-            if let Some(last) = out.last() {
-                // State 1: already merged — `base (#1, #2) x2`
-                if let Some((m_base, m_refs, m_count)) = parse_merged_tool(last)
-                    && m_base == base
-                {
-                    let new_refs = format!("{m_refs}, #{ref_num}");
-                    let new_count = m_count + 1;
-                    let idx = out.len() - 1;
-                    out[idx] = format!("{base} ({new_refs}) x{new_count}");
-                    continue;
-                }
-                // State 2: single ref — `base (#12)`
-                if let Some((single_base, single_ref)) = parse_single_ref(last)
-                    && single_base == base
-                {
-                    let idx = out.len() - 1;
-                    out[idx] = format!("{base} (#{single_ref}, #{ref_num}) x2");
-                    continue;
-                }
+            if let Some(last) = out.last()
+                && let Some(merged) = try_merge_tool_line(last, base, ref_num)
+            {
+                let idx = out.len() - 1;
+                out[idx] = merged;
+                continue;
             }
-            // State 3: no match or non-tool previous
+            // No match or non-tool previous
             out.push(line.clone());
         }
 
         sec.lines = out;
     }
+}
+
+/// Try to merge a tool line with the previous output line.
+/// Returns the new merged line if the previous line has the same base.
+fn try_merge_tool_line(last: &str, base: &str, ref_num: &str) -> Option<String> {
+    // State 1: already merged — `base (#1, #2) x2`
+    if let Some((m_base, m_refs, m_count)) = parse_merged_tool(last)
+        && m_base == base
+    {
+        let new_refs = format!("{m_refs}, #{ref_num}");
+        let new_count = m_count + 1;
+        return Some(format!("{base} ({new_refs}) x{new_count}"));
+    }
+    // State 2: single ref — `base (#12)`
+    if let Some((single_base, single_ref)) = parse_single_ref(last)
+        && single_base == base
+    {
+        return Some(format!("{base} (#{single_ref}, #{ref_num}) x2"));
+    }
+    None
 }
 
 /// Strip a `(#N)` suffix from a tool line. Returns (base, ref_number).
