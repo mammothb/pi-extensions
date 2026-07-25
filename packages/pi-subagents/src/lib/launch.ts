@@ -319,7 +319,14 @@ function setupAbortHandlers(
 
   if (signal.aborted) {
     killProc();
-    return { wasAborted: () => true, cleanup: () => {} };
+    return {
+      wasAborted: () => true,
+      cleanup: () => {
+        if (sigkillTimer) {
+          clearTimeout(sigkillTimer);
+        }
+      },
+    };
   }
 
   signal.addEventListener("abort", killProc, { once: true });

@@ -237,7 +237,7 @@ describe("gh_fetch — renderResult", () => {
     );
     const text = renderText(result);
     expect(text).toContain('{"name":"test"}');
-    expect(text).toContain("[muted] to collapse[/muted]");
+    expect(text).toContain("Ctrl+O to collapse");
   });
 
   it("renders collapsed view with JSON repo summary", () => {
@@ -406,7 +406,7 @@ describe("gh_search — renderResult", () => {
     );
     const text = renderText(result);
     expect(text).toContain("raw search output");
-    expect(text).toContain("[muted] to collapse[/muted]");
+    expect(text).toContain("Ctrl+O to collapse");
   });
 
   it("renders code scope with file count", () => {

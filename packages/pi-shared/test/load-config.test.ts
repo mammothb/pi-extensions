@@ -8,6 +8,7 @@ import { loadPiConfig, readConfigFile } from "../src/load-config.js";
 let tmpDir: string;
 let agentDir: string;
 let projectDir: string;
+let prevAgentDir: string | undefined;
 
 beforeEach(() => {
   tmpDir = join(
@@ -19,11 +20,16 @@ beforeEach(() => {
   mkdirSync(agentDir, { recursive: true });
   mkdirSync(join(projectDir, ".pi"), { recursive: true });
 
+  prevAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
 });
 
 afterEach(() => {
-  delete process.env.PI_CODING_AGENT_DIR;
+  if (prevAgentDir === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+  }
   rmSync(tmpDir, { recursive: true, force: true });
 });
 

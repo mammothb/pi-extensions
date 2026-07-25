@@ -1,3 +1,6 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getExtNameFromPath,
@@ -67,14 +70,26 @@ describe("getExtNameFromPath", () => {
 });
 
 describe("getLocalEntryExtensionName", () => {
-  it("finds package name from nearby package.json", () => {
-    // The monorepo root has a package.json with name "pi-extensions-workspace"
-    const result = getLocalEntryExtensionName(
-      "/home/mmb/code/pi-extensions-workspace/feat/packages/pi-stats/src/tracker.ts",
+  it("finds package name from nearby package.json via temp dir", () => {
+    const tmpDir = join(
+      tmpdir(),
+      `pi-stats-pkg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
-    // Should find the monorepo package name
-    expect(typeof result).toBe("string");
-    expect(result!.length).toBeGreaterThan(0);
+    mkdirSync(tmpDir, { recursive: true });
+    const nestedDir = join(tmpDir, "packages", "my-lib", "src");
+    mkdirSync(nestedDir, { recursive: true });
+
+    try {
+      writeFileSync(
+        join(tmpDir, "package.json"),
+        JSON.stringify({ name: "my-cool-package" }),
+      );
+
+      const result = getLocalEntryExtensionName(join(nestedDir, "index.ts"));
+      expect(result).toBe("my-cool-package");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it("returns undefined when all ancestor dirs are generic (src, dist, lib, etc.)", () => {

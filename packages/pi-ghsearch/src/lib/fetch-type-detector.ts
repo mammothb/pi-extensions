@@ -130,11 +130,5 @@ export function detectFetchType(parsed: unknown): Result {
     return { type: "unknown", summary: `${len} items` };
   }
 
-  if (parsed && typeof parsed === "object") {
-    const keys = Object.keys(parsed as Record<string, unknown>);
-    const size = formatSize(JSON.stringify(parsed).length);
-    return { type: "unknown", summary: `${keys.length} fields, ${size}` };
-  }
-
   return { type: "unknown", summary: "" };
 }

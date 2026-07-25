@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -96,17 +102,15 @@ describe("scaffoldSettings", () => {
     writeSettings({ debug: true, customField: "keep-me" });
     scaffoldSettings();
 
-    const content = JSON.parse(
-      require("node:fs").readFileSync(configPath(), "utf-8"),
-    );
+    const content = JSON.parse(readFileSync(configPath(), "utf-8"));
     expect(content.customField).toBe("keep-me");
   });
 
   it("does not clobber file with invalid JSON", () => {
     writeFileSync(configPath(), "invalid json {{{");
-    const original = require("node:fs").readFileSync(configPath(), "utf-8");
+    const original = readFileSync(configPath(), "utf-8");
     scaffoldSettings();
-    const after = require("node:fs").readFileSync(configPath(), "utf-8");
+    const after = readFileSync(configPath(), "utf-8");
     // Should leave file unchanged
     expect(after).toBe(original);
   });
@@ -116,7 +120,6 @@ describe("scaffoldSettings", () => {
     process.env.PI_MEMORY_CONFIG_PATH = nestedPath;
     scaffoldSettings();
 
-    const { existsSync } = require("node:fs");
     expect(existsSync(nestedPath)).toBe(true);
     const settings = loadSettings();
     expect(settings).toEqual(DEFAULT_SETTINGS);

@@ -30,11 +30,11 @@ function parseTiers(raw: unknown): Record<string, string> {
 }
 
 function parseStuckTimeout(raw: unknown): number {
-  if (typeof raw === "number") {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
     return raw;
   }
   console.warn(
-    `subagents: "stuckTimeoutMs" must be a number, got ${typeof raw} — using default`,
+    `subagents: "stuckTimeoutMs" must be a non-negative finite number, got ${raw} — using default`,
   );
   return DEFAULTS.stuckTimeoutMs;
 }

@@ -23,9 +23,7 @@ describe("renderError", () => {
     const result = renderError("bad things", theme, { expandable: true });
     const lines = result.render(80);
     expect(lines[0]).toContain("[error]bad things[/error]");
-    // getExpandKey() returns "" in test (keyText not registered)
-    // The hint space and muted tags are still present
-    expect(lines[0]).toContain("[muted]");
+    expect(lines[0]).toContain("[muted]Ctrl+O[/muted]");
   });
 
   it("does not append expand hint when expandable is false", () => {
@@ -50,7 +48,7 @@ describe("renderError", () => {
     });
     const lines = result.render(80);
     expect(lines[0]).toContain("[error]gh_search: fail[/error]");
-    expect(lines[0]).toContain("[muted]");
+    expect(lines[0]).toContain("[muted]Ctrl+O[/muted]");
   });
 
   it("returns Text with zero padding", () => {

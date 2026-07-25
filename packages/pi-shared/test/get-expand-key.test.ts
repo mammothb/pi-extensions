@@ -9,44 +9,38 @@ import { createMockTheme } from "./_helpers.js";
 const theme = createMockTheme();
 
 describe("getExpandKey", () => {
-  it("returns a string", () => {
-    // keyText("app.tools.expand") is not registered in test context.
-    // The ?? fallback only triggers for null/undefined, not empty string.
-    // In production (pi runtime) keyText returns the binding; in tests it returns "".
-    expect(typeof getExpandKey()).toBe("string");
+  it("returns a non-empty string", () => {
+    expect(getExpandKey().length).toBeGreaterThan(0);
   });
 
-  it("returns empty string when keybinding is not registered (test context)", () => {
-    expect(getExpandKey()).toBe("");
+  it('returns "Ctrl+O" fallback when keybinding is not registered (test context)', () => {
+    expect(getExpandKey()).toBe("Ctrl+O");
   });
 });
 
 describe("getCollapseHint", () => {
-  it("renders collapse hint with muted styling", () => {
+  it("renders collapse hint with the expand key", () => {
     const hint = getCollapseHint(theme);
-    // key is empty in test → " to collapse"
-    expect(hint).toContain("[muted]");
-    expect(hint).toContain("to collapse");
+    expect(hint).toBe("[muted]Ctrl+O to collapse[/muted]");
   });
 });
 
 describe("getExpandHint", () => {
   it("renders basic expand hint without remaining count", () => {
     const hint = getExpandHint(theme);
-    expect(hint).toContain("[muted]");
-    expect(hint).toContain("to expand");
+    expect(hint).toBe("[muted]Ctrl+O to expand[/muted]");
   });
 
   it("renders expand hint with remaining line count", () => {
     const hint = getExpandHint(theme, 42);
     expect(hint).toContain("[muted]... (42 more lines, [/muted]");
-    // key is empty → "[muted][/muted]"
+    expect(hint).toContain("[muted]Ctrl+O[/muted]");
     expect(hint).toContain("[muted] to expand)[/muted]");
   });
 
   it("renders expand hint with remaining = 1 (singular phrasing)", () => {
     const hint = getExpandHint(theme, 1);
-    expect(hint).toContain("(1 more lines,");
+    expect(hint).toContain("(1 more line,");
   });
 
   it("does not render remaining count when 0", () => {

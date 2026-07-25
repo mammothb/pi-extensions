@@ -259,7 +259,7 @@ describe("renderResult — expanded view", () => {
       { isError: false } as any,
     );
     const full = renderText(result);
-    expect(full).toContain("[muted] to collapse[/muted]");
+    expect(full).toContain("Ctrl+O to collapse");
   });
 
   it("expanded view: exit code 1 shows error color", () => {

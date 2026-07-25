@@ -2,7 +2,7 @@ import { keyText, type Theme } from "@earendil-works/pi-coding-agent";
 
 /** Get the display string for the expand keybinding (e.g. "Ctrl+O"). */
 export function getExpandKey(): string {
-  return keyText("app.tools.expand") ?? "Ctrl+O";
+  return keyText("app.tools.expand") || "Ctrl+O";
 }
 
 /** Muted "Ctrl+O to collapse" hint for expanded views. */
@@ -14,11 +14,12 @@ export function getCollapseHint(theme: Theme): string {
 export function getExpandHint(theme: Theme, remaining?: number): string {
   const key = getExpandKey();
   if (remaining !== undefined && remaining > 0) {
+    const label = remaining === 1 ? "line" : "lines";
     return (
-      theme.fg("muted", `... (${remaining} more lines, `) +
+      theme.fg("muted", `... (${remaining} more ${label}, `) +
       theme.fg("muted", key) +
       theme.fg("muted", " to expand)")
     );
   }
-  return theme.fg("muted", `${getExpandKey()} to expand`);
+  return theme.fg("muted", `${key} to expand`);
 }
