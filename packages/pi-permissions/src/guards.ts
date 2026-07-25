@@ -83,6 +83,156 @@ async function handleAsk(
   // allowed — proceed
 }
 
+function makeConfirmFn(ctx: {
+  hasUI: boolean;
+  ui: { confirm(title: string, message: string): Promise<boolean | null> };
+}): ConfirmFn {
+  return async (message) => {
+    if (!ctx.hasUI) {
+      return false;
+    }
+    return (await ctx.ui.confirm("Permission Required", message)) ?? false;
+  };
+}
+
+function deny(reason: string): ToolCallEventResult {
+  return { block: true, reason: `Permission denied: ${reason}` };
+}
+
+/**
+ * Run a single guard check result through the deny-or-ask flow.
+ * Returns a block result if denied, undefined if allowed.
+ */
+async function runGuard(
+  result: { action: string; reason?: string },
+  details: DialogDetails,
+  sessionKey: string,
+  confirm: ConfirmFn,
+  store: ApprovalCache,
+  pi: ExtensionAPI,
+  hasUI: boolean,
+): Promise<ToolCallEventResult | undefined> {
+  if (result.action === "deny") {
+    return deny(result.reason ?? "unknown");
+  }
+  if (result.action === "ask") {
+    return handleAsk(confirm, store, sessionKey, details, pi, hasUI);
+  }
+}
+
+async function runPathBearingChecks(
+  targetPath: string,
+  toolName: string,
+  cwd: string,
+  config: ResolvedConfig,
+  confirm: ConfirmFn,
+  store: ApprovalCache,
+  pi: ExtensionAPI,
+  hasUI: boolean,
+): Promise<ToolCallEventResult | undefined> {
+  const pathResult = checkPath(targetPath, cwd, config);
+  const toolResult = checkTool(toolName, config);
+
+  // Deny from either check short-circuits — no dialog shown
+  if (pathResult.action === "deny") {
+    return deny(pathResult.reason);
+  }
+  if (toolResult.action === "deny") {
+    return deny(toolResult.reason);
+  }
+
+  // Ask: at most one dialog. Prefer the path prompt — it already
+  // names the tool and is more specific than a bare tool name.
+  if (pathResult.action === "ask") {
+    return runGuard(
+      pathResult,
+      {
+        toolName,
+        category: "path",
+        summary: targetPath,
+        reason: pathResult.matchedRule
+          ? `matched rule "${pathResult.matchedRule}"`
+          : undefined,
+      },
+      makeSessionKey(toolName, targetPath),
+      confirm,
+      store,
+      pi,
+      hasUI,
+    );
+  }
+  if (toolResult.action === "ask") {
+    return runGuard(
+      toolResult,
+      {
+        toolName,
+        category: "tool",
+        summary: "",
+        reason: toolResult.matchedRule
+          ? `matched rule "${toolResult.matchedRule}"`
+          : undefined,
+      },
+      makeSessionKey(toolName, targetPath),
+      confirm,
+      store,
+      pi,
+      hasUI,
+    );
+  }
+}
+
+async function runToolOnlyCheck(
+  toolName: string,
+  config: ResolvedConfig,
+  confirm: ConfirmFn,
+  store: ApprovalCache,
+  pi: ExtensionAPI,
+  hasUI: boolean,
+): Promise<ToolCallEventResult | undefined> {
+  const toolResult = checkTool(toolName, config);
+  return runGuard(
+    toolResult,
+    {
+      toolName,
+      category: "tool",
+      summary: "",
+      reason: toolResult.matchedRule
+        ? `matched rule "${toolResult.matchedRule}"`
+        : toolResult.reason,
+    },
+    makeSessionKey(toolName),
+    confirm,
+    store,
+    pi,
+    hasUI,
+  );
+}
+
+async function runBashCheck(
+  command: string,
+  config: ResolvedConfig,
+  confirm: ConfirmFn,
+  store: ApprovalCache,
+  pi: ExtensionAPI,
+  hasUI: boolean,
+): Promise<ToolCallEventResult | undefined> {
+  const bashResult = await checkBash(command, config);
+  return runGuard(
+    bashResult,
+    {
+      toolName: "bash",
+      category: "bash",
+      summary: command,
+      reason: bashResult.reason || undefined,
+    },
+    makeSessionKey("bash", command),
+    confirm,
+    store,
+    pi,
+    hasUI,
+  );
+}
+
 /**
  * Register all permission guards on the pi extension API.
  *
@@ -101,134 +251,49 @@ export function registerGuards(
   store: ApprovalCache,
 ): void {
   pi.on("tool_call", async (event, ctx) => {
-    // Build a confirm function from the TUI context (null-safe for headless mode)
-    const confirm: ConfirmFn = async (message) => {
-      if (!ctx.hasUI) {
-        return false; // headless mode — deny by default
-      }
-      return ctx.ui.confirm("Permission Required", message) ?? false;
-    };
-
+    const confirm = makeConfirmFn(ctx);
     const toolName = event.toolName;
 
-    // --- Path-bearing tools (read, write, edit): merge path + tool checks ---
     const targetPath = extractPath(event);
+    let block: ToolCallEventResult | undefined;
+
     if (targetPath !== undefined) {
-      const pathResult = checkPath(targetPath, ctx.cwd, config);
-      const toolResult = checkTool(toolName, config);
-
-      // Deny from either check short-circuits
-      if (pathResult.action === "deny") {
-        return {
-          block: true,
-          reason: `Permission denied: ${pathResult.reason}`,
-        };
-      }
-      if (toolResult.action === "deny") {
-        return {
-          block: true,
-          reason: `Permission denied: ${toolResult.reason}`,
-        };
-      }
-
-      // Ask: at most one dialog. Prefer the path prompt — it already
-      // names the tool and is more specific than a bare tool name.
-      if (pathResult.action === "ask" || toolResult.action === "ask") {
-        const details: DialogDetails =
-          pathResult.action === "ask"
-            ? {
-                toolName,
-                category: "path",
-                summary: targetPath,
-                reason: pathResult.matchedRule
-                  ? `matched rule "${pathResult.matchedRule}"`
-                  : undefined,
-              }
-            : {
-                toolName,
-                category: "tool",
-                summary: "",
-                reason: toolResult.matchedRule
-                  ? `matched rule "${toolResult.matchedRule}"`
-                  : undefined,
-              };
-
-        const block = await handleAsk(
-          confirm,
-          store,
-          makeSessionKey(toolName, targetPath),
-          details,
-          pi,
-          ctx.hasUI,
-        );
-        if (block) {
-          return block;
-        }
-      }
+      block = await runPathBearingChecks(
+        targetPath,
+        toolName,
+        ctx.cwd,
+        config,
+        confirm,
+        store,
+        pi,
+        ctx.hasUI,
+      );
     } else {
-      // --- Non-path-bearing tools: only the tool guard applies ---
-      const toolResult = checkTool(toolName, config);
-      if (toolResult.action === "deny") {
-        return {
-          block: true,
-          reason: `Permission denied: ${toolResult.reason}`,
-        };
-      }
-      if (toolResult.action === "ask") {
-        const details: DialogDetails = {
-          toolName,
-          category: "tool",
-          summary: "",
-          reason: toolResult.matchedRule
-            ? `matched rule "${toolResult.matchedRule}"`
-            : toolResult.reason,
-        };
-
-        const block = await handleAsk(
-          confirm,
-          store,
-          makeSessionKey(toolName),
-          details,
-          pi,
-          ctx.hasUI,
-        );
-        if (block) {
-          return block;
-        }
-      }
+      block = await runToolOnlyCheck(
+        toolName,
+        config,
+        confirm,
+        store,
+        pi,
+        ctx.hasUI,
+      );
+    }
+    if (block) {
+      return block;
     }
 
-    // --- Bash guard (for bash tool only) ---
     if (toolName === "bash") {
       const bashEvent = event as BashToolCallEvent;
-      const command = bashEvent.input.command;
-
-      const bashResult = await checkBash(command, config);
-      if (bashResult.action === "deny") {
-        return {
-          block: true,
-          reason: `Permission denied: ${bashResult.reason}`,
-        };
-      }
-      if (bashResult.action === "ask") {
-        const details: DialogDetails = {
-          toolName: "bash",
-          category: "bash",
-          summary: command,
-          reason: bashResult.reason || undefined,
-        };
-
-        const block = await handleAsk(
-          confirm,
-          store,
-          makeSessionKey("bash", command),
-          details,
-          pi,
-          ctx.hasUI,
-        );
-        if (block) {
-          return block;
-        }
+      block = await runBashCheck(
+        bashEvent.input.command,
+        config,
+        confirm,
+        store,
+        pi,
+        ctx.hasUI,
+      );
+      if (block) {
+        return block;
       }
     }
   });
