@@ -132,6 +132,54 @@ function buildStatsLine(opts: {
   return parts.join(" ");
 }
 
+function renderCollapsedView(
+  previewSource: string,
+  details: EvalDetails | undefined,
+  rawText: string,
+  isError: boolean,
+  parsed: ParsedOutput,
+  totalLines: number,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const previewLines = firstNonEmptyLines(previewSource, PREVIEW_LINES);
+  const allNonEmptyCount = firstNonEmptyLines(
+    previewSource,
+    Number.MAX_SAFE_INTEGER,
+  ).length;
+  const remaining = Math.max(0, allNonEmptyCount - previewLines.length);
+  const showHintInHeader = isError || remaining > 0;
+
+  const statsHeader = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint: showHintInHeader,
+  });
+
+  const parts: string[] = [statsHeader];
+
+  if (previewLines.length > 0) {
+    parts.push(previewLines.join("\n"));
+  }
+
+  if (remaining > 0) {
+    parts.push(
+      theme.fg("muted", `... (${remaining} more lines, `) +
+        theme.fg("muted", expandKey) +
+        theme.fg("muted", " to expand)"),
+    );
+  } else if (previewLines.length > 0 && !showHintInHeader) {
+    parts.push(theme.fg("muted", `  ${expandKey} to expand`));
+  }
+
+  return new Text(parts.join("\n"), 0, 0);
+}
+
 export function createEvalTool(): ToolDefinition<
   typeof Parameters,
   EvalDetails
@@ -248,19 +296,8 @@ export function createEvalTool(): ToolDefinition<
       }
 
       // Collapsed view with output
-      const previewLines = firstNonEmptyLines(previewSource, PREVIEW_LINES);
-      const allNonEmptyCount = firstNonEmptyLines(
+      return renderCollapsedView(
         previewSource,
-        Number.MAX_SAFE_INTEGER,
-      ).length;
-      const remaining = Math.max(0, allNonEmptyCount - previewLines.length);
-
-      // Expand hint in header only when there are hidden lines (remaining > 0)
-      // or when it's an error (errors always get the hint in the header)
-      const showHintInHeader = isError || remaining > 0;
-
-      // Stats header
-      const statsHeader = buildStatsLine({
         details,
         rawText,
         isError,
@@ -268,27 +305,7 @@ export function createEvalTool(): ToolDefinition<
         totalLines,
         theme,
         expandKey,
-        showExpandHint: showHintInHeader,
-      });
-
-      // Build result as a single Text (avoids Container/Box padding issues)
-      const parts: string[] = [statsHeader];
-
-      if (previewLines.length > 0) {
-        parts.push(previewLines.join("\n"));
-      }
-
-      if (remaining > 0) {
-        parts.push(
-          theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("muted", expandKey) +
-            theme.fg("muted", " to expand)"),
-        );
-      } else if (previewLines.length > 0 && !showHintInHeader) {
-        parts.push(theme.fg("muted", `  ${expandKey} to expand`));
-      }
-
-      return new Text(parts.join("\n"), 0, 0);
+      );
     },
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const { language, code, cwd: paramsCwd } = params;
