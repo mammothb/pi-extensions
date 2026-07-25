@@ -24,6 +24,8 @@ jobs:
         run: cargo install --path crates/mm-cli
       - name: Install bw
         run: cargo install --path crates/bw
+      - name: Install bubblewrap
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
       - name: Lint & format
         run: pnpm exec biome ci .
       - name: Test
@@ -52,6 +54,8 @@ jobs:
         run: cargo install --path crates/mm-cli
       - name: Install bw
         run: cargo install --path crates/bw
+      - name: Install bubblewrap
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap
       - name: Coverage
         run: pnpm run test:coverage
       - name: Upload to Codecov

@@ -510,11 +510,21 @@ export async function launchChild(opts: {
 /**
  * Build CLI arguments for a child `pi -p` invocation from an agent config.
  * Returns an array suitable for `spawn("pi", args)`.
+ *
+ * When `sessionFile` is provided (fork or resume), `--session <path>` is
+ * added and `--no-session` is omitted regardless of `agent.noSession`.
+ * The session file flag appears early so Pi's CLI parser sees it first.
  */
-export function buildCliArgs(agent: AgentConfig, task: string): string[] {
+export function buildCliArgs(
+  agent: AgentConfig,
+  task: string,
+  sessionFile?: string,
+): string[] {
   const args = ["-p", "--mode", "json"];
 
-  if (agent.noSession) {
+  if (sessionFile) {
+    args.push("--session", sessionFile);
+  } else if (agent.noSession) {
     args.push("--no-session");
   }
 

@@ -4,8 +4,13 @@ import { wrapWithBubblewrap } from "../src/lib/sandbox.js";
 
 function hasBw(): boolean {
   try {
-    const result = spawnSync("bw", ["--help"], { stdio: "ignore" });
-    return result.status === 0 || result.status === 1; // --help exits 0 or 1, both mean bw exists
+    // Test actual sandbox capability, not just binary presence.
+    // bw --help may succeed even when bwrap is not installed.
+    const result = spawnSync("bw", ["--", "true"], {
+      stdio: "ignore",
+      timeout: 5000,
+    });
+    return result.status === 0;
   } catch {
     return false;
   }
@@ -45,9 +50,11 @@ describe("wrapWithBubblewrap", () => {
 // ---------------------------------------------------------------------------
 
 describe("sandbox integration", () => {
-  it.runIf(bwAvailable)("bw --help succeeds", () => {
-    const result = spawnSync("bw", ["--help"], { stdio: "pipe" });
+  it.runIf(bwAvailable)("'bw -- true' exits 0", () => {
+    const result = spawnSync("bw", ["--", "true"], {
+      stdio: "pipe",
+      timeout: 5000,
+    });
     expect(result.status).toBe(0);
-    expect(result.stdout.toString()).toContain("bwrap sandbox");
   });
 });

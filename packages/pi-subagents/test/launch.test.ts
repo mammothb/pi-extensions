@@ -92,6 +92,53 @@ describe("buildCliArgs", () => {
     expect(args[1]).toBe("--mode");
     expect(args[2]).toBe("json");
   });
+
+  // -- Phase 1 (fork/resume): sessionFile parameter --
+
+  it("adds --session and omits --no-session when sessionFile is provided", () => {
+    const args = buildCliArgs(baseAgent, "do something", "/tmp/session.jsonl");
+    expect(args).toContain("--session");
+    const idx = args.indexOf("--session");
+    expect(args[idx + 1]).toBe("/tmp/session.jsonl");
+    expect(args).not.toContain("--no-session");
+  });
+
+  it("keeps --no-session when sessionFile is undefined and noSession is true", () => {
+    const args = buildCliArgs(baseAgent, "do something");
+    expect(args).toContain("--no-session");
+    expect(args).not.toContain("--session");
+  });
+
+  it("places --session before --model/--thinking/--tools", () => {
+    const agent = { ...baseAgent, tools: ["read"], thinking: "low" };
+    const args = buildCliArgs(agent, "task", "/tmp/s.jsonl");
+    const sessionIdx = args.indexOf("--session");
+    expect(sessionIdx).toBeGreaterThan(2); // after -p --mode json
+    expect(sessionIdx).toBeLessThan(args.indexOf("--model"));
+    expect(sessionIdx).toBeLessThan(args.indexOf("--thinking"));
+    expect(sessionIdx).toBeLessThan(args.indexOf("--tools"));
+  });
+
+  it("omits --no-session when noSession is false and no sessionFile", () => {
+    const agent = { ...baseAgent, noSession: false };
+    const args = buildCliArgs(agent, "task");
+    expect(args).not.toContain("--no-session");
+    expect(args).not.toContain("--session");
+  });
+
+  it("--session wins over noSession: false", () => {
+    const agent = { ...baseAgent, noSession: false };
+    const args = buildCliArgs(agent, "task", "/tmp/s.jsonl");
+    expect(args).toContain("--session");
+    expect(args).not.toContain("--no-session");
+  });
+
+  it("-- <task> remains last argument regardless of sessionFile", () => {
+    const task = "fix the bug";
+    const args = buildCliArgs(baseAgent, task, "/tmp/s.jsonl");
+    expect(args[args.length - 1]).toBe(task);
+    expect(args[args.length - 2]).toBe("--");
+  });
 });
 
 // =============================================================================
@@ -629,8 +676,13 @@ describe("launchChild", () => {
 
   function hasBw(): boolean {
     try {
-      const result = spawnSync("bw", ["--help"], { stdio: "ignore" });
-      return result.status === 0 || result.status === 1;
+      // Test actual sandbox capability, not just binary presence.
+      // bw --help may succeed even when bwrap is not installed.
+      const result = spawnSync("bw", ["--", "true"], {
+        stdio: "ignore",
+        timeout: 5000,
+      });
+      return result.status === 0;
     } catch {
       return false;
     }
