@@ -102,7 +102,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: /tmp/docker-cache
-        key: scanwise-docker-${{ hashFiles(format('{0}/scripts/makefile.sh', github.action_path)) }}
+        key: scanwise-docker-sq25.5-scanner11.3
 
     - name: Load cached Docker images
       if: steps.docker-cache.outputs.cache-hit == 'true'
