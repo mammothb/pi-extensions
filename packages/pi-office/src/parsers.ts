@@ -367,6 +367,128 @@ function disambiguateHeaders(headers: string[]): string[] {
   });
 }
 
+async function readXlsxBuffer(filePath: string): Promise<ArrayBuffer> {
+  const resolved = resolvePath(filePath);
+  try {
+    const buf = await readFile(resolved);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      throw new XlsxError(`File not found: ${filePath}`, "FILE_NOT_FOUND");
+    }
+    throw new XlsxError(
+      `Failed to read file: ${(err as Error).message ?? err}`,
+      "PARSE_FAILED",
+    );
+  }
+}
+
+function validateZipMagic(buffer: ArrayBuffer): void {
+  const header = new Uint8Array(buffer, 0, 4);
+  const isZip =
+    header[0] === 0x50 &&
+    header[1] === 0x4b &&
+    header[2] === 0x03 &&
+    header[3] === 0x04;
+  if (!isZip) {
+    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+  }
+}
+
+function parseWorkbook(buffer: ArrayBuffer): XLSX.WorkBook {
+  try {
+    return XLSX.read(buffer, { type: "array" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("Unsupported") ||
+      msg.includes("not a valid") ||
+      msg.includes("zip")
+    ) {
+      throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+    }
+    throw new XlsxError(`Failed to parse XLSX: ${msg}`, "PARSE_FAILED");
+  }
+}
+
+function processSheet(
+  ws: XLSX.WorkSheet,
+  name: string,
+  options: ParseXlsxOptions | undefined,
+  maxRows: number,
+): {
+  info: XlsxSheetData | null;
+  found: XlsxSheetData | undefined;
+} {
+  const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, {
+    header: 1,
+    defval: "",
+    raw: options?.raw ?? true,
+  });
+
+  const merges = ws["!merges"];
+  if (merges && merges.length > 0) {
+    unmergeRaw(raw, merges);
+  }
+
+  const headerRow =
+    options?.headerRow !== undefined ? options.headerRow : findHeaderRow(raw);
+
+  const rawHeaders =
+    raw.length > headerRow
+      ? (raw[headerRow] as unknown[]).map((c) => String(c ?? ""))
+      : [];
+  const headers = disambiguateHeaders(rawHeaders);
+  const cols = headers.length;
+
+  const bodyRows = raw.slice(headerRow + 1);
+
+  const toObjects = (rows: unknown[][]): Record<string, string>[] =>
+    rows.map((row) => {
+      const obj: Record<string, string> = {};
+      for (let i = 0; i < headers.length; i++) {
+        obj[headers[i] ?? ""] = String(row[i] ?? "");
+      }
+      return obj;
+    });
+
+  const allData = toObjects(bodyRows);
+
+  if (options?.sheet) {
+    if (name === options.sheet) {
+      return {
+        info: null,
+        found: {
+          name,
+          rows: allData.length,
+          cols,
+          headers,
+          data: allData,
+          headerRow,
+        },
+      };
+    }
+    return { info: null, found: undefined };
+  }
+
+  return {
+    info: {
+      name,
+      rows: bodyRows.length,
+      cols,
+      headers,
+      data: allData.slice(0, maxRows),
+      headerRow,
+    },
+    found: undefined,
+  };
+}
+
 /**
  * Read and parse an XLSX file.
  *
@@ -383,59 +505,12 @@ export async function parseXlsx(
   filePath: string,
   options?: ParseXlsxOptions,
 ): Promise<ParseXlsxResult> {
-  const resolved = resolvePath(filePath);
-
-  // Read file
-  let buffer: ArrayBuffer;
-  try {
-    const buf = await readFile(resolved);
-    buffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  } catch (err: unknown) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      throw new XlsxError(`File not found: ${filePath}`, "FILE_NOT_FOUND");
-    }
-    throw new XlsxError(
-      `Failed to read file: ${(err as Error).message ?? err}`,
-      "PARSE_FAILED",
-    );
-  }
-
-  // Validate ZIP magic bytes (XLSX files are ZIP archives)
-  const header = new Uint8Array(buffer, 0, 4);
-  const isZip =
-    header[0] === 0x50 &&
-    header[1] === 0x4b &&
-    header[2] === 0x03 &&
-    header[3] === 0x04;
-  if (!isZip) {
-    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
-  }
-
-  // Parse workbook
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.read(buffer, { type: "array" });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("Unsupported") ||
-      msg.includes("not a valid") ||
-      msg.includes("zip")
-    ) {
-      throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
-    }
-    throw new XlsxError(`Failed to parse XLSX: ${msg}`, "PARSE_FAILED");
-  }
+  const buffer = await readXlsxBuffer(filePath);
+  validateZipMagic(buffer);
+  const workbook = parseWorkbook(buffer);
 
   const sheetNames = workbook.SheetNames;
   const maxRows = options?.maxRows ?? 10;
-
-  // Build data for each sheet
   const sheets: XlsxSheetData[] = [];
   let foundSheet: XlsxSheetData | undefined;
 
@@ -445,72 +520,13 @@ export async function parseXlsx(
       continue;
     }
 
-    const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      defval: "",
-      raw: options?.raw ?? true,
-    });
-
-    // Unmerge cells: fill top-left values into all cells of merged ranges
-    const merges = ws["!merges"];
-    if (merges && merges.length > 0) {
-      unmergeRaw(raw, merges);
+    const { info, found } = processSheet(ws, name, options, maxRows);
+    if (found) {
+      foundSheet = found;
     }
-
-    // Determine header row
-    const headerRow =
-      options?.headerRow !== undefined ? options.headerRow : findHeaderRow(raw);
-
-    const rawHeaders =
-      raw.length > headerRow
-        ? (raw[headerRow] as unknown[]).map((c) => String(c ?? ""))
-        : [];
-    const headers = disambiguateHeaders(rawHeaders);
-    const cols = headers.length;
-
-    // Data rows are everything after the header row
-    const bodyRows = raw.slice(headerRow + 1);
-
-    // Convert rows to array-of-objects
-    const toObjects = (rows: unknown[][]): Record<string, string>[] =>
-      rows.map((row) => {
-        const obj: Record<string, string> = {};
-        for (let i = 0; i < headers.length; i++) {
-          obj[headers[i] ?? ""] = String(row[i] ?? "");
-        }
-        return obj;
-      });
-
-    const allData = toObjects(bodyRows);
-    let data: Record<string, string>[];
-
-    if (options?.sheet) {
-      // Sheet mode: only return data if this is the requested sheet
-      if (name === options.sheet) {
-        data = allData;
-        foundSheet = {
-          name,
-          rows: allData.length,
-          cols,
-          headers,
-          data,
-          headerRow,
-        };
-      }
-      continue;
+    if (info) {
+      sheets.push(info);
     }
-
-    // Index mode: truncate to maxRows
-    data = allData.slice(0, maxRows);
-
-    sheets.push({
-      name,
-      rows: bodyRows.length,
-      cols,
-      headers,
-      data,
-      headerRow,
-    });
   }
 
   if (options?.sheet && !foundSheet) {
@@ -520,11 +536,7 @@ export async function parseXlsx(
     );
   }
 
-  return {
-    sheetNames,
-    sheets,
-    sheet: foundSheet,
-  };
+  return { sheetNames, sheets, sheet: foundSheet };
 }
 
 /**
