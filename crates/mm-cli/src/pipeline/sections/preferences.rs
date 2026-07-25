@@ -62,34 +62,7 @@ pub fn extract_preferences(blocks: &[NormalizedBlock]) -> Vec<String> {
             NormalizedBlock::User { text, .. } => text.as_str(),
             _ => continue,
         };
-
-        let mut per_block = 0;
-        for line in non_empty_lines(text) {
-            if line.len() < MIN_LINE_CHARS || line.len() > MAX_LINE_CHARS {
-                continue;
-            }
-            // Reject questions
-            if line.ends_with('?') || line.contains("?...") {
-                continue;
-            }
-            // Must match at least one preference pattern
-            if !PREF_PATTERNS.iter().any(|re| re.is_match(line)) {
-                continue;
-            }
-
-            let clipped = clip(line, MAX_LINE_CHARS);
-            let key = clipped.to_lowercase();
-            if seen.contains(&key) {
-                continue;
-            }
-            seen.insert(key);
-            prefs.push(clipped);
-
-            per_block += 1;
-            if per_block >= MAX_PER_BLOCK {
-                break;
-            }
-        }
+        collect_block_prefs(text, &mut seen, &mut prefs);
     }
 
     prefs.truncate(MAX_TOTAL_PREFS);
@@ -117,6 +90,42 @@ fn non_empty_lines(text: &str) -> Vec<&str> {
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
         .collect()
+}
+
+/// Check if a line could contain a user preference.
+fn is_preference_line(line: &str) -> bool {
+    if line.len() < MIN_LINE_CHARS || line.len() > MAX_LINE_CHARS {
+        return false;
+    }
+    // Reject questions
+    if line.ends_with('?') || line.contains("?...") {
+        return false;
+    }
+    // Must match at least one preference pattern
+    PREF_PATTERNS.iter().any(|re| re.is_match(line))
+}
+
+/// Collect up to `MAX_PER_BLOCK` preference lines from a user message.
+fn collect_block_prefs(text: &str, seen: &mut HashSet<String>, out: &mut Vec<String>) {
+    let mut per_block = 0;
+    for line in non_empty_lines(text) {
+        if !is_preference_line(line) {
+            continue;
+        }
+
+        let clipped = clip(line, MAX_LINE_CHARS);
+        let key = clipped.to_lowercase();
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.insert(key);
+        out.push(clipped);
+
+        per_block += 1;
+        if per_block >= MAX_PER_BLOCK {
+            break;
+        }
+    }
 }
 
 /// Clip text at a word boundary near `max` chars.
