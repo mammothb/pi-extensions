@@ -1,7 +1,8 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parse as parseYaml } from "yaml";
+import { loadSubagentConfig } from "./config.js";
 import type { AgentConfig } from "./types.js";
 
 /**
@@ -200,8 +201,43 @@ function collectAgentFiles(dir: string, agents: Map<string, string>): void {
  * Discover and parse all agent definition files.
  * Scans user-level (~/.pi/agent/agents/) and project-level (.pi/agents/) directories.
  * Project agents override user agents with the same name.
+ *
+ * @param cwd     Working directory (project root)
+ * @param userDir Override the user agent directory (for testing)
  */
-export function discoverAgents(_cwd: string): AgentConfig[] {
-  // TODO: implement in later phases
-  return [];
+export function discoverAgents(
+  cwd: string,
+  userDir?: string,
+  agentDir?: string,
+): AgentConfig[] {
+  const config = loadSubagentConfig(agentDir);
+  const files = discoverAgentFiles(cwd, userDir);
+
+  const agents: AgentConfig[] = [];
+
+  for (const [_name, path] of files) {
+    let content: string;
+    try {
+      content = readFileSync(path, "utf-8");
+    } catch {
+      console.warn(`discoverAgents: could not read ${path} — skipping`);
+      continue;
+    }
+
+    const { frontmatter, body } = parseFrontmatter(content, path);
+    if (!frontmatter) {
+      continue;
+    }
+
+    const agentConfig = validateConfig(frontmatter, body, path);
+    if (!agentConfig) {
+      continue;
+    }
+
+    agentConfig.model = resolveModel(agentConfig.model, config.tiers);
+    agents.push(agentConfig);
+  }
+
+  agents.sort((a, b) => a.name.localeCompare(b.name));
+  return agents;
 }

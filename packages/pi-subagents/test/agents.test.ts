@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   discoverAgentFiles,
+  discoverAgents,
   parseFrontmatter,
   resolveModel,
   validateConfig,
@@ -416,6 +417,139 @@ describe("discoverAgentFiles", () => {
 
       expect(result.size).toBe(1);
       expect(result.get("proj")).toBe(join(projectAgentDir, "proj.md"));
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+});
+
+describe("discoverAgents", () => {
+  function makeDir(): string {
+    return mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+  }
+
+  function writeFile(dir: string, name: string, content: string): void {
+    writeFileSync(join(dir, name), content, "utf-8");
+  }
+
+  it("parses valid agent files end-to-end", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(
+        userDir,
+        "researcher.md",
+        "---\nname: researcher\nmodel: cheap\ntools: read,grep\n---\nYou are a researcher.",
+      );
+      writeFile(
+        userDir,
+        "implementer.md",
+        "---\nname: implementer\nmodel: expensive\ntools: read,edit,bash\nmode: fork\nsandbox: true\n---\nYou are an implementer.",
+      );
+      writeFile(
+        userDir,
+        "subagents.json",
+        JSON.stringify({
+          tiers: {
+            cheap: "google/gemini-2.5-flash",
+            expensive: "bedrock/us.anthropic.claude-opus-4-8",
+          },
+        }),
+      );
+
+      const agents = discoverAgents(cwd, userDir, userDir);
+
+      expect(agents).toHaveLength(2);
+      // Sorted alphabetically by name
+      expect(agents[0]!.name).toBe("implementer");
+      expect(agents[1]!.name).toBe("researcher");
+
+      // implementer
+      expect(agents[0]!.model).toBe("bedrock/us.anthropic.claude-opus-4-8");
+      expect(agents[0]!.tools).toEqual(["read", "edit", "bash"]);
+      expect(agents[0]!.mode).toBe("fork");
+      expect(agents[0]!.sandbox).toBe(true);
+      expect(agents[0]!.body).toBe("You are an implementer.");
+
+      // researcher
+      expect(agents[1]!.model).toBe("google/gemini-2.5-flash");
+      expect(agents[1]!.tools).toEqual(["read", "grep"]);
+      expect(agents[1]!.mode).toBe("clean");
+      expect(agents[1]!.body).toBe("You are a researcher.");
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("returns empty array when no agent files exist", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      const agents = discoverAgents(cwd, userDir, userDir);
+      expect(agents).toEqual([]);
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("skips broken files without crashing", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(userDir, "valid.md", "---\nname: valid\nmodel: cheap\n---\nok");
+      writeFile(
+        userDir,
+        "no-model.md",
+        "---\nname: broken\n---\nno model field",
+      );
+      writeFile(userDir, "not-agent.md", "just markdown, no frontmatter");
+      writeFile(
+        userDir,
+        "subagents.json",
+        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
+      );
+
+      const agents = discoverAgents(cwd, userDir, userDir);
+
+      expect(agents).toHaveLength(1);
+      expect(agents[0]!.name).toBe("valid");
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("project agent overrides user agent with same name", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(
+        userDir,
+        "worker.md",
+        "---\nname: user-worker\nmodel: cheap\n---\nuser version",
+      );
+      writeFile(
+        userDir,
+        "subagents.json",
+        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
+      );
+
+      const projectAgentDir = join(cwd, ".pi", "agents");
+      mkdirSync(projectAgentDir, { recursive: true });
+      writeFile(
+        projectAgentDir,
+        "worker.md",
+        "---\nname: project-worker\nmodel: cheap\n---\nproject version",
+      );
+
+      const agents = discoverAgents(cwd, userDir, userDir);
+
+      expect(agents).toHaveLength(1);
+      expect(agents[0]!.name).toBe("project-worker");
+      expect(agents[0]!.body).toBe("project version");
     } finally {
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
