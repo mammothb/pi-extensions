@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -620,6 +621,42 @@ describe("launchChild", () => {
     );
     expect(stuckWarnings).toHaveLength(0);
     expect(result.output).toBe("done");
+  });
+
+  // -------------------------------------------------------------------------
+  // Sandbox tests
+  // -------------------------------------------------------------------------
+
+  function hasBw(): boolean {
+    try {
+      const result = spawnSync("bw", ["--help"], { stdio: "ignore" });
+      return result.status === 0 || result.status === 1;
+    } catch {
+      return false;
+    }
+  }
+  const bwAvailable = hasBw();
+
+  it.runIf(bwAvailable)("sandbox: true wraps child in bubblewrap", async () => {
+    const script = jsonlScript(makeAssistantMessage("sandboxed hello"));
+    const sandboxedAgent: AgentConfig = {
+      ...agent,
+      sandbox: true,
+    };
+
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
+      agent: sandboxedAgent,
+      task: "sandboxed task",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
+
+    expect(result.agent).toBe("test-agent");
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("sandboxed hello");
+    expect(result.error).toBeUndefined();
   });
 });
 
