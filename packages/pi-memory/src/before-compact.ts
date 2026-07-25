@@ -175,7 +175,7 @@ function buildFailedCutDiagnostics(
   isMmCompact: boolean,
   reason: string,
   willRetry: boolean,
-  settings: { debug: boolean },
+  settings: MmCompactSettings,
 ): void {
   const entries = branchEntries as BranchEntry[];
   const lastComp = [...entries].reverse().find((e) => e.type === "compaction");
@@ -236,7 +236,7 @@ function handleFailedCut(
   isMmCompact: boolean,
   reason: string,
   willRetry: boolean,
-  settings: { debug: boolean },
+  settings: MmCompactSettings,
 ): { cancel: true } | undefined {
   buildFailedCutDiagnostics(
     ownCut,

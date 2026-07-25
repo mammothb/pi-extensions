@@ -301,7 +301,7 @@ function findHeaderRow(raw: unknown[][]): number {
     if (!row) {
       continue;
     }
-    const values = (row as unknown[])
+    const values = row
       .map((c) => String(c ?? "").trim())
       .filter((v) => v !== "");
     if (values.length === 0) {
