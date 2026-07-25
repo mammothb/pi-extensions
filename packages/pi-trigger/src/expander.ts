@@ -49,7 +49,7 @@ function substituteArgs(content: string, argsString: string): string {
       if (defaultNum) {
         const index = parseInt(defaultNum, 10) - 1;
         const value = args[index];
-        return value ? value : defaultValue;
+        return value ?? defaultValue;
       }
       if (sliceStart) {
         let start = parseInt(sliceStart, 10) - 1;
