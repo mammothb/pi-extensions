@@ -88,6 +88,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-subagents",
+          root: "./packages/pi-subagents",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

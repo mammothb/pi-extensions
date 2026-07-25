@@ -1,0 +1,33 @@
+{
+  "name": "@mammothb/pi-subagents",
+  "version": "0.1.0",
+  "description": "Delegate tasks to specialized subagents with isolated context",
+  "keywords": [
+    "pi-package"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "src",
+    "agents"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "typebox": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}
