@@ -128,6 +128,79 @@ function handleEditModeInput(
   return true;
 }
 
+function handleTabNavigation(data: string, ctx: InputDeps): boolean {
+  if (!ctx.isSingle && ctx.kb.matches(data, "pi-ask.nextTab")) {
+    ctx.onAutoConfirmIfAnswered();
+    ctx.onChangeTab((ctx.activeTab + 1) % ctx.totalTabs);
+    return true;
+  }
+  if (!ctx.isSingle && ctx.kb.matches(data, "pi-ask.prevTab")) {
+    ctx.onAutoConfirmIfAnswered();
+    ctx.onChangeTab((ctx.activeTab - 1 + ctx.totalTabs) % ctx.totalTabs);
+    return true;
+  }
+  return false;
+}
+
+function handleCursorNavigation(data: string, ctx: InputDeps): boolean {
+  if (ctx.kb.matches(data, "pi-ask.cursorUp")) {
+    ctx.onMoveCursor(-1);
+    return true;
+  }
+  if (ctx.kb.matches(data, "pi-ask.cursorDown")) {
+    ctx.onMoveCursor(1);
+    return true;
+  }
+  return false;
+}
+
+function handleOtherOptionInput(
+  data: string,
+  ctx: InputDeps,
+  state: QuestionState,
+): boolean {
+  if (matchesKey(data, Key.space) || matchesKey(data, Key.tab)) {
+    ctx.onEnterEditMode();
+    return true;
+  }
+  if (matchesKey(data, Key.enter) && state.freeTextValue !== null) {
+    ctx.onConfirmAndAdvance();
+    return true;
+  }
+  return false;
+}
+
+function handleMultiSelectInput(
+  data: string,
+  ctx: InputDeps,
+  state: QuestionState,
+): boolean {
+  if (matchesKey(data, Key.space)) {
+    ctx.onToggleSelected(state.cursorIndex);
+    return true;
+  }
+  if (matchesKey(data, Key.enter)) {
+    if (state.selectedIndices.size > 0 || state.freeTextValue !== null) {
+      ctx.onConfirmAndAdvance();
+      return true;
+    }
+  }
+  return false;
+}
+
+function handleSingleSelectInput(
+  data: string,
+  ctx: InputDeps,
+  state: QuestionState,
+): boolean {
+  if (matchesKey(data, Key.enter) || matchesKey(data, Key.space)) {
+    ctx.onSelectOption(state.cursorIndex);
+    ctx.onConfirmAndAdvance();
+    return true;
+  }
+  return false;
+}
+
 // ── Question tab ─────────────────────────────────────────────────────────────
 
 function handleQuestionTabInput(
@@ -136,74 +209,26 @@ function handleQuestionTabInput(
   state: QuestionState,
   q: Question,
 ): boolean {
-  // Global keys
   if (matchesKey(data, Key.escape)) {
     ctx.onCancel();
     return true;
   }
 
-  // Tab navigation (multi-question only)
-  if (!ctx.isSingle && ctx.kb.matches(data, "pi-ask.nextTab")) {
-    ctx.onAutoConfirmIfAnswered();
-    ctx.onChangeTab((ctx.activeTab + 1) % ctx.totalTabs);
+  if (handleTabNavigation(data, ctx)) {
     return true;
   }
-
-  if (!ctx.isSingle && ctx.kb.matches(data, "pi-ask.prevTab")) {
-    ctx.onAutoConfirmIfAnswered();
-    ctx.onChangeTab((ctx.activeTab - 1 + ctx.totalTabs) % ctx.totalTabs);
-    return true;
-  }
-
-  // Cursor navigation
-  if (ctx.kb.matches(data, "pi-ask.cursorUp")) {
-    ctx.onMoveCursor(-1);
-    return true;
-  }
-
-  if (ctx.kb.matches(data, "pi-ask.cursorDown")) {
-    ctx.onMoveCursor(1);
+  if (handleCursorNavigation(data, ctx)) {
     return true;
   }
 
   const opts = getOptions(q);
   const isOnOther = state.cursorIndex === opts.length - 1;
 
-  // "Type your own answer..." actions
   if (isOnOther) {
-    if (matchesKey(data, Key.space) || matchesKey(data, Key.tab)) {
-      ctx.onEnterEditMode();
-      return true;
-    }
-    // Enter confirms if there's already a saved free-text answer
-    if (matchesKey(data, Key.enter) && state.freeTextValue !== null) {
-      ctx.onConfirmAndAdvance();
-      return true;
-    }
+    return handleOtherOptionInput(data, ctx, state);
   }
-
-  // Multi-select actions
-  if (q.multi && !isOnOther) {
-    if (matchesKey(data, Key.space)) {
-      ctx.onToggleSelected(state.cursorIndex);
-      return true;
-    }
-    if (matchesKey(data, Key.enter)) {
-      if (state.selectedIndices.size > 0 || state.freeTextValue !== null) {
-        ctx.onConfirmAndAdvance();
-        return true;
-      }
-    }
+  if (q.multi) {
+    return handleMultiSelectInput(data, ctx, state);
   }
-
-  // Single-select action
-  if (!q.multi && !isOnOther) {
-    if (matchesKey(data, Key.enter) || matchesKey(data, Key.space)) {
-      ctx.onSelectOption(state.cursorIndex);
-      ctx.onConfirmAndAdvance();
-      return true;
-    }
-  }
-
-  return false;
+  return handleSingleSelectInput(data, ctx, state);
 }

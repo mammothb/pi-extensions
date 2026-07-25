@@ -117,6 +117,59 @@ function extractFinalOutput(messages: Message[]): string {
  * Calls `onUpdate` after each recognized event so callers can stream progress.
  * Resolves with the final CumulativeResult when the stream ends.
  */
+function processJsonlLine(
+  line: string,
+  result: CumulativeResult,
+  onUpdate: ((result: CumulativeResult) => void) | undefined,
+): void {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  let event: { type: string; message?: unknown };
+  try {
+    event = JSON.parse(trimmed);
+  } catch {
+    console.warn("parseJsonlStream: skipping malformed JSON line");
+    return;
+  }
+
+  if (
+    (event.type !== "message_end" && event.type !== "tool_result_end") ||
+    !event.message
+  ) {
+    return;
+  }
+
+  const msg = event.message as Message;
+  result.messages.push(msg);
+
+  if (event.type === "message_end" && msg.role === "assistant") {
+    result.usage.turns++;
+    const usage = msg.usage;
+    if (usage) {
+      result.usage.input += usage.input || 0;
+      result.usage.output += usage.output || 0;
+      result.usage.cacheRead += usage.cacheRead || 0;
+      result.usage.cacheWrite += usage.cacheWrite || 0;
+      result.usage.total += usage.totalTokens || 0;
+    }
+    if (!result.model && msg.model) {
+      result.model = msg.model;
+    }
+    if (msg.stopReason) {
+      result.stopReason = msg.stopReason;
+    }
+    if (msg.errorMessage) {
+      result.errorMessage = msg.errorMessage;
+    }
+  }
+
+  result.finalOutput = extractFinalOutput(result.messages);
+  onUpdate?.(result);
+}
+
 export function parseJsonlStream(
   stream: Readable,
   onUpdate: ((result: CumulativeResult) => void) | undefined,
@@ -125,65 +178,18 @@ export function parseJsonlStream(
   let buffer = "";
 
   return new Promise<CumulativeResult>((resolve, reject) => {
-    const processLine = (line: string) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        return;
-      }
-
-      let event: { type: string; message?: unknown };
-      try {
-        event = JSON.parse(trimmed);
-      } catch {
-        console.warn(`parseJsonlStream: skipping malformed JSON line`);
-        return;
-      }
-
-      if (
-        (event.type === "message_end" || event.type === "tool_result_end") &&
-        event.message
-      ) {
-        const msg = event.message as Message;
-        result.messages.push(msg);
-
-        if (event.type === "message_end" && msg.role === "assistant") {
-          result.usage.turns++;
-          const usage = msg.usage;
-          if (usage) {
-            result.usage.input += usage.input || 0;
-            result.usage.output += usage.output || 0;
-            result.usage.cacheRead += usage.cacheRead || 0;
-            result.usage.cacheWrite += usage.cacheWrite || 0;
-            result.usage.total += usage.totalTokens || 0;
-          }
-          if (!result.model && msg.model) {
-            result.model = msg.model;
-          }
-          if (msg.stopReason) {
-            result.stopReason = msg.stopReason;
-          }
-          if (msg.errorMessage) {
-            result.errorMessage = msg.errorMessage;
-          }
-        }
-
-        result.finalOutput = extractFinalOutput(result.messages);
-        onUpdate?.(result);
-      }
-    };
-
     stream.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
-        processLine(line);
+        processJsonlLine(line, result, onUpdate);
       }
     });
 
     stream.on("end", () => {
       if (buffer.trim()) {
-        processLine(buffer);
+        processJsonlLine(buffer, result, onUpdate);
       }
       resolve(result);
     });

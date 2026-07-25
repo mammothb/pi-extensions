@@ -29,41 +29,40 @@ function invalidExpandIndices(
   return requested.filter((i) => !Number.isInteger(i) || !available.has(i));
 }
 
-export function runRecallPipeline(
-  input: RecallPipelineInput,
+function handleExpandMode(
+  expand: number[],
+  sessionFile: string,
+  lineageEntryIds: string[] | undefined,
+  scope: string | undefined,
+  scopePrefix: string,
 ): RecallPipelineOutput {
-  const {
+  const { rendered: fullMsgs } = loadAllMessages(
     sessionFile,
-    query,
-    scope,
+    true,
     lineageEntryIds,
-    page = 1,
-    expand,
-    continuationPrompt,
-  } = input;
-  const scopePrefix = scope === "all" ? "Scope: all\n\n" : "";
-
-  // Expand mode: return full content for specific entry indices
-  if (expand && expand.length > 0 && !query) {
-    const { rendered: fullMsgs } = loadAllMessages(
-      sessionFile,
-      true,
-      lineageEntryIds,
-    );
-    const byIndex = new Map(fullMsgs.map((m) => [m.index, m]));
-    const invalid = invalidExpandIndices(expand, new Set(byIndex.keys()));
-    if (invalid.length > 0) {
-      return {
-        text: `Cannot expand indices outside ${scope === "all" ? "session history" : "active lineage"}: ${invalid.join(", ")}`,
-      };
-    }
-    const expanded = expand
-      .map((i) => byIndex.get(i))
-      .filter((m): m is NonNullable<typeof m> => Boolean(m));
-    return { text: scopePrefix + formatRecallOutput(expanded) };
+  );
+  const byIndex = new Map(fullMsgs.map((m) => [m.index, m]));
+  const invalid = invalidExpandIndices(expand, new Set(byIndex.keys()));
+  if (invalid.length > 0) {
+    const scopeLabel = scope === "all" ? "session history" : "active lineage";
+    return {
+      text: `Cannot expand indices outside ${scopeLabel}: ${invalid.join(", ")}`,
+    };
   }
+  const expanded = expand
+    .map((i) => byIndex.get(i))
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+  return { text: scopePrefix + formatRecallOutput(expanded) };
+}
 
-  // Load and search
+function handleSearchMode(
+  query: string | undefined,
+  page: number,
+  scope: string | undefined,
+  sessionFile: string,
+  lineageEntryIds: string[] | undefined,
+  continuationPrompt: string | undefined,
+): RecallPipelineOutput {
   const { rendered, rawMessages } = loadAllMessages(
     sessionFile,
     false,
@@ -93,4 +92,38 @@ export function runRecallPipeline(
   }
 
   return { text: scopePrefix + formatRecallOutput(allResults, query) };
+}
+
+export function runRecallPipeline(
+  input: RecallPipelineInput,
+): RecallPipelineOutput {
+  const {
+    sessionFile,
+    query,
+    scope,
+    lineageEntryIds,
+    page = 1,
+    expand,
+    continuationPrompt,
+  } = input;
+  const scopePrefix = scope === "all" ? "Scope: all\n\n" : "";
+
+  if (expand && expand.length > 0 && !query) {
+    return handleExpandMode(
+      expand,
+      sessionFile,
+      lineageEntryIds,
+      scope,
+      scopePrefix,
+    );
+  }
+
+  return handleSearchMode(
+    query,
+    page,
+    scope,
+    sessionFile,
+    lineageEntryIds,
+    continuationPrompt,
+  );
 }
