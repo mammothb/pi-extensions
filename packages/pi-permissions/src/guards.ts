@@ -41,6 +41,14 @@ function makeSessionKey(toolName: string, details?: string): string {
   return details ? `${toolName}:${details}` : toolName;
 }
 
+/** Bundled context for guard check functions — avoids S107 (too many params). */
+interface RunContext {
+  confirm: ConfirmFn;
+  store: ApprovalCache;
+  pi: ExtensionAPI;
+  hasUI: boolean;
+}
+
 /**
  * Handle an "ask" result: check session store, prompt user if needed,
  * and return the block decision.
@@ -125,10 +133,7 @@ async function runPathBearingChecks(
   toolName: string,
   cwd: string,
   config: ResolvedConfig,
-  confirm: ConfirmFn,
-  store: ApprovalCache,
-  pi: ExtensionAPI,
-  hasUI: boolean,
+  ctx: RunContext,
 ): Promise<ToolCallEventResult | undefined> {
   const pathResult = checkPath(targetPath, cwd, config);
   const toolResult = checkTool(toolName, config);
@@ -155,10 +160,10 @@ async function runPathBearingChecks(
           : undefined,
       },
       makeSessionKey(toolName, targetPath),
-      confirm,
-      store,
-      pi,
-      hasUI,
+      ctx.confirm,
+      ctx.store,
+      ctx.pi,
+      ctx.hasUI,
     );
   }
   if (toolResult.action === "ask") {
@@ -173,10 +178,10 @@ async function runPathBearingChecks(
           : undefined,
       },
       makeSessionKey(toolName, targetPath),
-      confirm,
-      store,
-      pi,
-      hasUI,
+      ctx.confirm,
+      ctx.store,
+      ctx.pi,
+      ctx.hasUI,
     );
   }
 }
@@ -263,10 +268,7 @@ export function registerGuards(
         toolName,
         ctx.cwd,
         config,
-        confirm,
-        store,
-        pi,
-        ctx.hasUI,
+        { confirm, store, pi, hasUI: ctx.hasUI },
       );
     } else {
       block = await runToolOnlyCheck(
