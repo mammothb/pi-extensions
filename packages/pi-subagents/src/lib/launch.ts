@@ -449,7 +449,9 @@ export function buildCliArgs(agent: AgentConfig, task: string): string[] {
     args.push("--no-session");
   }
 
-  args.push("--model", agent.model);
+  if (agent.model) {
+    args.push("--model", agent.model);
+  }
 
   if (agent.thinking) {
     args.push("--thinking", agent.thinking);

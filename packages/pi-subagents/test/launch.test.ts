@@ -72,6 +72,12 @@ describe("buildCliArgs", () => {
     expect(args[idx + 1]).toBe("google/gemini-2.5-flash");
   });
 
+  it("omits --model when agent.model is falsy", () => {
+    const agent = { ...baseAgent, model: "" };
+    const args = buildCliArgs(agent, "do something");
+    expect(args).not.toContain("--model");
+  });
+
   it("places task string as the last argument after -- separator", () => {
     const task = "fix the bug in src/auth.ts";
     const args = buildCliArgs(baseAgent, task);
