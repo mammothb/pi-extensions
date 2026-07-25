@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Readable } from "node:stream";
 import type { Message } from "@earendil-works/pi-ai";
+import { wrapWithBubblewrap } from "./sandbox.js";
 import type { AgentConfig, SubagentResult } from "./types.js";
 
 /**
@@ -378,7 +379,17 @@ export async function launchChild(opts: {
   const { command, args, agent, task, cwd, signal, onUpdate, stuckTimeoutMs } =
     opts;
   const startedAt = Date.now();
-  const proc = spawnChild(command, args, cwd);
+
+  // Wrap in bubblewrap sandbox when agent requests isolation
+  let resolvedCmd = command;
+  let resolvedArgs = args;
+  if (opts.agent.sandbox) {
+    const wrapped = wrapWithBubblewrap(resolvedCmd, resolvedArgs);
+    resolvedCmd = wrapped.command;
+    resolvedArgs = wrapped.args;
+  }
+
+  const proc = spawnChild(resolvedCmd, resolvedArgs, cwd);
 
   let stderr = "";
   proc.stderr?.on("data", (data: Buffer) => {
