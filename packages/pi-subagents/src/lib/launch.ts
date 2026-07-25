@@ -149,11 +149,11 @@ function processJsonlLine(
     result.usage.turns++;
     const usage = msg.usage;
     if (usage) {
-      result.usage.input += usage.input || 0;
-      result.usage.output += usage.output || 0;
-      result.usage.cacheRead += usage.cacheRead || 0;
-      result.usage.cacheWrite += usage.cacheWrite || 0;
-      result.usage.total += usage.totalTokens || 0;
+      result.usage.input += usage.input ?? 0;
+      result.usage.output += usage.output ?? 0;
+      result.usage.cacheRead += usage.cacheRead ?? 0;
+      result.usage.cacheWrite += usage.cacheWrite ?? 0;
+      result.usage.total += usage.totalTokens ?? 0;
     }
     if (!result.model && msg.model) {
       result.model = msg.model;
