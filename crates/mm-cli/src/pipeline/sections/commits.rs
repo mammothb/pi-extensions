@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::LazyLock};
 
 use regex::Regex;
+use serde_json::Value;
 
 use crate::types::NormalizedBlock;
 
@@ -55,40 +56,21 @@ pub fn extract_commits(blocks: &[NormalizedBlock]) -> Vec<CommitInfo> {
     let mut seen: HashSet<String> = HashSet::new();
 
     for i in 0..blocks.len() {
-        match &blocks[i] {
-            // ── Claude Code format: ToolCall + look-ahead ToolResult ──
+        let commit = match &blocks[i] {
             NormalizedBlock::ToolCall { name, args, .. } if name == "Bash" || name == "bash" => {
-                let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                let message = match extract_commit_message(cmd) {
-                    Some(m) => m,
-                    None => continue,
-                };
-                let hash = look_ahead_for_hash(blocks, i);
-                let key = format!("{}::{}", hash.as_deref().unwrap_or(""), message);
-                if seen.insert(key) {
-                    commits.push(CommitInfo { hash, message });
-                }
+                try_extract_claude_commit(blocks, i, args)
             }
-
-            // ── Pi format: Bash block has command + output inline ──
             NormalizedBlock::Bash {
-                command,
-                output,
-                source_index: _,
-                exit_code: _,
-            } => {
-                let message = match extract_commit_message(command) {
-                    Some(m) => m,
-                    None => continue,
-                };
-                let hash = extract_hash_from_text(output);
-                let key = format!("{}::{}", hash.as_deref().unwrap_or(""), message);
-                if seen.insert(key) {
-                    commits.push(CommitInfo { hash, message });
-                }
-            }
-
+                command, output, ..
+            } => try_extract_pi_commit(command, output),
             _ => continue,
+        };
+
+        if let Some(c) = commit {
+            let key = format!("{}::{}", c.hash.as_deref().unwrap_or(""), c.message);
+            if seen.insert(key) {
+                commits.push(c);
+            }
         }
     }
 
@@ -115,6 +97,25 @@ pub fn format_commits(commits: &[CommitInfo], limit: usize) -> Vec<String> {
 // ===============
 // Private helpers
 // ===============
+
+/// Try to extract a commit from a Claude-format `ToolCall` with look-ahead `ToolResult`.
+fn try_extract_claude_commit(
+    blocks: &[NormalizedBlock],
+    idx: usize,
+    args: &Value,
+) -> Option<CommitInfo> {
+    let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    let message = extract_commit_message(cmd)?;
+    let hash = look_ahead_for_hash(blocks, idx);
+    Some(CommitInfo { hash, message })
+}
+
+/// Try to extract a commit from a Pi-format `Bash` block.
+fn try_extract_pi_commit(command: &str, output: &str) -> Option<CommitInfo> {
+    let message = extract_commit_message(command)?;
+    let hash = extract_hash_from_text(output);
+    Some(CommitInfo { hash, message })
+}
 
 /// Extract commit message from a `git commit -m "..."` command line.
 fn extract_commit_message(command: &str) -> Option<String> {
