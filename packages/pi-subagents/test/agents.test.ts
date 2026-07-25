@@ -1,8 +1,15 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  discoverAgentFiles,
   parseFrontmatter,
   resolveModel,
   validateConfig,
@@ -313,5 +320,105 @@ describe("resolveModel", () => {
       balanced: "bedrock/us.anthropic.claude-sonnet-4-5",
     };
     expect(resolveModel("cheap", tiers)).toBe("balanced");
+  });
+});
+
+describe("discoverAgentFiles", () => {
+  function makeDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    return dir;
+  }
+
+  function writeFile(dir: string, name: string, content: string): void {
+    writeFileSync(join(dir, name), content, "utf-8");
+  }
+
+  it("discovers user and project agents, project overrides user", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(userDir, "foo.md", "---\nname: user-foo\n---");
+      writeFile(userDir, "bar.md", "---\nname: user-bar\n---");
+      writeFile(userDir, "not-an-agent.txt", "plain text");
+
+      const projectAgentDir = join(cwd, ".pi", "agents");
+      mkdirSync(projectAgentDir, { recursive: true });
+      writeFile(projectAgentDir, "bar.md", "---\nname: project-bar\n---");
+      writeFile(projectAgentDir, "baz.md", "---\nname: project-baz\n---");
+
+      const result = discoverAgentFiles(cwd, userDir);
+
+      expect(result.size).toBe(3);
+      expect(result.get("foo")).toBe(join(userDir, "foo.md"));
+      expect(result.get("bar")).toBe(join(projectAgentDir, "bar.md"));
+      expect(result.get("baz")).toBe(join(projectAgentDir, "baz.md"));
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("returns empty map when neither directory exists", () => {
+    const cwd = makeDir();
+    const userDir = makeDir();
+    try {
+      const result = discoverAgentFiles(cwd, userDir);
+      expect(result.size).toBe(0);
+    } finally {
+      rmSync(cwd, { recursive: true });
+      rmSync(userDir, { recursive: true });
+    }
+  });
+
+  it("ignores non-.md files", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(userDir, "agent.md", "---\nname: x\n---");
+      writeFile(userDir, "README.txt", "docs");
+      writeFile(userDir, ".hidden.md.swp", "vim junk");
+
+      const result = discoverAgentFiles(cwd, userDir);
+
+      expect(result.size).toBe(1);
+      expect(result.get("agent")).toBe(join(userDir, "agent.md"));
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("returns only user agents when project dir is missing", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      writeFile(userDir, "foo.md", "---\nname: foo\n---");
+
+      const result = discoverAgentFiles(cwd, userDir);
+
+      expect(result.size).toBe(1);
+      expect(result.get("foo")).toBe(join(userDir, "foo.md"));
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("returns only project agents when user dir is missing", () => {
+    const cwd = makeDir();
+    const userDir = makeDir(); // exists but empty
+    try {
+      const projectAgentDir = join(cwd, ".pi", "agents");
+      mkdirSync(projectAgentDir, { recursive: true });
+      writeFile(projectAgentDir, "proj.md", "---\nname: proj\n---");
+
+      const result = discoverAgentFiles(cwd, userDir);
+
+      expect(result.size).toBe(1);
+      expect(result.get("proj")).toBe(join(projectAgentDir, "proj.md"));
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
   });
 });

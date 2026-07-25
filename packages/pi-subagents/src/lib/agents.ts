@@ -1,4 +1,6 @@
-import { basename } from "node:path";
+import { readdirSync } from "node:fs";
+import { basename, join } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parse as parseYaml } from "yaml";
 import type { AgentConfig } from "./types.js";
 
@@ -148,6 +150,50 @@ export function resolveModel(
   tiers: Record<string, string>,
 ): string {
   return tiers[raw] ?? raw;
+}
+
+/**
+ * Discover agent .md files from user and project directories.
+ * Project agents override user agents with the same name.
+ *
+ * @param cwd     Working directory (project root) — used to find `.pi/agents/`
+ * @param userDir Override the user agent directory (for testing).
+ *                Defaults to `getAgentDir()` from pi-coding-agent.
+ * @returns Map of agent name (filename stem) → absolute file path.
+ */
+export function discoverAgentFiles(
+  cwd: string,
+  userDir?: string,
+): Map<string, string> {
+  const agents = new Map<string, string>();
+
+  // User-level agents (loaded first, overridden by project)
+  const userAgentDir = userDir ?? join(getAgentDir(), "agents");
+  collectAgentFiles(userAgentDir, agents);
+
+  // Project-level agents (override user agents with same name)
+  const projectAgentDir = join(cwd, ".pi", "agents");
+  collectAgentFiles(projectAgentDir, agents);
+
+  return agents;
+}
+
+function collectAgentFiles(dir: string, agents: Map<string, string>): void {
+  let entries: Iterable<{ name: string }>;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // Directory doesn't exist or is inaccessible — skip
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.name.endsWith(".md")) {
+      continue;
+    }
+    const stem = basename(entry.name, ".md");
+    agents.set(stem, join(dir, entry.name));
+  }
 }
 
 /**
