@@ -35,6 +35,8 @@ export interface SubagentResult {
   };
   model?: string;
   error?: string;
+  /** Individual results when executing in parallel mode. Omitted for single mode. */
+  results?: SubagentResult[];
 }
 
 export interface SubagentConfig {
