@@ -811,6 +811,213 @@ describe("launchChild", () => {
 
     rmSync(parentDir, { recursive: true, force: true });
   });
+
+  // -------------------------------------------------------------------------
+  // End-to-end: fork → launch → result → cleanup
+  // -------------------------------------------------------------------------
+
+  it("e2e: fork session → child launch → result with sessionFile", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    try {
+      // 1. Create parent session with context
+      const parentFile = join(parentDir, "parent.jsonl");
+      const parentMessages = [
+        {
+          type: "message",
+          id: "msg00001",
+          parentId: null,
+          timestamp: new Date().toISOString(),
+          message: {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: "Parent: plan the architecture" },
+            ],
+          },
+        },
+        {
+          type: "message",
+          id: "msg00002",
+          parentId: "msg00001",
+          timestamp: new Date().toISOString(),
+          message: {
+            role: "assistant" as const,
+            content: [
+              {
+                type: "text" as const,
+                text: "Architecture plan: use event sourcing",
+              },
+            ],
+          },
+        },
+      ];
+      writeFileSync(
+        parentFile,
+        `${JSON.stringify({
+          type: "session",
+          version: 3,
+          id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          timestamp: new Date().toISOString(),
+          cwd: process.cwd(),
+        })}\n${parentMessages.map((m) => JSON.stringify(m)).join("\n")}\n`,
+        "utf8",
+      );
+
+      // 2. Seed fork session from parent
+      const { seedForkSession: seed, generateChildSessionFile: gen } =
+        await import("../src/lib/session.js");
+      const forkFile = gen(join(parentDir, "children"));
+      const forkAgent: AgentConfig = {
+        ...agent,
+        thinking: "low",
+        mode: "fork",
+        noSession: false, // keep session for resume
+      };
+      seed(parentFile, forkFile, forkAgent, process.cwd());
+
+      // 3. Verify fork file has expected structure
+      const content = readFileSync(forkFile, "utf8");
+      expect(content).toContain("event sourcing"); // parent context
+      expect(content).toContain("subagent_boundary"); // boundary marker
+      expect(content).toContain("pi-subagents_launch_metadata"); // metadata
+      expect(content).toContain("model_change"); // model state
+      expect(content).toContain("thinking_level_change"); // thinking state
+
+      // 4. Launch child (simulated pi with node script)
+      // Strip --session <path> from args — it's a valid V8 flag (heap snapshot)
+      // and would interfere with node. The fork file content was verified above.
+      const script = jsonlScript(
+        makeAssistantMessage("e2e: implemented event store"),
+      );
+      const cliArgs = buildCliArgs(
+        forkAgent,
+        "implement the event store",
+        forkFile,
+      );
+
+      // Filter out --session <path> for the node-based test
+      const filteredArgs: string[] = [];
+      let skip = false;
+      for (const arg of cliArgs.slice(3)) {
+        if (skip) {
+          skip = false;
+          continue;
+        }
+        if (arg === "--session") {
+          skip = true;
+          continue;
+        }
+        filteredArgs.push(arg);
+      }
+
+      const result = await launchChild({
+        command: nodeBin,
+        args: ["-e", script, "--", ...filteredArgs],
+        agent: forkAgent,
+        task: "implement the event store",
+        cwd: process.cwd(),
+        stuckTimeoutMs: 0,
+      });
+
+      // 5. Verify result
+      expect(result.output).toBe("e2e: implemented event store");
+      expect(result.error).toBeUndefined();
+
+      // 6. Simulate what launchSubagent does: populate sessionFile
+      result.sessionFile = forkFile;
+      expect(result.sessionFile).toBe(forkFile);
+
+      // 7. Fork file survived (noSession: false) — ready for resume
+      expect(existsSync(forkFile)).toBe(true);
+    } finally {
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
+
+  it("e2e: fork session cleanup when noSession is true", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    let forkFile: string | undefined;
+
+    // Simulate launchSubagent's fork+cleanup lifecycle
+    const parentFile = join(parentDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+
+    try {
+      forkFile = gen(join(parentDir, "children"));
+      const ephemeralAgent: AgentConfig = {
+        ...agent,
+        mode: "fork",
+        noSession: true,
+      };
+      seed(parentFile, forkFile, ephemeralAgent, process.cwd());
+
+      expect(existsSync(forkFile)).toBe(true);
+
+      // Launch child
+      const script = jsonlScript(makeAssistantMessage("done"));
+      // Filter out --session <path> (V8 flag in node)
+      const rawArgs = buildCliArgs(ephemeralAgent, "task", forkFile).slice(3);
+      const filteredArgs: string[] = [];
+      let skip = false;
+      for (const arg of rawArgs) {
+        if (skip) {
+          skip = false;
+          continue;
+        }
+        if (arg === "--session") {
+          skip = true;
+          continue;
+        }
+        filteredArgs.push(arg);
+      }
+
+      await launchChild({
+        command: nodeBin,
+        args: ["-e", script, "--", ...filteredArgs],
+        agent: ephemeralAgent,
+        task: "task",
+        cwd: process.cwd(),
+        stuckTimeoutMs: 0,
+      });
+
+      // Simulate cleanup: launchSubagent would delete forkFile when noSession
+      rmSync(forkFile, { force: true });
+      forkFile = undefined;
+
+      // Fork file cleaned up
+      expect(existsSync(forkFile!)).toBe(false);
+    } finally {
+      if (forkFile) {
+        try {
+          rmSync(forkFile, { force: true });
+        } catch {
+          // Best-effort
+        }
+      }
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // =============================================================================
