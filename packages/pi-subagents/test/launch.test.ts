@@ -750,4 +750,37 @@ describe("createSubagentTool", () => {
       (result.content[0] as { type: "text"; text: string }).text,
     ).toContain("must not be empty");
   });
+
+  it("returns aborted results when signal is pre-aborted (parallel)", async () => {
+    const tool = createSubagentTool();
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await tool.execute(
+      "tc-1",
+      {
+        tasks: [
+          { agent: "nonexistent-1", task: "do A" },
+          { agent: "nonexistent-2", task: "do B" },
+        ],
+      },
+      controller.signal,
+      undefined,
+      { cwd: tmpDir },
+    );
+
+    const details = result.details;
+    expect(details.agent).toBe("parallel");
+    expect(details.results).toBeDefined();
+    if (!details.results) {
+      throw new Error("expected results to be defined");
+    }
+    expect(details.results).toHaveLength(2);
+    for (const r of details.results) {
+      expect(r.error).toBe("Subagent was aborted");
+    }
+    expect((result.content[0] as { type: "text"; text: string }).text).toBe(
+      "Parallel: 0/2 succeeded.",
+    );
+  });
 });

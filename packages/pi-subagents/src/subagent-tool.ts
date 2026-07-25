@@ -252,41 +252,59 @@ export function createSubagentTool() {
         };
       }
 
-      const results = await mapWithConcurrencyLimit(
-        tasks,
-        MAX_CONCURRENT,
-        async ({ agent: agentName, task: taskDesc }, _index, childSignal) => {
-          const agent = agents.find((a) => a.name === agentName);
-          if (!agent) {
-            const available = agents.map((a) => a.name).join(", ") || "none";
-            return failedResult(
-              agentName,
-              taskDesc,
-              `Unknown agent "${agentName}". Available: ${available}`,
-            );
-          }
+      let results: SubagentResult[];
+      try {
+        results = await mapWithConcurrencyLimit(
+          tasks,
+          MAX_CONCURRENT,
+          async ({ agent: agentName, task: taskDesc }, _index, childSignal) => {
+            const agent = agents.find((a) => a.name === agentName);
+            if (!agent) {
+              const available = agents.map((a) => a.name).join(", ") || "none";
+              return failedResult(
+                agentName,
+                taskDesc,
+                `Unknown agent "${agentName}". Available: ${available}`,
+              );
+            }
 
-          return launchSubagent(
-            agent,
-            taskDesc,
-            resolvedCwd,
-            childSignal,
-            onUpdate
-              ? (r) =>
-                  onUpdate({
-                    content: [
-                      {
-                        type: "text",
-                        text: `[${r.agent}] ${r.output || "(running...)"}`,
-                      },
-                    ],
-                    details: r,
-                  })
-              : undefined,
-            config.stuckTimeoutMs,
+            return launchSubagent(
+              agent,
+              taskDesc,
+              resolvedCwd,
+              childSignal,
+              onUpdate
+                ? (r) =>
+                    onUpdate({
+                      content: [
+                        {
+                          type: "text",
+                          text: `[${r.agent}] ${r.output || "(running...)"}`,
+                        },
+                      ],
+                      details: r,
+                    })
+                : undefined,
+              config.stuckTimeoutMs,
+            );
+          },
+          signal,
+        );
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // Pre-aborted signal: all tasks cancelled before launch
+          results = tasks.map((t) =>
+            failedResult(t.agent, t.task, "Subagent was aborted"),
           );
-        },
-        signal,
+        } else {
+          throw err;
+        }
+      }
+
+      // Fill holes from abort (unprocessed task slots are undefined)
+      results = tasks.map(
+        (t, i) =>
+          results[i] ?? failedResult(t.agent, t.task, "Subagent was aborted"),
       );
 
       const summary = summaryText(results);
