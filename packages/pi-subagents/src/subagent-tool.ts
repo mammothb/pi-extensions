@@ -1,3 +1,4 @@
+import { resolve, sep } from "node:path";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
@@ -7,6 +8,29 @@ import { discoverAgents } from "./lib/agents.js";
 import { loadSubagentConfig } from "./lib/config.js";
 import { launchSubagent } from "./lib/launch.js";
 import type { SubagentResult } from "./lib/types.js";
+
+function failedResult(
+  agent: string,
+  task: string,
+  output: string,
+): SubagentResult {
+  return {
+    agent,
+    task,
+    output,
+    exitCode: 1,
+    elapsed: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+      turns: 0,
+    },
+    error: output,
+  };
+}
 
 export function createSubagentTool() {
   return {
@@ -42,14 +66,42 @@ export function createSubagentTool() {
               text: `Unknown agent "${params.agent}". Available: ${available}`,
             },
           ],
-          details: undefined as unknown as SubagentResult,
+          details: failedResult(
+            params.agent,
+            params.task,
+            `Unknown agent "${params.agent}". Available: ${available}`,
+          ),
+        };
+      }
+
+      const resolvedCwd = params.cwd ? resolve(params.cwd) : ctx.cwd;
+      const resolvedCtxCwd = resolve(ctx.cwd);
+      if (
+        params.cwd &&
+        !(
+          resolvedCwd === resolvedCtxCwd ||
+          resolvedCwd.startsWith(resolvedCtxCwd + sep)
+        )
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `cwd "${params.cwd}" is outside the project directory "${ctx.cwd}"`,
+            },
+          ],
+          details: failedResult(
+            agent.name,
+            params.task,
+            `cwd "${params.cwd}" is outside the project directory "${ctx.cwd}"`,
+          ),
         };
       }
 
       const result = await launchSubagent(
         agent,
         params.task,
-        params.cwd ?? ctx.cwd,
+        resolvedCwd,
         signal,
         onUpdate
           ? (r) =>

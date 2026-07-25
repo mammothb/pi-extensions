@@ -54,11 +54,6 @@ export function spawnChild(
  * Uses getPiInvocation to determine the correct command and prepend the
  * current script path in development mode.
  */
-export function spawnPiChild(args: string[], cwd: string): ChildProcess {
-  const invocation = getPiInvocation(args);
-  return spawnChild(invocation.command, invocation.args, cwd);
-}
-
 // =============================================================================
 // JSONL parsing
 // =============================================================================
@@ -88,18 +83,26 @@ function emptyCumulativeResult(): CumulativeResult {
 }
 
 function extractFinalOutput(messages: Message[]): string {
+  // Find last assistant message
+  let lastAssistant: Message | undefined;
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg?.role !== "assistant") {
-      continue;
-    }
-    for (const part of msg.content) {
-      if (typeof part === "object" && "type" in part && part.type === "text") {
-        return (part as { text: string }).text;
-      }
+    if (messages[i]?.role === "assistant") {
+      lastAssistant = messages[i];
+      break;
     }
   }
-  return "";
+  if (!lastAssistant) {
+    return "";
+  }
+
+  // Concatenate all text parts in order
+  const parts: string[] = [];
+  for (const part of lastAssistant.content) {
+    if (typeof part === "object" && "type" in part && part.type === "text") {
+      parts.push((part as { text: string }).text);
+    }
+  }
+  return parts.join("");
 }
 
 /**
@@ -210,7 +213,31 @@ export async function launchSubagent(
   stuckTimeoutMs: number,
 ): Promise<SubagentResult> {
   const args = buildCliArgs(agent, task);
-  const invocation = getPiInvocation(args);
+  return launchPiChild(
+    args,
+    agent,
+    task,
+    cwd,
+    signal,
+    onUpdate,
+    stuckTimeoutMs,
+  );
+}
+
+/**
+ * Spawn a child pi process with pre-built CLI args. Exported for callers that
+ * already have args (e.g. resume).
+ */
+export async function launchPiChild(
+  piArgs: string[],
+  agent: AgentConfig,
+  task: string,
+  cwd: string,
+  signal: AbortSignal | undefined,
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  stuckTimeoutMs: number,
+): Promise<SubagentResult> {
+  const invocation = getPiInvocation(piArgs);
   return launchChild(
     invocation.command,
     invocation.args,
@@ -250,25 +277,28 @@ export async function launchChild(
   let lastActivity = Date.now();
   let lastActivityDesc = "starting";
   let stuckTimer: ReturnType<typeof setInterval> | undefined;
+  let stuckWarned = false;
+  let lastUsage: SubagentResult["tokens"] = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+    turns: 0,
+  };
 
   if (stuckTimeoutMs > 0) {
     stuckTimer = setInterval(() => {
       const idleMs = Date.now() - lastActivity;
-      if (idleMs > stuckTimeoutMs) {
+      if (idleMs > stuckTimeoutMs && !stuckWarned) {
+        stuckWarned = true;
         onUpdate?.({
           agent: agent.name,
           task,
           output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
           exitCode: -1,
           elapsed: Date.now() - startedAt,
-          tokens: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0,
-            turns: 0,
-          },
+          tokens: { ...lastUsage },
         });
       }
     }, 5000);
@@ -278,6 +308,8 @@ export async function launchChild(
   const wrappedOnUpdate = onUpdate
     ? (cumulative: CumulativeResult) => {
         lastActivity = Date.now();
+        stuckWarned = false;
+        lastUsage = { ...cumulative.usage };
         const lastMsg = cumulative.messages[cumulative.messages.length - 1];
         if (lastMsg) {
           if (lastMsg.role === "toolResult") {
@@ -293,7 +325,7 @@ export async function launchChild(
           output: cumulative.finalOutput || "(running...)",
           exitCode: -1,
           elapsed: Date.now() - startedAt,
-          tokens: cumulative.usage,
+          tokens: { ...cumulative.usage },
           model: cumulative.model,
         });
       }
@@ -301,27 +333,36 @@ export async function launchChild(
 
   // Abort signal handling
   let wasAborted = false;
+  let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
   if (signal) {
     const killProc = () => {
       wasAborted = true;
       proc.kill("SIGTERM");
-      setTimeout(() => {
+      sigkillTimer = setTimeout(() => {
         if (!proc.killed) {
           proc.kill("SIGKILL");
         }
+        sigkillTimer = undefined;
       }, 5000);
     };
     if (signal.aborted) {
       killProc();
     } else {
+      onAbort = killProc;
       signal.addEventListener("abort", killProc, { once: true });
     }
   }
 
   // Capture exit code — set up before parsing to avoid race
+  let spawnError: string | undefined;
   const exitCodePromise = new Promise<number>((resolve) => {
     proc.on("close", (code) => resolve(code ?? 0));
-    proc.on("error", () => resolve(1));
+    proc.on("error", (err) => {
+      spawnError = err.message;
+      resolve(1);
+    });
   });
 
   // Parse JSONL stdout (resolves when stdout stream ends)
@@ -346,6 +387,12 @@ export async function launchChild(
   if (stuckTimer) {
     clearInterval(stuckTimer);
   }
+  if (onAbort) {
+    signal?.removeEventListener("abort", onAbort);
+  }
+  if (sigkillTimer) {
+    clearTimeout(sigkillTimer);
+  }
 
   const elapsed = Date.now() - startedAt;
 
@@ -363,12 +410,17 @@ export async function launchChild(
   }
 
   const error =
-    exitCode !== 0
-      ? cumulative.errorMessage ||
-        cumulative.stopReason ||
-        stderr.trim() ||
+    cumulative.errorMessage ||
+    spawnError ||
+    (exitCode !== 0
+      ? stderr.trim() ||
+        (cumulative.stopReason &&
+        cumulative.stopReason !== "stop" &&
+        cumulative.stopReason !== "end"
+          ? cumulative.stopReason
+          : undefined) ||
         `exit code ${exitCode}`
-      : undefined;
+      : undefined);
 
   return {
     agent: agent.name,
@@ -407,6 +459,6 @@ export function buildCliArgs(agent: AgentConfig, task: string): string[] {
     args.push("--tools", agent.tools.join(","));
   }
 
-  args.push(task);
+  args.push("--", task);
   return args;
 }

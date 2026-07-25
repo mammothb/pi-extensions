@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -72,10 +72,11 @@ describe("buildCliArgs", () => {
     expect(args[idx + 1]).toBe("google/gemini-2.5-flash");
   });
 
-  it("places task string as the last argument", () => {
+  it("places task string as the last argument after -- separator", () => {
     const task = "fix the bug in src/auth.ts";
     const args = buildCliArgs(baseAgent, task);
     expect(args[args.length - 1]).toBe(task);
+    expect(args[args.length - 2]).toBe("--");
   });
 
   it("starts with -p and --mode json", () => {
@@ -191,22 +192,27 @@ describe("spawnChild", () => {
   });
 
   it("respects cwd parameter", async () => {
-    const proc = spawnChild(
-      nodeBin,
-      ["-e", "console.log(process.cwd())"],
-      "/tmp",
-    );
+    const testDir = mkdtempSync(join(tmpdir(), "pi-subagents-cwd-"));
+    try {
+      const proc = spawnChild(
+        nodeBin,
+        ["-e", "console.log(process.cwd())"],
+        testDir,
+      );
 
-    const stdout = await new Promise<string>((resolve) => {
-      let output = "";
-      proc.stdout?.on("data", (data: Buffer) => {
-        output += data.toString();
+      const stdout = await new Promise<string>((resolve) => {
+        let output = "";
+        proc.stdout?.on("data", (data: Buffer) => {
+          output += data.toString();
+        });
+        proc.on("close", () => resolve(output.trim()));
+        proc.on("error", () => resolve(""));
       });
-      proc.on("close", () => resolve(output.trim()));
-      proc.on("error", () => resolve(""));
-    });
 
-    expect(stdout).toBe("/tmp");
+      expect(stdout).toBe(realpathSync(testDir));
+    } finally {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -509,10 +515,10 @@ describe("launchChild", () => {
     expect(result.tokens.turns).toBe(2);
   });
 
-  it("captures stderr", async () => {
+  it("captures stderr in error when process exits non-zero", async () => {
     const script =
       jsonlScript(makeAssistantMessage("ok")) +
-      "process.stderr.write('error output\\n');";
+      "process.stderr.write('error output\\n');process.exit(1);";
     const result = await launchChild(
       nodeBin,
       ["-e", script],
@@ -524,8 +530,8 @@ describe("launchChild", () => {
       0,
     );
 
-    expect(result.exitCode).toBe(0);
-    // stderr doesn't appear in result unless there's an error
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("error output");
   });
 
   it("handles process that produces no output", async () => {
