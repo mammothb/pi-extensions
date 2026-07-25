@@ -71,15 +71,7 @@ export function githubUrlToEndpoint(url: string): string {
       const pullsRest = rest.length > 0 ? `/${rest.join("/")}` : "";
       return `repos/${owner}/${repo}/pulls${pullsRest}`;
     }
-    case "blob": {
-      const ref = rest[0];
-      const filePath = rest.slice(1).join("/");
-      const contentsPath = filePath ? `/${filePath}` : "";
-      if (ref) {
-        return `repos/${owner}/${repo}/contents${contentsPath}?ref=${ref}`;
-      }
-      return `repos/${owner}/${repo}/contents${contentsPath}`;
-    }
+    case "blob":
     case "tree": {
       const ref = rest[0];
       const filePath = rest.slice(1).join("/");
