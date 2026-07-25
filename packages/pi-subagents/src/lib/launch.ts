@@ -238,16 +238,16 @@ export async function launchPiChild(
   stuckTimeoutMs: number,
 ): Promise<SubagentResult> {
   const invocation = getPiInvocation(piArgs);
-  return launchChild(
-    invocation.command,
-    invocation.args,
+  return launchChild({
+    command: invocation.command,
+    args: invocation.args,
     agent,
     task,
     cwd,
     signal,
     onUpdate,
     stuckTimeoutMs,
-  );
+  });
 }
 
 /**
@@ -255,16 +255,18 @@ export async function launchPiChild(
  * apply stuck detection and abort handling. Exported for testing with
  * arbitrary commands (e.g. node scripts that simulate pi JSONL output).
  */
-export async function launchChild(
-  command: string,
-  args: string[],
-  agent: AgentConfig,
-  task: string,
-  cwd: string,
-  signal: AbortSignal | undefined,
-  onUpdate: ((result: SubagentResult) => void) | undefined,
-  stuckTimeoutMs: number,
-): Promise<SubagentResult> {
+export async function launchChild(opts: {
+  command: string;
+  args: string[];
+  agent: AgentConfig;
+  task: string;
+  cwd: string;
+  signal?: AbortSignal;
+  onUpdate?: (result: SubagentResult) => void;
+  stuckTimeoutMs: number;
+}): Promise<SubagentResult> {
+  const { command, args, agent, task, cwd, signal, onUpdate, stuckTimeoutMs } =
+    opts;
   const startedAt = Date.now();
   const proc = spawnChild(command, args, cwd);
 

@@ -455,16 +455,14 @@ describe("launchChild", () => {
 
   it("runs a child that outputs JSONL and returns the result", async () => {
     const script = jsonlScript(makeAssistantMessage("hello from child"));
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "do something",
-      process.cwd(),
-      undefined,
-      undefined,
-      0,
-    );
+      task: "do something",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
 
     expect(result.agent).toBe("test-agent");
     expect(result.task).toBe("do something");
@@ -481,16 +479,14 @@ describe("launchChild", () => {
       1,
       makeAssistantMessage("partial output"),
     );
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "do something",
-      process.cwd(),
-      undefined,
-      undefined,
-      0,
-    );
+      task: "do something",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
 
     expect(result.exitCode).toBe(1);
     expect(result.error).toBeDefined();
@@ -504,16 +500,15 @@ describe("launchChild", () => {
       makeToolResult("t1", "read", "file contents"),
       makeAssistantMessage("done"),
     );
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "do something",
-      process.cwd(),
-      undefined,
-      (r) => updates.push({ ...r }),
-      0,
-    );
+      task: "do something",
+      cwd: process.cwd(),
+      onUpdate: (r) => updates.push({ ...r }),
+      stuckTimeoutMs: 0,
+    });
 
     // onUpdate should fire for each assistant message and tool result
     expect(updates.length).toBeGreaterThanOrEqual(3);
@@ -526,16 +521,14 @@ describe("launchChild", () => {
     const script =
       jsonlScript(makeAssistantMessage("ok")) +
       "process.stderr.write('error output\\n');process.exit(1);";
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
-      { ...agent, name: "stderr-agent" },
-      "task",
-      process.cwd(),
-      undefined,
-      undefined,
-      0,
-    );
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
+      agent: { ...agent, name: "stderr-agent" },
+      task: "task",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
 
     expect(result.exitCode).toBe(1);
     expect(result.error).toContain("error output");
@@ -543,16 +536,14 @@ describe("launchChild", () => {
 
   it("handles process that produces no output", async () => {
     const script = "process.exit(0);";
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "do nothing",
-      process.cwd(),
-      undefined,
-      undefined,
-      0,
-    );
+      task: "do nothing",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.output).toBe("");
@@ -565,16 +556,15 @@ describe("launchChild", () => {
     const script = `setTimeout(() => { ${jsonlScript(makeAssistantMessage("finally"))} }, 7000);`;
     const updates: SubagentResult[] = [];
 
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "slow task",
-      process.cwd(),
-      undefined,
-      (r) => updates.push({ ...r }),
-      1000, // 1 second stuck timeout (script sleeps 7s, timer checks every 5s)
-    );
+      task: "slow task",
+      cwd: process.cwd(),
+      onUpdate: (r) => updates.push({ ...r }),
+      stuckTimeoutMs: 1000, // 1 second stuck timeout (script sleeps 7s, timer checks every 5s)
+    });
 
     // Should have gotten at least one stuck warning
     const stuckWarnings = updates.filter((u) =>
@@ -593,16 +583,15 @@ describe("launchChild", () => {
     // Script that runs forever
     const script = "setInterval(() => {}, 1000);";
 
-    const resultPromise = launchChild(
-      nodeBin,
-      ["-e", script],
+    const resultPromise = launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "infinite task",
-      process.cwd(),
-      controller.signal,
-      undefined,
-      0,
-    );
+      task: "infinite task",
+      cwd: process.cwd(),
+      signal: controller.signal,
+      stuckTimeoutMs: 0,
+    });
 
     // Abort after a short delay
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -616,16 +605,15 @@ describe("launchChild", () => {
     const script = `setTimeout(() => { ${jsonlScript(makeAssistantMessage("done"))} }, 500);`;
     const updates: SubagentResult[] = [];
 
-    const result = await launchChild(
-      nodeBin,
-      ["-e", script],
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
       agent,
-      "task",
-      process.cwd(),
-      undefined,
-      (r) => updates.push({ ...r }),
-      0,
-    );
+      task: "task",
+      cwd: process.cwd(),
+      onUpdate: (r) => updates.push({ ...r }),
+      stuckTimeoutMs: 0,
+    });
 
     const stuckWarnings = updates.filter((u) =>
       u.output.includes("No progress"),

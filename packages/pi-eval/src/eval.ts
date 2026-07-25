@@ -76,16 +76,26 @@ function firstNonEmptyLines(s: string, n: number): string[] {
  * Build a stats header line.
  * Format: `exit 0 | 3 lines | truncated | Ctrl+O to expand`
  */
-function buildStatsLine(
-  details: EvalDetails | undefined,
-  rawText: string,
-  isError: boolean,
-  parsed: ParsedOutput,
-  totalLines: number,
-  theme: Theme,
-  expandKey: string,
-  showExpandHint: boolean,
-): string {
+function buildStatsLine(opts: {
+  details: EvalDetails | undefined;
+  rawText: string;
+  isError: boolean;
+  parsed: ParsedOutput;
+  totalLines: number;
+  theme: Theme;
+  expandKey: string;
+  showExpandHint: boolean;
+}): string {
+  const {
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint,
+  } = opts;
   const statusColor = isError ? "error" : "success";
   const parts: string[] = [];
 
@@ -205,7 +215,7 @@ export function createEvalTool(): ToolDefinition<
 
       // Phase 4: Expanded view — show raw text with stats header
       if (options.expanded) {
-        const header = buildStatsLine(
+        const header = buildStatsLine({
           details,
           rawText,
           isError,
@@ -213,8 +223,8 @@ export function createEvalTool(): ToolDefinition<
           totalLines,
           theme,
           expandKey,
-          false, // no expand hint in expanded mode
-        );
+          showExpandHint: false, // no expand hint in expanded mode
+        });
         return new Text(
           `${header}\n${rawText}\n${getCollapseHint(theme)}`,
           0,
@@ -224,16 +234,16 @@ export function createEvalTool(): ToolDefinition<
 
       // No output at all — just stats header, no Ctrl+O
       if (!previewSource || totalLines === 0) {
-        const header = buildStatsLine(
+        const header = buildStatsLine({
           details,
           rawText,
           isError,
           parsed,
-          0,
+          totalLines: 0,
           theme,
           expandKey,
-          false,
-        );
+          showExpandHint: false,
+        });
         return new Text(header, 0, 0);
       }
 
@@ -250,7 +260,7 @@ export function createEvalTool(): ToolDefinition<
       const showHintInHeader = isError || remaining > 0;
 
       // Stats header
-      const statsHeader = buildStatsLine(
+      const statsHeader = buildStatsLine({
         details,
         rawText,
         isError,
@@ -258,8 +268,8 @@ export function createEvalTool(): ToolDefinition<
         totalLines,
         theme,
         expandKey,
-        showHintInHeader,
-      );
+        showExpandHint: showHintInHeader,
+      });
 
       // Build result as a single Text (avoids Container/Box padding issues)
       const parts: string[] = [statsHeader];
