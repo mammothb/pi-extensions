@@ -17,6 +17,25 @@ export interface ParsedFrontmatter {
   body: string;
 }
 
+function normalizeYamlValues(
+  parsed: Record<string, unknown>,
+  filename: string,
+): Record<string, string> {
+  const frontmatter: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (value === null || value === undefined) {
+      frontmatter[key] = "";
+    } else if (typeof value === "object") {
+      console.warn(
+        `parseFrontmatter: skipping key "${key}" in ${filename} — nested values not supported`,
+      );
+    } else {
+      frontmatter[key] = String(value);
+    }
+  }
+  return frontmatter;
+}
+
 /**
  * Parse YAML frontmatter from a markdown string.
  *
@@ -73,22 +92,10 @@ export function parseFrontmatter(
       );
       return { frontmatter: null, body: content };
     }
-    // Normalize YAML values to strings, preserving scalars.
-    // Reject nested objects and arrays — frontmatter is flat key-value only.
-    frontmatter = {};
-    for (const [key, value] of Object.entries(
+    frontmatter = normalizeYamlValues(
       parsed as Record<string, unknown>,
-    )) {
-      if (value === null || value === undefined) {
-        frontmatter[key] = "";
-      } else if (typeof value === "object") {
-        console.warn(
-          `parseFrontmatter: skipping key "${key}" in ${filename} — nested values not supported`,
-        );
-      } else {
-        frontmatter[key] = String(value);
-      }
-    }
+      filename,
+    );
   } catch (err) {
     console.warn(
       `parseFrontmatter: YAML parse error in ${filename}: ${err instanceof Error ? err.message : String(err)}`,

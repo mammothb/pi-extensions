@@ -169,14 +169,103 @@ const previewContent = (content: unknown): string => {
   return "";
 };
 
+function buildFailedCutDiagnostics(
+  ownCut: OwnCutResult & { ok: false },
+  branchEntries: unknown[],
+  isMmCompact: boolean,
+  reason: string,
+  willRetry: boolean,
+  settings: { debug: boolean },
+): void {
+  const entries = branchEntries as BranchEntry[];
+  const lastComp = [...entries].reverse().find((e) => e.type === "compaction");
+  const lastCompIdx = lastComp ? entries.indexOf(lastComp) : -1;
+
+  const liveMessages = collectLiveMessages(entries);
+  const liveRoles = liveMessages.map((m) => m.message.role);
+  const userIndices = liveRoles.reduce<number[]>((acc, r, i) => {
+    if (r === "user") {
+      acc.push(i);
+    }
+    return acc;
+  }, []);
+
+  dbg(settings, {
+    cancelled: isMmCompact || (reason !== "overflow" && !willRetry),
+    fallbackToCore: !isMmCompact && (reason === "overflow" || willRetry),
+    reason: ownCut.reason,
+    compaction: { reason, willRetry },
+    isMmCompact,
+    counts: {
+      total: entries.length,
+      messages: entries.filter((e) => e.type === "message").length,
+      compactions: entries.filter((e) => e.type === "compaction").length,
+      entriesAfterLastCompaction:
+        lastCompIdx >= 0 ? entries.length - lastCompIdx - 1 : null,
+    },
+    liveMessages: {
+      count: liveRoles.length,
+      userCount: userIndices.length,
+      firstUserIdx: userIndices[0] ?? null,
+      lastUserIdx: userIndices[userIndices.length - 1] ?? null,
+      roleSequence:
+        liveRoles.length <= 30
+          ? liveRoles
+          : [...liveRoles.slice(0, 10), "...", ...liveRoles.slice(-10)],
+    },
+    lastCompaction: lastComp
+      ? {
+          hasFirstKeptEntryId: !!lastComp.firstKeptEntryId,
+          foundInBranch: lastComp.firstKeptEntryId
+            ? entries.some((e) => e.id === lastComp.firstKeptEntryId)
+            : null,
+        }
+      : null,
+    tail: entries.slice(-5).map((e) => ({
+      type: e.type,
+      role: e.type === "message" ? e.message?.role : undefined,
+      hasContent: e.type === "message" ? e.message?.content != null : undefined,
+    })),
+  });
+}
+
+function handleFailedCut(
+  ownCut: OwnCutResult & { ok: false },
+  event: { branchEntries: unknown[] },
+  ctx: { ui?: { notify?: (msg: string, level: string) => void } },
+  isMmCompact: boolean,
+  reason: string,
+  willRetry: boolean,
+  settings: { debug: boolean },
+): { cancel: true } | undefined {
+  buildFailedCutDiagnostics(
+    ownCut,
+    event.branchEntries,
+    isMmCompact,
+    reason,
+    willRetry,
+    settings,
+  );
+
+  const fallbackToCore = !isMmCompact && (reason === "overflow" || willRetry);
+  if (fallbackToCore) {
+    return;
+  }
+
+  try {
+    ctx?.ui?.notify?.(REASON_MESSAGES[ownCut.reason], "warning");
+  } catch {
+    // best-effort notification
+  }
+  return { cancel: true };
+}
+
 function registerHookWithState(pi: ExtensionAPI, state: BeforeCompactState) {
   pi.on("session_before_compact", (event, ctx) => {
     const { preparation, branchEntries, customInstructions } = event;
     const { reason, willRetry } = readCompactionEventContext(event);
     const settings = loadSettings();
 
-    // Always handle explicit /mm-compact marker.
-    // Otherwise, only handle when user opted in via settings.
     const {
       isMmCompact,
       keepUserTurns,
@@ -190,81 +279,16 @@ function registerHookWithState(pi: ExtensionAPI, state: BeforeCompactState) {
 
     const ownCut = buildOwnCut(branchEntries as BranchEntry[], keepUserTurns);
     if (!ownCut.ok) {
-      const lastComp = [...branchEntries]
-        .reverse()
-        .find((e) => e.type === "compaction");
-      const lastCompIdx = lastComp
-        ? (branchEntries as BranchEntry[]).indexOf(lastComp)
-        : -1;
-
-      // Reuse collectLiveMessages for diagnostic data
-      const liveMessages = collectLiveMessages(branchEntries as BranchEntry[]);
-      const liveRoles = liveMessages.map((m) => m.message.role);
-      const userIndices = liveRoles.reduce<number[]>((acc, r, i) => {
-        if (r === "user") {
-          acc.push(i);
-        }
-        return acc;
-      }, []);
-
       state.pendingFollowUpPrompt = null;
-      const fallbackToCore =
-        !isMmCompact && (reason === "overflow" || willRetry);
-      dbg(settings, {
-        cancelled: !fallbackToCore,
-        fallbackToCore,
-        reason: ownCut.reason,
-        compaction: { reason, willRetry },
+      return handleFailedCut(
+        ownCut,
+        event,
+        ctx,
         isMmCompact,
-        counts: {
-          total: branchEntries.length,
-          messages: (branchEntries as BranchEntry[]).filter(
-            (e) => e.type === "message",
-          ).length,
-          compactions: (branchEntries as BranchEntry[]).filter(
-            (e) => e.type === "compaction",
-          ).length,
-          entriesAfterLastCompaction:
-            lastCompIdx >= 0 ? branchEntries.length - lastCompIdx - 1 : null,
-        },
-        liveMessages: {
-          count: liveRoles.length,
-          userCount: userIndices.length,
-          firstUserIdx: userIndices[0] ?? null,
-          lastUserIdx: userIndices[userIndices.length - 1] ?? null,
-          roleSequence:
-            liveRoles.length <= 30
-              ? liveRoles
-              : [...liveRoles.slice(0, 10), "...", ...liveRoles.slice(-10)],
-        },
-        lastCompaction: lastComp
-          ? {
-              hasFirstKeptEntryId: !!lastComp.firstKeptEntryId,
-              foundInBranch: lastComp.firstKeptEntryId
-                ? (branchEntries as BranchEntry[]).some(
-                    (e) => e.id === lastComp.firstKeptEntryId,
-                  )
-                : null,
-            }
-          : null,
-        tail: (branchEntries as BranchEntry[]).slice(-5).map((e) => ({
-          type: e.type,
-          role: e.type === "message" ? e.message?.role : undefined,
-          hasContent:
-            e.type === "message" ? e.message?.content != null : undefined,
-        })),
-      });
-
-      if (fallbackToCore) {
-        return;
-      }
-
-      try {
-        ctx?.ui?.notify?.(REASON_MESSAGES[ownCut.reason], "warning");
-      } catch {
-        // best-effort notification
-      }
-      return { cancel: true };
+        reason,
+        willRetry,
+        settings,
+      );
     }
 
     state.pendingFollowUpPrompt = followUpPrompt;

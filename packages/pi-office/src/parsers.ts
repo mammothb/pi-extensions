@@ -241,6 +241,26 @@ export interface SearchXlsxResult {
   truncated: boolean;
 }
 
+function unmergeRange(raw: unknown[][], merge: XLSX.Range): void {
+  const { s, e } = merge;
+  const topVal = raw[s.r]?.[s.c];
+  if (topVal === undefined || topVal === null || String(topVal).trim() === "") {
+    return;
+  }
+  for (let r = s.r; r <= e.r; r++) {
+    const row = raw[r];
+    if (!row) {
+      continue;
+    }
+    for (let c = s.c; c <= e.c; c++) {
+      if (r === s.r && c === s.c) {
+        continue;
+      }
+      row[c] = topVal;
+    }
+  }
+}
+
 /**
  * Fill merged cell values into all cells of the range in a raw 2D array.
  * Only the top-left cell of a merged range has a value from sheet_to_json;
@@ -248,29 +268,7 @@ export interface SearchXlsxResult {
  */
 function unmergeRaw(raw: unknown[][], merges: XLSX.Range[]): void {
   for (const merge of merges) {
-    const { s, e } = merge;
-    const topVal = raw[s.r]?.[s.c];
-    // Skip if the top-left cell is empty or missing (nothing to spread)
-    if (
-      topVal === undefined ||
-      topVal === null ||
-      String(topVal).trim() === ""
-    ) {
-      continue;
-    }
-    for (let r = s.r; r <= e.r; r++) {
-      const row = raw[r];
-      if (!row) {
-        continue;
-      }
-      for (let c = s.c; c <= e.c; c++) {
-        // Don't overwrite the top-left cell itself (already has the value)
-        if (r === s.r && c === s.c) {
-          continue;
-        }
-        row[c] = topVal;
-      }
-    }
+    unmergeRange(raw, merge);
   }
 }
 
@@ -544,6 +542,39 @@ export async function parseXlsx(
  * Performs case-insensitive substring matching across all cell values in every row.
  * Returns matches with sheet name, row number, and row data.
  */
+function searchSheetRows(
+  sheet: XlsxSheetData,
+  sheetName: string,
+  query: string,
+  maxMatches: number,
+  matches: XlsxSearchMatch[],
+): number {
+  let found = 0;
+  for (let rowIdx = 0; rowIdx < sheet.data.length; rowIdx++) {
+    const row = sheet.data[rowIdx];
+    if (!row) {
+      continue;
+    }
+
+    const hasMatch = Object.values(row).some((val) =>
+      val.toLowerCase().includes(query),
+    );
+    if (!hasMatch) {
+      continue;
+    }
+
+    found++;
+    if (matches.length < maxMatches) {
+      matches.push({
+        sheet: sheetName,
+        row: sheet.headerRow + rowIdx + 2,
+        cells: row,
+      });
+    }
+  }
+  return found;
+}
+
 export async function searchXlsx(
   filePath: string,
   options: SearchXlsxOptions,
@@ -578,28 +609,13 @@ export async function searchXlsx(
       continue;
     }
 
-    for (let rowIdx = 0; rowIdx < sheet.data.length; rowIdx++) {
-      const row = sheet.data[rowIdx];
-      if (!row) {
-        continue;
-      }
-
-      const hasMatch = Object.values(row).some((val) =>
-        val.toLowerCase().includes(query),
-      );
-
-      if (hasMatch) {
-        totalMatches++;
-
-        if (matches.length < maxMatches) {
-          matches.push({
-            sheet: sheetName,
-            row: sheet.headerRow + rowIdx + 2, // 1-indexed; headerRow is 0-indexed, +1 for header row itself, +1 for first data row
-            cells: row,
-          });
-        }
-      }
-    }
+    totalMatches += searchSheetRows(
+      sheet,
+      sheetName,
+      query,
+      maxMatches,
+      matches,
+    );
   }
 
   return {
@@ -717,6 +733,47 @@ export async function parsePdf(
  * Returns matches with page number, line number, and context lines.
  * Case-insensitive substring matching.
  */
+function findMatchesInPage(
+  pageText: string,
+  pageIdx: number,
+  query: string,
+  contextLines: number,
+  maxMatches: number,
+  matches: SearchMatch[],
+): number {
+  const lines = pageText.split("\n");
+  let found = 0;
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const lowerLine = lines[lineIdx]?.toLowerCase() ?? "";
+    let searchFrom = 0;
+    while (true) {
+      searchFrom = lowerLine.indexOf(query, searchFrom);
+      if (searchFrom === -1) {
+        break;
+      }
+
+      found++;
+      if (matches.length < maxMatches) {
+        const lineStart = Math.max(0, lineIdx - contextLines);
+        const lineEnd = Math.min(lines.length - 1, lineIdx + contextLines);
+        const context = lines.slice(lineStart, lineEnd + 1).join("\n");
+        matches.push({
+          page: pageIdx + 1,
+          startLine: lineStart + 1,
+          endLine: lineEnd + 1,
+          matchLine: lineIdx + 1,
+          context,
+        });
+      }
+
+      searchFrom++;
+    }
+  }
+
+  return found;
+}
+
 export async function searchPdf(
   filePath: string,
   options: SearchPdfOptions,
@@ -743,39 +800,14 @@ export async function searchPdf(
       continue;
     }
 
-    const lines = pageText.split("\n");
-
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const line = lines[lineIdx];
-      const lowerLine = line.toLowerCase();
-
-      // Find all occurrences on this line
-      let searchFrom = 0;
-      while (true) {
-        searchFrom = lowerLine.indexOf(query, searchFrom);
-        if (searchFrom === -1) {
-          break;
-        }
-
-        totalMatches++;
-
-        if (matches.length < maxMatches) {
-          const lineStart = Math.max(0, lineIdx - contextLines);
-          const lineEnd = Math.min(lines.length - 1, lineIdx + contextLines);
-          const context = lines.slice(lineStart, lineEnd + 1).join("\n");
-
-          matches.push({
-            page: pageIdx + 1,
-            startLine: lineStart + 1,
-            endLine: lineEnd + 1,
-            matchLine: lineIdx + 1,
-            context,
-          });
-        }
-
-        searchFrom += query.length;
-      }
-    }
+    totalMatches += findMatchesInPage(
+      pageText,
+      pageIdx,
+      query,
+      contextLines,
+      maxMatches,
+      matches,
+    );
   }
 
   return {

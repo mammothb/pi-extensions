@@ -9,51 +9,19 @@
  *   github.com/owner/repo/commit/abc123      → repos/owner/repo/commits/abc123
  *   api.github.com/repos/owner/repo          → repos/owner/repo
  */
-export function githubUrlToEndpoint(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error(`Invalid URL: ${url}`);
-  }
 
-  // Strip leading and trailing slashes from pathname
-  const path = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
-
-  if (!path) {
+function handleGistUrl(path: string): string {
+  const gistParts = path.split("/");
+  const gistId = gistParts[1];
+  if (!gistId) {
     throw new Error(
-      `Could not extract path from URL: ${url}. Expected github.com/owner/repo/...`,
+      "Could not extract gist ID from URL. Expected gist.github.com/owner/gist_id",
     );
   }
+  return `gists/${gistId}`;
+}
 
-  // gist.github.com URLs — map to the Gists API
-  if (parsed.hostname === "gist.github.com") {
-    const gistParts = path.split("/");
-    const gistId = gistParts[1];
-    if (!gistId) {
-      throw new Error(
-        `Could not extract gist ID from URL: ${url}. Expected gist.github.com/owner/gist_id`,
-      );
-    }
-    return `gists/${gistId}`;
-  }
-
-  // api.github.com URLs — pass through the path
-  if (parsed.hostname === "api.github.com") {
-    return path;
-  }
-
-  // github.com (or enterprise) web URLs — map to API endpoints
-  const parts = path.split("/");
-
-  const owner = parts[0];
-  const repo = parts[1];
-  if (!owner || !repo) {
-    throw new Error(
-      `Could not parse GitHub URL: ${url}. Expected github.com/owner/repo/...`,
-    );
-  }
-
+function handleWebUrl(owner: string, repo: string, parts: string[]): string {
   if (parts.length === 2) {
     return `repos/${owner}/${repo}`;
   }
@@ -61,7 +29,7 @@ export function githubUrlToEndpoint(url: string): string {
   const resource = parts[2];
   if (!resource) {
     throw new Error(
-      `Could not parse GitHub URL: ${url}. Missing resource type after repo.`,
+      "Could not parse GitHub URL. Missing resource type after repo.",
     );
   }
   const rest = parts.slice(3);
@@ -90,4 +58,40 @@ export function githubUrlToEndpoint(url: string): string {
       return `repos/${owner}/${repo}/${resource}${defaultRest}`;
     }
   }
+}
+
+export function githubUrlToEndpoint(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
+  const path = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
+
+  if (!path) {
+    throw new Error(
+      `Could not extract path from URL: ${url}. Expected github.com/owner/repo/...`,
+    );
+  }
+
+  if (parsed.hostname === "gist.github.com") {
+    return handleGistUrl(path);
+  }
+
+  if (parsed.hostname === "api.github.com") {
+    return path;
+  }
+
+  const parts = path.split("/");
+  const owner = parts[0];
+  const repo = parts[1];
+  if (!owner || !repo) {
+    throw new Error(
+      `Could not parse GitHub URL: ${url}. Expected github.com/owner/repo/...`,
+    );
+  }
+
+  return handleWebUrl(owner, repo, parts);
 }
