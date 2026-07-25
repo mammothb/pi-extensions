@@ -9,11 +9,15 @@ const DEFAULTS: SubagentConfig = {
 };
 
 /**
- * Load subagent configuration from ~/.pi/agent/subagents.json.
+ * Load subagent configuration from <agentDir>/subagents.json.
  * Returns defaults when the file is missing or malformed.
+ *
+ * @param agentDir Override the agent directory path (for testing).
+ *                 Defaults to `getAgentDir()` from pi-coding-agent.
  */
-export function loadSubagentConfig(): SubagentConfig {
-  const path = join(getAgentDir(), "subagents.json");
+export function loadSubagentConfig(agentDir?: string): SubagentConfig {
+  const dir = agentDir ?? getAgentDir();
+  const path = join(dir, "subagents.json");
   const raw = readConfigFile(path, "subagents");
   if (!raw) {
     return { ...DEFAULTS };

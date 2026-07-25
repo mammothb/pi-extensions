@@ -1,7 +1,9 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseFrontmatter } from "../src/lib/agents.js";
+import { loadSubagentConfig } from "../src/lib/config.js";
 
 const FIXTURES = join(__dirname, "fixtures", "agents");
 
@@ -78,5 +80,86 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter).not.toBeNull();
     expect(result.frontmatter).toEqual({ name: "x" });
     expect(result.body).toBe("");
+  });
+});
+
+describe("loadSubagentConfig", () => {
+  function tempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    return dir;
+  }
+
+  function writeConfig(dir: string, json: unknown): void {
+    writeFileSync(join(dir, "subagents.json"), JSON.stringify(json), "utf-8");
+  }
+
+  it("returns defaults when config file is missing", () => {
+    const dir = tempDir();
+    try {
+      const config = loadSubagentConfig(dir);
+      expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("loads tiers from config", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, {
+        tiers: {
+          cheap: "google/gemini-2.5-flash",
+          expensive: "bedrock/us.anthropic.claude-sonnet-4-5",
+        },
+      });
+      const config = loadSubagentConfig(dir);
+      expect(config.tiers).toEqual({
+        cheap: "google/gemini-2.5-flash",
+        expensive: "bedrock/us.anthropic.claude-sonnet-4-5",
+      });
+      expect(config.stuckTimeoutMs).toBe(60_000); // default preserved
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("loads stuckTimeoutMs from config", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, { stuckTimeoutMs: 120_000 });
+      const config = loadSubagentConfig(dir);
+      expect(config.stuckTimeoutMs).toBe(120_000);
+      expect(config.tiers).toEqual({}); // default preserved
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("returns defaults for malformed JSON", () => {
+    const dir = tempDir();
+    try {
+      writeFileSync(join(dir, "subagents.json"), "not json", "utf-8");
+      const config = loadSubagentConfig(dir);
+      expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("loads both tiers and stuckTimeoutMs together", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, {
+        tiers: { cheap: "google/gemini-2.5-flash" },
+        stuckTimeoutMs: 90_000,
+      });
+      const config = loadSubagentConfig(dir);
+      expect(config).toEqual({
+        tiers: { cheap: "google/gemini-2.5-flash" },
+        stuckTimeoutMs: 90_000,
+      });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
   });
 });
