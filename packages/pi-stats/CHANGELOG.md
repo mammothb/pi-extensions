@@ -1,5 +1,11 @@
 # @mammothb/pi-stats
 
+## 1.1.0
+
+### Minor Changes
+
+- b913f85: Refactor rendering, error handling, and parsing internals across packages. Fixes include: trigger `${N:-default}` expansion with empty values, eval signal line parsing, document merged-cell handling, and GitHub URL shortening.
+
 ## 1.0.1
 
 ### Patch Changes
