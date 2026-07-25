@@ -27,4 +27,35 @@ describe("formatRecallOutput", () => {
     const r = formatRecallOutput(entries, "done");
     expect(r).toContain('Found 1 matches for "done"');
   });
+
+  it("uses headerOverride when provided", () => {
+    const entries: RenderedEntry[] = [
+      { index: 0, role: "user", summary: "hello" },
+    ];
+    const r = formatRecallOutput(entries, "test", "Branch results");
+    expect(r).toContain('Branch results for "test":');
+    expect(r).not.toContain("Found");
+  });
+
+  it("shows files suffix when entry has files", () => {
+    const entries: RenderedEntry[] = [
+      { index: 0, role: "assistant", summary: "done", files: ["a.ts", "b.ts"] },
+    ];
+    const r = formatRecallOutput(entries);
+    expect(r).toContain("files:[a.ts, b.ts]");
+  });
+
+  it("uses snippet instead of summary when query and snippet present", () => {
+    const entries: any[] = [
+      {
+        index: 0,
+        role: "user",
+        summary: "long summary",
+        snippet: "matched... here",
+      },
+    ];
+    const r = formatRecallOutput(entries, "matched");
+    expect(r).toContain("matched... here");
+    expect(r).not.toContain("long summary");
+  });
 });

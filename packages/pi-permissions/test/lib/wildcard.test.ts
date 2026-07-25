@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  compilePatternEntries,
   compilePatterns,
   compileWildcardPattern,
   findCompiledWildcardMatch,
+  findCompiledWildcardMatchForNames,
 } from "../../src/lib/wildcard.js";
 
 describe("compileWildcardPattern", () => {
@@ -58,6 +60,20 @@ describe("compileWildcardPattern", () => {
     expect(compiled.regex.test("src/node_modules")).toBe(true);
     expect(compiled.regex.test("node_modules_backup/foo")).toBe(false);
   });
+
+  it("handles **/ prefix (matches optional leading path)", () => {
+    const compiled = compileWildcardPattern("**/foo");
+    expect(compiled.regex.test("foo")).toBe(true);
+    expect(compiled.regex.test("bar/foo")).toBe(true);
+    expect(compiled.regex.test("a/b/foo")).toBe(true);
+  });
+
+  it("handles /** suffix (matches optional trailing path)", () => {
+    const compiled = compileWildcardPattern("foo/**");
+    expect(compiled.regex.test("foo")).toBe(true);
+    expect(compiled.regex.test("foo/bar")).toBe(true);
+    expect(compiled.regex.test("foo/a/b/c")).toBe(true);
+  });
 });
 
 describe("compilePatterns", () => {
@@ -70,6 +86,25 @@ describe("compilePatterns", () => {
     expect(compiled).toHaveLength(2);
     expect(compiled[0]!.state).toBe("allow");
     expect(compiled[1]!.state).toBe("deny");
+  });
+});
+
+describe("compilePatternEntries", () => {
+  it("compiles an iterable of entries", () => {
+    const entries: Array<readonly [string, string]> = [
+      ["*.ts", "allow"],
+      ["*.js", "deny"],
+    ];
+    const compiled = compilePatternEntries(entries);
+    expect(compiled).toHaveLength(2);
+    expect(compiled[0]!.state).toBe("allow");
+    expect(compiled[0]!.pattern).toBe("*.ts");
+    expect(compiled[1]!.state).toBe("deny");
+  });
+
+  it("handles empty iterable", () => {
+    const compiled = compilePatternEntries([]);
+    expect(compiled).toHaveLength(0);
   });
 });
 
@@ -129,5 +164,69 @@ describe("findCompiledWildcardMatch", () => {
     expect(match).not.toBeNull();
     expect(match!.pattern).toBe("**/.env");
     expect(match!.matchedInput).toBe("project/.env");
+  });
+
+  it("normalizes backslashes in input", () => {
+    const compiled = compilePatterns({ "src/*": "allow" });
+    const match = findCompiledWildcardMatch(compiled, "src\\foo");
+    expect(match).not.toBeNull();
+    expect(match!.state).toBe("allow");
+  });
+});
+
+describe("findCompiledWildcardMatchForNames", () => {
+  const patterns = compilePatterns({
+    "git *": "ask",
+    "npm *": "deny",
+    ls: "allow",
+  });
+
+  it("returns match for first matching name in list", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, [
+      "unknown",
+      "git status",
+      "npm test",
+    ]);
+    expect(match).not.toBeNull();
+    expect(match!.state).toBe("ask");
+    expect(match!.pattern).toBe("git *");
+  });
+
+  it("tries names in order, first match wins (not last-match-wins)", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, [
+      "npm test",
+      "git status",
+    ]);
+    expect(match).not.toBeNull();
+    expect(match!.state).toBe("deny");
+  });
+
+  it("returns null when no names match", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, [
+      "unknown",
+      "nothing",
+    ]);
+    expect(match).toBeNull();
+  });
+
+  it("trims whitespace from names", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, ["  ls  "]);
+    expect(match).not.toBeNull();
+    expect(match!.state).toBe("allow");
+  });
+
+  it("filters out empty/whitespace-only names", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, [
+      "",
+      "   ",
+      "git push",
+    ]);
+    expect(match).not.toBeNull();
+    expect(match!.state).toBe("ask");
+  });
+
+  it("returns null for empty name list", () => {
+    const match = findCompiledWildcardMatchForNames(patterns, []);
+    expect(match).toBeNull();
   });
 });
