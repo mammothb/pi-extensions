@@ -36,10 +36,11 @@ function tryCommit(obj: Record<string, unknown>): Result | null {
   const commitObj = obj.commit as Record<string, unknown>;
   const shortSha = obj.sha.slice(0, 7);
   const msg = String(commitObj.message ?? "").split("\n")[0] ?? "";
-  const author =
+  const author = String(
     (obj.author as Record<string, unknown> | undefined)?.login ??
-    (commitObj.author as Record<string, unknown> | undefined)?.name ??
-    "?";
+      (commitObj.author as Record<string, unknown> | undefined)?.name ??
+      "?",
+  );
   return {
     type: "commit",
     summary: `[commit] ${shortSha} "${msg}" — by ${author}`,
@@ -97,8 +98,8 @@ function tryRepo(obj: Record<string, unknown>): Result | null {
   const fullName = obj.full_name ?? obj.fullName;
   const stars = obj.stargazers_count ?? obj.stargazersCount ?? 0;
   const forks = obj.forks_count ?? obj.forksCount ?? 0;
-  const lang = obj.language ?? "none";
-  const desc = obj.description ? ` — ${obj.description}` : "";
+  const lang = String(obj.language ?? "none");
+  const desc = obj.description ? ` — ${String(obj.description)}` : "";
   return {
     type: "repo",
     summary: `[repo] ${fullName}${desc} — stars: ${stars}, forks: ${forks}, lang: ${lang}`,

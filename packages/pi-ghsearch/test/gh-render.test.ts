@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import type { Text } from "@earendil-works/pi-tui";
+import type { Component, Text } from "@earendil-works/pi-tui";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 import { createGhAuthStatusTool } from "../src/gh-auth-status.js";
@@ -30,14 +30,17 @@ function textContent(text: string) {
   return { type: "text" as const, text };
 }
 
+/** Erase types for test detail objects that omit runtime-irrelevant fields. */
+const d = (x: unknown) => x as any;
+
 /** Join all rendered lines into a single string for assertion. */
-function renderText(rendered: Text): string {
-  return rendered.render(500).join("\n");
+function renderText(rendered: Component): string {
+  return (rendered as Text).render(500).join("\n");
 }
 
 /** Get first rendered line. */
-function _renderLine(rendered: Text): string {
-  return rendered.render(500)[0] ?? "";
+function _renderLine(rendered: Component): string {
+  return (rendered as Text).render(500)[0] ?? "";
 }
 
 // ===========================================================================
@@ -65,7 +68,7 @@ describe("gh_auth_status — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("Logged in to github.com as someuser")],
-        details: { authenticated: true },
+        details: d({ authenticated: true }),
       },
       {} as any,
       theme,
@@ -81,7 +84,7 @@ describe("gh_auth_status — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("Logged in to gh.internal.com as dev")],
-        details: { authenticated: true },
+        details: d({ authenticated: true }),
       },
       {} as any,
       theme,
@@ -97,7 +100,7 @@ describe("gh_auth_status — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("not logged in")],
-        details: { authenticated: false },
+        details: d({ authenticated: false }),
       },
       {} as any,
       theme,
@@ -114,7 +117,7 @@ describe("gh_auth_status — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("(no output)")],
-        details: { authenticated: false },
+        details: d({ authenticated: false }),
       },
       {} as any,
       theme,
@@ -134,7 +137,7 @@ describe("gh_auth_status — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("gh: command not found")],
-        details: {},
+        details: d({}),
       },
       {} as any,
       theme,
@@ -213,7 +216,7 @@ describe("gh_fetch — renderResult", () => {
   it("renders error state via renderError", () => {
     const tool = makeFetchTool();
     const result = tool.renderResult!(
-      { content: [textContent("Not Found")], details: {} },
+      { content: [textContent("Not Found")], details: d({}) },
       { expanded: false } as any,
       theme,
       { isError: true, args: {} } as any,
@@ -226,7 +229,7 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent('{"name":"test"}')],
-        details: { parsed: { name: "test" } },
+        details: d({ parsed: { name: "test" } }),
       },
       { expanded: true } as any,
       theme,
@@ -242,14 +245,14 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: {
             full_name: "org/repo",
             stargazers_count: 42,
             language: "TS",
           },
           endpoint: "repos/org/repo",
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -266,10 +269,10 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: { number: 123, title: "Fix bug", state: "open" },
           endpoint: "repos/org/repo/issues/123",
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -284,7 +287,7 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("truncated...")],
-        details: {
+        details: d({
           parsed: { full_name: "org/repo" },
           endpoint: "repos/org/repo",
           truncation: {
@@ -292,7 +295,7 @@ describe("gh_fetch — renderResult", () => {
             outputBytes: 51200,
             totalBytes: 200000,
           },
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -307,10 +310,10 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: { some_random_field: "x" },
           endpoint: "repos/org/repo/contents/path",
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -325,7 +328,7 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("")],
-        details: { parsed: undefined },
+        details: d({ parsed: undefined }),
       },
       { expanded: false } as any,
       theme,
@@ -341,7 +344,7 @@ describe("gh_fetch — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("")],
-        details: { parsed: undefined, endpoint: "repos/org/repo" },
+        details: d({ parsed: undefined, endpoint: "repos/org/repo" }),
       },
       { expanded: false } as any,
       theme,
@@ -380,7 +383,7 @@ describe("gh_search — renderResult", () => {
   it("renders error state via renderError", () => {
     const tool = makeSearchTool();
     const result = tool.renderResult!(
-      { content: [textContent("rate limited")], details: {} },
+      { content: [textContent("rate limited")], details: d({}) },
       { expanded: false } as any,
       theme,
       { isError: true, args: { scope: "repos" } } as any,
@@ -395,7 +398,7 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("raw search output")],
-        details: { parsed: [] },
+        details: d({ parsed: [] }),
       },
       { expanded: true } as any,
       theme,
@@ -415,7 +418,7 @@ describe("gh_search — renderResult", () => {
             "README.md\n some content\nCONTRIBUTING.md\n more content",
           ),
         ],
-        details: { parsed: undefined },
+        details: d({ parsed: undefined }),
       },
       { expanded: false } as any,
       theme,
@@ -431,7 +434,7 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("")],
-        details: { parsed: undefined },
+        details: d({ parsed: undefined }),
       },
       { expanded: false } as any,
       theme,
@@ -446,14 +449,14 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("file1.rs\n content")],
-        details: {
+        details: d({
           parsed: undefined,
           truncation: {
             truncated: true,
             outputBytes: 10000,
             totalBytes: 50000,
           },
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -468,7 +471,7 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("[]")],
-        details: { parsed: [] },
+        details: d({ parsed: [] }),
       },
       { expanded: false } as any,
       theme,
@@ -483,7 +486,7 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: [
             {
               fullName: "org/repo",
@@ -491,7 +494,7 @@ describe("gh_search — renderResult", () => {
               language: "TypeScript",
             },
           ],
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -509,13 +512,13 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: [
             { fullName: "a/b", stargazersCount: 1, language: "Rust" },
             { fullName: "c/d", stargazersCount: 2, language: "Go" },
             { fullName: "e/f", stargazersCount: 3, language: "Zig" },
           ],
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -532,9 +535,9 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: [{ number: 42, title: "Fix bug", state: "open" }],
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -549,9 +552,9 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: [{ number: 7, title: "WIP", isDraft: true }],
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -566,14 +569,14 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: {
+        details: d({
           parsed: [
             {
               sha: "abc123def456",
               commit: { message: "Fix: resolve null pointer\n\nDetails..." },
             },
           ],
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -589,12 +592,12 @@ describe("gh_search — renderResult", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("[]")],
-        details: {
+        details: d({
           parsed: [
             { fullName: "org/repo", stargazersCount: 1, language: "TS" },
           ],
           truncation: { truncated: true, outputBytes: 1000, totalBytes: 10000 },
-        },
+        }),
       },
       { expanded: false } as any,
       theme,
@@ -615,7 +618,7 @@ describe("gh_search — formatFirstItem edge cases", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: { parsed: [{}] },
+        details: d({ parsed: [{}] }),
       },
       { expanded: false } as any,
       theme,
@@ -631,7 +634,7 @@ describe("gh_search — formatFirstItem edge cases", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: { parsed: [{ sha: "1234567890" }] },
+        details: d({ parsed: [{ sha: "1234567890" }] }),
       },
       { expanded: false } as any,
       theme,
@@ -646,7 +649,7 @@ describe("gh_search — formatFirstItem edge cases", () => {
     const result = tool.renderResult!(
       {
         content: [textContent("{}")],
-        details: { parsed: [{ number: 99 }] },
+        details: d({ parsed: [{ number: 99 }] }),
       },
       { expanded: false } as any,
       theme,

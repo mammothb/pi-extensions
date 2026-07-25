@@ -147,8 +147,12 @@ describe("smoke: gh_search", () => {
       undefined,
       ctx,
     );
-    expect(typeof r.content[0]?.text).toBe("string");
-    expect((r.content[0]?.text ?? "").length).toBeGreaterThan(0);
+    expect(typeof (r.content[0] as { type: "text"; text: string }).text).toBe(
+      "string",
+    );
+    expect(
+      ((r.content[0] as { type: "text"; text: string }).text ?? "").length,
+    ).toBeGreaterThan(0);
     // Code scope should not have parsed JSON
     expect(r.details.parsed).toBeUndefined();
   });
@@ -365,17 +369,17 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_search renderCall does not throw", () => {
     expect(() =>
-      ghSearch.renderCall(
+      ghSearch.renderCall!(
         { scope: "repos", query: "test" } as any,
         mockTheme,
-        undefined,
+        {} as any,
       ),
     ).not.toThrow();
   });
 
   it("gh_search renderResult (expanded)", () => {
     expect(() =>
-      ghSearch.renderResult(
+      ghSearch.renderResult!(
         {
           content: [{ type: "text", text: "output" }],
           details: { parsed: [] },
@@ -389,7 +393,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_search renderResult (collapsed repos)", () => {
     expect(() =>
-      ghSearch.renderResult(
+      ghSearch.renderResult!(
         {
           content: [{ type: "text", text: "{}" }],
           details: {
@@ -407,7 +411,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_search renderResult (error)", () => {
     expect(() =>
-      ghSearch.renderResult(
+      ghSearch.renderResult!(
         { content: [{ type: "text", text: "error msg" }] } as any,
         { expanded: false } as any,
         mockTheme,
@@ -418,7 +422,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_search renderResult (code scope)", () => {
     expect(() =>
-      ghSearch.renderResult(
+      ghSearch.renderResult!(
         {
           content: [{ type: "text", text: "src/file.ts\n  code\n" }],
           details: {},
@@ -432,17 +436,17 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_fetch renderCall does not throw", () => {
     expect(() =>
-      ghFetch.renderCall(
+      ghFetch.renderCall!(
         { url: "https://github.com/org/repo" } as any,
         mockTheme,
-        undefined,
+        {} as any,
       ),
     ).not.toThrow();
   });
 
   it("gh_fetch renderResult (expanded)", () => {
     expect(() =>
-      ghFetch.renderResult(
+      ghFetch.renderResult!(
         {
           content: [{ type: "text", text: '{"name":"t"}' }],
           details: { parsed: { name: "t" }, endpoint: "repos/o/r" },
@@ -456,7 +460,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_fetch renderResult (collapsed repo)", () => {
     expect(() =>
-      ghFetch.renderResult(
+      ghFetch.renderResult!(
         {
           content: [{ type: "text", text: "{}" }],
           details: {
@@ -473,7 +477,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_fetch renderResult (error)", () => {
     expect(() =>
-      ghFetch.renderResult(
+      ghFetch.renderResult!(
         { content: [{ type: "text", text: "Not Found" }] } as any,
         { expanded: false } as any,
         mockTheme,
@@ -484,13 +488,13 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_auth_status renderCall does not throw", () => {
     expect(() =>
-      ghAuthStatus.renderCall({} as any, mockTheme, undefined),
+      ghAuthStatus.renderCall!({} as any, mockTheme, {} as any),
     ).not.toThrow();
   });
 
   it("gh_auth_status renderResult (authenticated)", () => {
     expect(() =>
-      ghAuthStatus.renderResult(
+      ghAuthStatus.renderResult!(
         {
           content: [{ type: "text", text: "Logged in to github.com as user" }],
           details: { authenticated: true },
@@ -504,7 +508,7 @@ describe("smoke: renderCall / renderResult", () => {
 
   it("gh_auth_status renderResult (unauthenticated)", () => {
     expect(() =>
-      ghAuthStatus.renderResult(
+      ghAuthStatus.renderResult!(
         {
           content: [{ type: "text", text: "not logged in" }],
           details: { authenticated: false },

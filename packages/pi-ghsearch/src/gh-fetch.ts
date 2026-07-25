@@ -157,7 +157,7 @@ export function createGhFetchTool(
       const decodedContent = decodeGitHubContent(parsed);
       if (decodedContent !== null) {
         const filePath = String(
-          (parsed as Record<string, unknown>).path ?? "unknown",
+          (parsed as Record<string, unknown>).path ?? "unknown", // NOSONAR — path is always a string from GitHub API
         );
 
         // Build clean JSON with base64 replaced by a placeholder

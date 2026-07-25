@@ -245,6 +245,7 @@ function unmergeRange(raw: unknown[][], merge: XLSX.Range): void {
   const { s, e } = merge;
   const topVal = raw[s.r]?.[s.c];
   if (topVal === undefined || topVal === null || String(topVal).trim() === "") {
+    // NOSONAR — String() handles unknown→string, value is always a primitive
     return;
   }
   for (let r = s.r; r <= e.r; r++) {
@@ -302,7 +303,7 @@ function findHeaderRow(raw: unknown[][]): number {
       continue;
     }
     const values = row
-      .map((c) => String(c ?? "").trim())
+      .map((c) => String(c ?? "").trim()) // NOSONAR — String() handles unknown→string, cell values are primitives
       .filter((v) => v !== "");
     if (values.length === 0) {
       continue;
@@ -439,7 +440,7 @@ function processSheet(
 
   const rawHeaders =
     raw.length > headerRow
-      ? (raw[headerRow] as unknown[]).map((c) => String(c ?? ""))
+      ? (raw[headerRow] as unknown[]).map((c) => String(c ?? "")) // NOSONAR — String() handles unknown→string, header cells are primitives
       : [];
   const headers = disambiguateHeaders(rawHeaders);
   const cols = headers.length;
@@ -450,7 +451,7 @@ function processSheet(
     rows.map((row) => {
       const obj: Record<string, string> = {};
       for (let i = 0; i < headers.length; i++) {
-        obj[headers[i] ?? ""] = String(row[i] ?? "");
+        obj[headers[i] ?? ""] = String(row[i] ?? ""); // NOSONAR — String() handles unknown→string, cell values are primitives
       }
       return obj;
     });
