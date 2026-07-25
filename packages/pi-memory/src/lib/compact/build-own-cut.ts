@@ -32,6 +32,41 @@ const normalizeKeepUserTurns = (keepUserTurns: number): number => {
   return Math.max(0, Math.floor(keepUserTurns));
 };
 
+/** Find the last compaction entry's index and its firstKeptEntryId. */
+function findLastCompaction(
+  branchEntries: BranchEntry[],
+): { idx: number; firstKeptEntryId: string | undefined } | null {
+  for (let i = branchEntries.length - 1; i >= 0; i--) {
+    if (branchEntries[i]?.type === "compaction") {
+      return { idx: i, firstKeptEntryId: branchEntries[i]?.firstKeptEntryId };
+    }
+  }
+  return null;
+}
+
+/** Convert a BranchEntry to an EntryWithMessage, or null if it's a compaction or has no message. */
+function entryToMessage(e: BranchEntry): EntryWithMessage | null {
+  if (e.type === "compaction") {
+    return null;
+  }
+  if (e.type === "message" && e.message) {
+    return { entry: e, message: e.message };
+  }
+  return null;
+}
+
+/** Collect message entries from an array of BranchEntry, filtering out non-messages. */
+function collectMessages(entries: BranchEntry[]): EntryWithMessage[] {
+  const result: EntryWithMessage[] = [];
+  for (const e of entries) {
+    const m = entryToMessage(e);
+    if (m) {
+      result.push(m);
+    }
+  }
+  return result;
+}
+
 /**
  * Collect live message entries from a branch.
  *
@@ -43,55 +78,28 @@ const normalizeKeepUserTurns = (keepUserTurns: number): number => {
 export function collectLiveMessages(
   branchEntries: BranchEntry[],
 ): EntryWithMessage[] {
-  // Find the last compaction entry and its firstKeptEntryId
-  let lastCompactionIdx = -1;
-  let lastKeptId: string | undefined;
-  for (let i = branchEntries.length - 1; i >= 0; i--) {
-    if (branchEntries[i]?.type === "compaction") {
-      lastCompactionIdx = i;
-      lastKeptId = branchEntries[i]?.firstKeptEntryId;
-      break;
-    }
-  }
-
-  const hasPriorCompaction = lastCompactionIdx >= 0;
+  const comp = findLastCompaction(branchEntries);
   const hasValidKeptId =
-    !!lastKeptId && branchEntries.some((e) => e.id === lastKeptId);
-  const orphanRecovery = hasPriorCompaction && !hasValidKeptId;
+    !!comp?.firstKeptEntryId &&
+    branchEntries.some((e) => e.id === comp.firstKeptEntryId);
+  const orphanRecovery = comp && !hasValidKeptId;
 
-  const liveMessages: EntryWithMessage[] = [];
   if (orphanRecovery) {
-    for (let i = lastCompactionIdx + 1; i < branchEntries.length; i++) {
-      const e = branchEntries[i];
-      if (!e) {
-        continue;
-      }
-      if (e.type === "compaction") {
-        continue;
-      }
-      if (e.type === "message" && e.message) {
-        liveMessages.push({ entry: e, message: e.message });
-      }
-    }
-  } else {
-    let foundKept = !lastKeptId;
-    for (const e of branchEntries) {
-      if (!foundKept && e.id === lastKeptId) {
-        foundKept = true;
-      }
-      if (!foundKept) {
-        continue;
-      }
-      if (e.type === "compaction") {
-        continue;
-      }
-      if (e.type === "message" && e.message) {
-        liveMessages.push({ entry: e, message: e.message });
-      }
-    }
+    return collectMessages(branchEntries.slice(comp.idx + 1));
   }
 
-  return liveMessages;
+  // Standard path: collect from the last kept entry onward (or from start if none)
+  let foundKept = !comp?.firstKeptEntryId;
+  const entries: BranchEntry[] = [];
+  for (const e of branchEntries) {
+    if (!foundKept && e.id === comp?.firstKeptEntryId) {
+      foundKept = true;
+    }
+    if (foundKept) {
+      entries.push(e);
+    }
+  }
+  return collectMessages(entries);
 }
 
 export function buildOwnCut(
