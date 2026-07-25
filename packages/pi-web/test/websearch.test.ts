@@ -25,6 +25,13 @@ function buildTool(config: WebsearchConfig = DEFAULT_CONFIG) {
   return { tool, mockSearch };
 }
 
+function mockTheme(): Theme {
+  return {
+    fg: (color: string, text: string) => `[${color}:${text}]`,
+    bold: (text: string) => `[B:${text}]`,
+  } as unknown as Theme;
+}
+
 // ---------------------------------------------------------------------------
 // execute — default parameters
 // ---------------------------------------------------------------------------
@@ -191,14 +198,6 @@ describe("execute — error handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderCall", () => {
-  // Create a simple mock Theme that tags colors for test assertions
-  function mockTheme(): Theme {
-    return {
-      fg: (color: string, text: string) => `[${color}:${text}]`,
-      bold: (text: string) => `[B:${text}]`,
-    } as unknown as Theme;
-  }
-
   it("returns a Text component containing the query", () => {
     const { tool } = buildTool();
     const theme = mockTheme();
@@ -217,13 +216,6 @@ describe("renderCall", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderResult", () => {
-  function mockTheme(): Theme {
-    return {
-      fg: (color: string, text: string) => `[${color}:${text}]`,
-      bold: (text: string) => `[B:${text}]`,
-    } as unknown as Theme;
-  }
-
   const resultPayload = {
     content: [{ type: "text" as const, text: "search result content" }],
     details: { query: "test query" },

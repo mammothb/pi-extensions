@@ -19,6 +19,16 @@ import { hasPython3, mockContext, text } from "./_helpers.js";
 const tool = createEvalTool();
 const cwd = process.cwd();
 
+function writeConfig(
+  agentDir: string,
+  config: { pythonPath?: string; nodeModulesPath?: string },
+): void {
+  writeFileSync(
+    join(agentDir, "pi-eval.json"),
+    JSON.stringify(config, null, 2),
+  );
+}
+
 describe("createEvalTool — definition shape", () => {
   it('has name "eval"', () => {
     expect(tool.name).toBe("eval");
@@ -317,18 +327,8 @@ describe("eval — pythonPath via config", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeConfig(config: {
-    pythonPath?: string;
-    nodeModulesPath?: string;
-  }): void {
-    writeFileSync(
-      join(agentDir, "pi-eval.json"),
-      JSON.stringify(config, null, 2),
-    );
-  }
-
   it("pythonPath: /nonexistent → clear error, not crash", async () => {
-    writeConfig({ pythonPath: "/nonexistent/python3" });
+    writeConfig(agentDir, { pythonPath: "/nonexistent/python3" });
     await expect(
       tool.execute(
         "pp1",
@@ -355,7 +355,7 @@ describe("eval — pythonPath via config", () => {
     if (!hasVenv) {
       return;
     }
-    writeConfig({ pythonPath: ".venv/bin/python3" });
+    writeConfig(agentDir, { pythonPath: ".venv/bin/python3" });
     const r = await tool.execute(
       "pp2",
       {
@@ -384,7 +384,7 @@ describe("eval — pythonPath via config", () => {
     if (!hasVenv) {
       return;
     }
-    writeConfig({ pythonPath: ".venv/bin/python3" });
+    writeConfig(agentDir, { pythonPath: ".venv/bin/python3" });
     // Try importing numpy; it may or may not be installed
     try {
       const r = await tool.execute(
@@ -531,16 +531,6 @@ describe("eval — nodeModulesPath via config", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeConfig(config: {
-    pythonPath?: string;
-    nodeModulesPath?: string;
-  }): void {
-    writeFileSync(
-      join(agentDir, "pi-eval.json"),
-      JSON.stringify(config, null, 2),
-    );
-  }
-
   it("require() fails without nodeModulesPath for non-core module", async () => {
     // No config set — should fail as before
     await expect(
@@ -568,7 +558,7 @@ describe("eval — nodeModulesPath via config", () => {
       return;
     }
 
-    writeConfig({ nodeModulesPath: "./node_modules" });
+    writeConfig(agentDir, { nodeModulesPath: "./node_modules" });
     const r = await tool.execute(
       "nmp2",
       {
