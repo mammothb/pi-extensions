@@ -1,6 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { discoverAgents } from "./src/lib/agents.js";
-import { computeRosterChange, formatAgentRoster } from "./src/lib/ambient.js";
+import {
+  computeRosterChange,
+  EMPTY_ROSTER_MESSAGE,
+  formatAgentRoster,
+} from "./src/lib/ambient.js";
 import { createSubagentTool } from "./src/subagent-tool.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
@@ -24,10 +28,14 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       return;
     }
 
+    // Use the empty-roster message when agents have been removed (roster
+    // is empty but computeRosterChange requested injection for revocation).
+    const content = roster || EMPTY_ROSTER_MESSAGE;
+
     return {
       message: {
         customType: "subagent_roster",
-        content: roster,
+        content,
         display: false,
       },
     };

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { computeRosterChange, formatAgentRoster } from "../src/lib/ambient.js";
+import {
+  computeRosterChange,
+  EMPTY_ROSTER_MESSAGE,
+  formatAgentRoster,
+} from "../src/lib/ambient.js";
 import type { AgentConfig } from "../src/lib/types.js";
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -125,13 +129,19 @@ describe("computeRosterChange", () => {
     expect(result).toEqual({ shouldInject: true, newSignature: other });
   });
 
-  it("clears signature when roster becomes empty", () => {
+  it("injects revocation when roster becomes empty (non-empty → empty)", () => {
     const result = computeRosterChange("", roster);
-    expect(result).toEqual({ shouldInject: false, newSignature: null });
+    expect(result).toEqual({ shouldInject: true, newSignature: null });
   });
 
   it("no-op for persistent empty roster", () => {
     const result = computeRosterChange("", null);
     expect(result).toEqual({ shouldInject: false, newSignature: null });
+  });
+
+  it("EMPTY_ROSTER_MESSAGE is a non-empty string", () => {
+    expect(EMPTY_ROSTER_MESSAGE.length).toBeGreaterThan(0);
+    expect(EMPTY_ROSTER_MESSAGE).toContain("subagent-roster");
+    expect(EMPTY_ROSTER_MESSAGE).toContain("no subagents available");
   });
 });

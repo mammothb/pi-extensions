@@ -120,4 +120,30 @@ describe("mapWithConcurrencyLimit", () => {
 
     await expect(promise).rejects.toThrow("Aborted");
   });
+
+  it("preserves sibling results when one worker throws", async () => {
+    // Track independently-collected results to verify that completed
+    // siblings survive when a later worker throws.
+    const settled = new Map<number, string>();
+
+    const promise = mapWithConcurrencyLimit(
+      ["a", "b", "c"],
+      2,
+      async (item, index, _signal) => {
+        if (item === "c") {
+          throw new Error("worker error");
+        }
+        const result = `result-${item}`;
+        settled.set(index, result);
+        return result;
+      },
+    );
+
+    await expect(promise).rejects.toThrow("worker error");
+    // Items "a" and "b" completed before "c" threw
+    expect(settled.has(0)).toBe(true);
+    expect(settled.has(1)).toBe(true);
+    // Item "c" never settled (it threw)
+    expect(settled.has(2)).toBe(false);
+  });
 });
