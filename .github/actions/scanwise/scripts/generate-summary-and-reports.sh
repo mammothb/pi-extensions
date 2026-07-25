@@ -109,8 +109,8 @@ generate_stars() {
 generate_scanwise_analysis_summary_md() {
   local new_issues_json="$1"
   local new_hotspots_json="$2"
-  local new_artifact_link="$3"
-  local overall_artifact_link="$4"
+  local new_artifact_link="${3:-}"
+  local overall_artifact_link="${4:-}"
 
   # New code stats
   local new_code_smells new_bugs new_vulnerabilities new_security_hotspots

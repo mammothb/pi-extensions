@@ -48,7 +48,7 @@ create_overall_issues_report_json() {
 fetch_and_append_issues() {
   local issues_file="$1"
   local first="$2"
-  local extra_params="$3"
+  local extra_params="${3:-}"
 
   local PAGE=1
   while :; do
