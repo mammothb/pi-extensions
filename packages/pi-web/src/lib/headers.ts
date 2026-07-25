@@ -1,7 +1,7 @@
 import type { Format, Header } from "./types";
 
 export function buildHeaders(format: Format): Header {
-  let acceptHeader = "*/*";
+  let acceptHeader: string;
   switch (format) {
     case "markdown":
       acceptHeader =
