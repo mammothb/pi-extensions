@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseFrontmatter } from "../src/lib/agents.js";
+import { parseFrontmatter, validateConfig } from "../src/lib/agents.js";
 import { loadSubagentConfig } from "../src/lib/config.js";
 
 const FIXTURES = join(__dirname, "fixtures", "agents");
@@ -161,5 +161,122 @@ describe("loadSubagentConfig", () => {
     } finally {
       rmSync(dir, { recursive: true });
     }
+  });
+});
+
+describe("validateConfig", () => {
+  it("applies all defaults when only model is set", () => {
+    const config = validateConfig(
+      { model: "cheap" },
+      "You are a test agent.\n",
+      "test-agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config).toEqual({
+      name: "test-agent",
+      description: "",
+      model: "cheap",
+      thinking: "",
+      tools: [],
+      mode: "clean",
+      sandbox: false,
+      noSession: true,
+      body: "You are a test agent.",
+    });
+  });
+
+  it("returns null when model is missing", () => {
+    const config = validateConfig({ name: "foo" }, "body", "foo.md");
+
+    expect(config).toBeNull();
+  });
+
+  it("defaults invalid mode to clean with warning", () => {
+    const config = validateConfig(
+      { model: "cheap", mode: "parallel" },
+      "body",
+      "bad-mode.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.mode).toBe("clean");
+  });
+
+  it("parses tools string into array", () => {
+    const config = validateConfig(
+      { model: "cheap", tools: "read,  edit , bash" },
+      "body",
+      "agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.tools).toEqual(["read", "edit", "bash"]);
+  });
+
+  it("sets noSession to false when no-session: false", () => {
+    const config = validateConfig(
+      { model: "cheap", "no-session": "false" },
+      "body",
+      "agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.noSession).toBe(false);
+  });
+
+  it("falls back to filename stem when name is missing", () => {
+    const config = validateConfig(
+      { model: "cheap" },
+      "body",
+      "my-custom-agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.name).toBe("my-custom-agent");
+  });
+
+  it("uses frontmatter name over filename stem", () => {
+    const config = validateConfig(
+      { model: "cheap", name: "explicit-name" },
+      "body",
+      "filename.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.name).toBe("explicit-name");
+  });
+
+  it("parses sandbox boolean from string", () => {
+    const config = validateConfig(
+      { model: "cheap", sandbox: "true" },
+      "body",
+      "agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.sandbox).toBe(true);
+  });
+
+  it("accepts fork mode", () => {
+    const config = validateConfig(
+      { model: "cheap", mode: "fork" },
+      "body",
+      "agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.mode).toBe("fork");
+  });
+
+  it("trims body whitespace", () => {
+    const config = validateConfig(
+      { model: "cheap" },
+      "  line one\nline two  \n",
+      "agent.md",
+    );
+
+    expect(config).not.toBeNull();
+    expect(config!.body).toBe("line one\nline two");
   });
 });

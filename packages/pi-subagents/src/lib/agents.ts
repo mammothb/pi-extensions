@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { AgentConfig } from "./types.js";
 
@@ -86,6 +87,55 @@ export function parseFrontmatter(
   const body = lines.slice(closeIdx + 1).join("\n");
 
   return { frontmatter, body };
+}
+
+/**
+ * Validate parsed frontmatter and build an AgentConfig with defaults applied.
+ * Returns null if the agent should be skipped (e.g. missing required fields).
+ */
+export function validateConfig(
+  frontmatter: Record<string, string>,
+  body: string,
+  filename: string,
+): AgentConfig | null {
+  const model = frontmatter.model?.trim();
+  if (!model) {
+    console.warn(
+      `validateConfig: skipping ${filename} — missing "model" field`,
+    );
+    return null;
+  }
+
+  let mode = frontmatter.mode?.trim() as AgentConfig["mode"] | undefined;
+  if (mode !== "clean" && mode !== "fork") {
+    if (mode) {
+      console.warn(
+        `validateConfig: invalid mode "${mode}" in ${filename} — defaulting to "clean"`,
+      );
+    }
+    mode = "clean";
+  }
+
+  const name = frontmatter.name?.trim() || basename(filename, ".md");
+  const rawTools = frontmatter.tools?.trim();
+  const tools = rawTools
+    ? rawTools
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    name,
+    description: frontmatter.description?.trim() ?? "",
+    model,
+    thinking: frontmatter.thinking?.trim() ?? "",
+    tools,
+    mode,
+    sandbox: frontmatter.sandbox === "true",
+    noSession: frontmatter["no-session"] !== "false",
+    body: body.trim(),
+  };
 }
 
 /**
