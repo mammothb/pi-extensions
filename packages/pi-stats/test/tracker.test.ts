@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   aggregate,
   appendRecord,
@@ -155,6 +155,14 @@ describe("StatsTracker — error resilience", () => {
 describe("appendRecord", () => {
   const isolatedLog = path.join(os.tmpdir(), "pi-stats-append-test.jsonl");
 
+  beforeEach(() => {
+    try {
+      fs.unlinkSync(isolatedLog);
+    } catch {
+      // ok
+    }
+  });
+
   afterEach(() => {
     try {
       fs.unlinkSync(isolatedLog);
@@ -183,6 +191,14 @@ describe("appendRecord", () => {
 
 describe("readRecords", () => {
   const isolatedLog = path.join(os.tmpdir(), "pi-stats-read-test.jsonl");
+
+  beforeEach(() => {
+    try {
+      fs.unlinkSync(isolatedLog);
+    } catch {
+      // ok
+    }
+  });
 
   afterEach(() => {
     try {

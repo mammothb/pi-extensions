@@ -106,6 +106,7 @@ export function runScript(
       // The wrapper creates shutdown-<pid>.pid, runs the script, then
       // removes the file. If the file remains on next startup, the
       // shutdown was unclean.
+      // NOSONAR — CLI tool, PATH is user-controlled
       const child = spawn(
         "bash",
         [
