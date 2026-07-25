@@ -3,9 +3,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     coverage: {
-      enabled: true,
       provider: "v8",
       include: ["src/**/*.ts"],
+      reporter: ["text", "html", "clover", "json", "lcov"],
     },
     projects: [
       {
@@ -58,6 +58,13 @@ export default defineConfig({
         test: {
           name: "pi-permissions",
           root: "./packages/pi-permissions",
+          include: ["test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "pi-shared",
+          root: "./packages/pi-shared",
           include: ["test/**/*.test.ts"],
         },
       },

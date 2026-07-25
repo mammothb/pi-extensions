@@ -54,10 +54,11 @@ export const registerRecallTool = (pi: ExtensionAPI) => {
           : undefined;
       const page = params.page ?? 1;
 
-      const continuationPrompt =
-        params.query && page
-          ? `Use page:${page + 1}${scope === "all" ? " with scope:'all'" : ""} for more results`
-          : undefined;
+      let continuationPrompt: string | undefined;
+      if (params.query && page) {
+        const scopeHint = scope === "all" ? " with scope:'all'" : "";
+        continuationPrompt = `Use page:${page + 1}${scopeHint} for more results`;
+      }
 
       const { text } = runRecallPipeline({
         sessionFile,

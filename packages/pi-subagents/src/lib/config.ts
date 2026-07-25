@@ -8,6 +8,37 @@ const DEFAULTS: SubagentConfig = {
   stuckTimeoutMs: 60_000,
 };
 
+function parseTiers(raw: unknown): Record<string, string> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    console.warn(
+      `subagents: "tiers" must be an object, got ${Array.isArray(raw) ? "array" : typeof raw} — using defaults`,
+    );
+    return {};
+  }
+
+  const tiers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string") {
+      tiers[key] = value;
+    } else {
+      console.warn(
+        `subagents: ignoring tier "${key}" — value must be a string, got ${typeof value}`,
+      );
+    }
+  }
+  return tiers;
+}
+
+function parseStuckTimeout(raw: unknown): number {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+    return raw;
+  }
+  console.warn(
+    `subagents: "stuckTimeoutMs" must be a non-negative finite number, got ${raw} — using default`,
+  );
+  return DEFAULTS.stuckTimeoutMs;
+}
+
 /**
  * Load subagent configuration from <agentDir>/subagents.json.
  * Returns defaults when the file is missing or malformed.
@@ -23,42 +54,11 @@ export function loadSubagentConfig(agentDir?: string): SubagentConfig {
     return { ...DEFAULTS };
   }
 
-  let tiers: Record<string, string> = {};
-  if (raw.tiers !== undefined) {
-    if (
-      typeof raw.tiers === "object" &&
-      raw.tiers !== null &&
-      !Array.isArray(raw.tiers)
-    ) {
-      tiers = {};
-      for (const [key, value] of Object.entries(
-        raw.tiers as Record<string, unknown>,
-      )) {
-        if (typeof value === "string") {
-          tiers[key] = value;
-        } else {
-          console.warn(
-            `subagents: ignoring tier "${key}" — value must be a string, got ${typeof value}`,
-          );
-        }
-      }
-    } else {
-      console.warn(
-        `subagents: "tiers" must be an object, got ${Array.isArray(raw.tiers) ? "array" : typeof raw.tiers} — using defaults`,
-      );
-    }
-  }
-
-  let stuckTimeoutMs = DEFAULTS.stuckTimeoutMs;
-  if (raw.stuckTimeoutMs !== undefined) {
-    if (typeof raw.stuckTimeoutMs === "number") {
-      stuckTimeoutMs = raw.stuckTimeoutMs;
-    } else {
-      console.warn(
-        `subagents: "stuckTimeoutMs" must be a number, got ${typeof raw.stuckTimeoutMs} — using default`,
-      );
-    }
-  }
+  const tiers = raw.tiers !== undefined ? parseTiers(raw.tiers) : {};
+  const stuckTimeoutMs =
+    raw.stuckTimeoutMs !== undefined
+      ? parseStuckTimeout(raw.stuckTimeoutMs)
+      : DEFAULTS.stuckTimeoutMs;
 
   return { tiers, stuckTimeoutMs };
 }

@@ -1,0 +1,42 @@
+name: SonarQube Scan
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  scan:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup - Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          components: clippy
+      - name: Scan - SonarQube
+        uses: ./.github/actions/scanwise
+        with:
+          sonar-source-path: "."
+          sonar-project-name: "pi-extensions"
+          sonar-project-key: "pi-extensions"
+          generate-pr-comment: true
+          new-code-n-days: "3d"
+          reports-scopes: '["overall", "new"]'
+          reports-retention-days: "7"
+          pre-scan-script: cargo clippy --workspace --message-format=json > clippy-report.json
+          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json -Dsonar.issue.ignore.multicriteria=s6606 -Dsonar.issue.ignore.multicriteria.s6606.ruleKey=typescript:S6606 -Dsonar.issue.ignore.multicriteria.s6606.resourceKey=**/*"

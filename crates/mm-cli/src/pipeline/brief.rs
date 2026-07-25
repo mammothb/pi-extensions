@@ -239,83 +239,104 @@ fn build_brief_sections(
     let mut last_header: Option<&'static str> = None;
 
     for b in blocks {
-        match b {
-            NormalizedBlock::User { text, source_index } => {
-                if text.trim().is_empty() {
-                    last_header = Some("[user]");
-                    continue;
-                }
-                let collapsed = collapse_skill_text(text);
-                let truncated = truncate_tokens(&collapsed, truncate_user);
-                if truncated.is_empty() {
-                    last_header = Some("[user]");
-                    continue;
-                }
-                let ref_str = format!(" (#{source_index})");
-                push_section(
-                    &mut sections,
-                    &mut last_header,
-                    "[user]",
-                    &format!("{truncated}{ref_str}"),
-                );
+        let item = build_item(b, truncate_user, truncate_assistant);
+        match item {
+            BriefItem::Line(header, line) => {
+                push_section(&mut sections, &mut last_header, header, &line);
             }
-            NormalizedBlock::Bash {
-                command,
-                source_index,
-                ..
-            } => {
-                let cmd = compress_bash(command);
-                if cmd.is_empty() {
-                    last_header = Some("[user]");
-                    continue;
-                }
-                let ref_str = format!(" (#{source_index})");
-                push_section(
-                    &mut sections,
-                    &mut last_header,
-                    "[user]",
-                    &format!("$ {cmd}{ref_str}"),
-                );
-            }
-            NormalizedBlock::Assistant { text, source_index } => {
-                let stripped = strip_self_talk(text);
-                let truncated = truncate_tokens(&stripped, truncate_assistant);
-                if truncated.is_empty() {
-                    continue;
-                }
-                let ref_str = format!(" (#{source_index})");
-                push_section(
-                    &mut sections,
-                    &mut last_header,
-                    "[assistant]",
-                    &format!("{truncated}{ref_str}"),
-                );
-            }
-            NormalizedBlock::ToolCall {
-                name,
-                args,
-                source_index,
-            } => {
-                let name = name.trim();
-                if name.is_empty() {
-                    continue;
-                }
-                let summary = tool_one_liner(name, args);
-                let ref_str = format!(" (#{source_index})");
-                push_section(
-                    &mut sections,
-                    &mut last_header,
-                    "[assistant]",
-                    &format!("{summary}{ref_str}"),
-                );
-            }
-            NormalizedBlock::ToolResult { .. } => {
-                // Tool results are omitted from brief output
+            BriefItem::Empty => {}
+            BriefItem::EmptyWithUserHeader => {
+                last_header = Some("[user]");
             }
         }
     }
 
     sections
+}
+
+enum BriefItem {
+    /// A section header + formatted line to push.
+    Line(&'static str, String),
+    /// Skip this block entirely (ToolResult, empty assistant, empty tool call).
+    Empty,
+    /// No output, but set last_header so subsequent user-group blocks merge.
+    EmptyWithUserHeader,
+}
+
+fn build_item(b: &NormalizedBlock, truncate_user: usize, truncate_assistant: usize) -> BriefItem {
+    match b {
+        NormalizedBlock::User { text, source_index } => {
+            match build_user_line(text, *source_index, truncate_user) {
+                Some(line) => BriefItem::Line("[user]", line),
+                None => BriefItem::EmptyWithUserHeader,
+            }
+        }
+        NormalizedBlock::Bash {
+            command,
+            source_index,
+            ..
+        } => match build_bash_line(command, *source_index) {
+            Some(line) => BriefItem::Line("[user]", line),
+            None => BriefItem::EmptyWithUserHeader,
+        },
+        NormalizedBlock::Assistant { text, source_index } => {
+            match build_assistant_line(text, *source_index, truncate_assistant) {
+                Some(line) => BriefItem::Line("[assistant]", line),
+                None => BriefItem::Empty,
+            }
+        }
+        NormalizedBlock::ToolCall {
+            name,
+            args,
+            source_index,
+        } => match build_tool_call_line(name, args, *source_index) {
+            Some(line) => BriefItem::Line("[assistant]", line),
+            None => BriefItem::Empty,
+        },
+        NormalizedBlock::ToolResult { .. } => BriefItem::Empty,
+    }
+}
+
+fn build_user_line(text: &str, source_index: usize, truncate_user: usize) -> Option<String> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    let collapsed = collapse_skill_text(text);
+    let truncated = truncate_tokens(&collapsed, truncate_user);
+    if truncated.is_empty() {
+        return None;
+    }
+    Some(format!("{truncated} (#{source_index})"))
+}
+
+fn build_bash_line(command: &str, source_index: usize) -> Option<String> {
+    let cmd = compress_bash(command);
+    if cmd.is_empty() {
+        return None;
+    }
+    Some(format!("$ {cmd} (#{source_index})"))
+}
+
+fn build_assistant_line(
+    text: &str,
+    source_index: usize,
+    truncate_assistant: usize,
+) -> Option<String> {
+    let stripped = strip_self_talk(text);
+    let truncated = truncate_tokens(&stripped, truncate_assistant);
+    if truncated.is_empty() {
+        return None;
+    }
+    Some(format!("{truncated} (#{source_index})"))
+}
+
+fn build_tool_call_line(name: &str, args: &Value, source_index: usize) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let summary = tool_one_liner(name, args);
+    Some(format!("{summary} (#{source_index})"))
 }
 
 fn push_section(
@@ -358,32 +379,39 @@ fn collapse_tool_lines(sections: &mut [BriefSection]) {
             // Extract (#ref) suffix and base text
             let (base, ref_num) = strip_ref_suffix(line);
 
-            if let Some(last) = out.last() {
-                // State 1: already merged — `base (#1, #2) x2`
-                if let Some((m_base, m_refs, m_count)) = parse_merged_tool(last)
-                    && m_base == base
-                {
-                    let new_refs = format!("{m_refs}, #{ref_num}");
-                    let new_count = m_count + 1;
-                    let idx = out.len() - 1;
-                    out[idx] = format!("{base} ({new_refs}) x{new_count}");
-                    continue;
-                }
-                // State 2: single ref — `base (#12)`
-                if let Some((single_base, single_ref)) = parse_single_ref(last)
-                    && single_base == base
-                {
-                    let idx = out.len() - 1;
-                    out[idx] = format!("{base} (#{single_ref}, #{ref_num}) x2");
-                    continue;
-                }
+            if let Some(last) = out.last()
+                && let Some(merged) = try_merge_tool_line(last, base, ref_num)
+            {
+                let idx = out.len() - 1;
+                out[idx] = merged;
+                continue;
             }
-            // State 3: no match or non-tool previous
+            // No match or non-tool previous
             out.push(line.clone());
         }
 
         sec.lines = out;
     }
+}
+
+/// Try to merge a tool line with the previous output line.
+/// Returns the new merged line if the previous line has the same base.
+fn try_merge_tool_line(last: &str, base: &str, ref_num: &str) -> Option<String> {
+    // State 1: already merged — `base (#1, #2) x2`
+    if let Some((m_base, m_refs, m_count)) = parse_merged_tool(last)
+        && m_base == base
+    {
+        let new_refs = format!("{m_refs}, #{ref_num}");
+        let new_count = m_count + 1;
+        return Some(format!("{base} ({new_refs}) x{new_count}"));
+    }
+    // State 2: single ref — `base (#12)`
+    if let Some((single_base, single_ref)) = parse_single_ref(last)
+        && single_base == base
+    {
+        return Some(format!("{base} (#{single_ref}, #{ref_num}) x2"));
+    }
+    None
 }
 
 /// Strip a `(#N)` suffix from a tool line. Returns (base, ref_number).

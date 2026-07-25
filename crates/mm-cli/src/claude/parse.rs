@@ -141,52 +141,63 @@ fn parse_merged(records: &[ClaudeRecord]) -> Vec<Message> {
                 message: sys_msg,
                 content,
             } => {
-                match subtype.as_deref() {
-                    Some("compact_boundary") => {
-                        messages.push(Message {
-                            role: "chain_boundary".into(),
-                            content: vec![],
-                            tool_call_id: None,
-                            tool_name: None,
-                            is_error: false,
-                            command: None,
-                            output: None,
-                            exit_code: None,
-                        });
-                    }
-                    Some("init") => {} // skip
-                    _ => {
-                        // Prefer top-level content, fall back to message.content
-                        let text = content
-                            .as_deref()
-                            .or_else(|| {
-                                sys_msg
-                                    .as_ref()
-                                    .and_then(|m| m.content.as_ref())
-                                    .and_then(|v| v.as_str())
-                            })
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string());
-                        if let Some(t) = text {
-                            messages.push(Message {
-                                role: "system".into(),
-                                content: vec![ContentBlock::Text { text: t }],
-                                tool_call_id: None,
-                                tool_name: None,
-                                is_error: false,
-                                command: None,
-                                output: None,
-                                exit_code: None,
-                            });
-                        }
-                    }
-                }
+                messages.extend(parse_system_record(subtype, sys_msg, content));
             }
             ClaudeRecord::Other => {}
         }
     }
 
     messages
+}
+
+/// Parse a system record into zero or more Messages.
+fn parse_system_record(
+    subtype: &Option<String>,
+    sys_msg: &Option<ClaudeMessage>,
+    content: &Option<String>,
+) -> Vec<Message> {
+    match subtype.as_deref() {
+        Some("compact_boundary") => {
+            vec![Message {
+                role: "chain_boundary".into(),
+                content: vec![],
+                tool_call_id: None,
+                tool_name: None,
+                is_error: false,
+                command: None,
+                output: None,
+                exit_code: None,
+            }]
+        }
+        Some("init") => vec![],
+        _ => {
+            // Prefer top-level content, fall back to message.content
+            let text = content
+                .as_deref()
+                .or_else(|| {
+                    sys_msg
+                        .as_ref()
+                        .and_then(|m| m.content.as_ref())
+                        .and_then(|v| v.as_str())
+                })
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            if let Some(t) = text {
+                vec![Message {
+                    role: "system".into(),
+                    content: vec![ContentBlock::Text { text: t }],
+                    tool_call_id: None,
+                    tool_name: None,
+                    is_error: false,
+                    command: None,
+                    output: None,
+                    exit_code: None,
+                }]
+            } else {
+                vec![]
+            }
+        }
+    }
 }
 
 /// Partition a user message's content into text/image/document blocks (-> user
@@ -922,5 +933,100 @@ mod tests {
         assert!(msgs[2].is_tool_result());
         assert_eq!(msgs[2].tool_name.as_deref(), Some("Write"));
         assert!(msgs[3].is_assistant());
+    }
+
+    // ── Uncovered branch coverage ────────────────────────────────────────
+
+    #[rstest]
+    fn system_with_subtype_and_message_content() {
+        let records = vec![json!({
+            "type": "system",
+            "subtype": "custom_summary",
+            "message": {
+                "role": "system",
+                "content": "compaction summary"
+            }
+        })];
+        let msgs = parse_raw(&records);
+        // subtype not "init"/"compact_boundary" → fallback extracts text from message.content
+        assert_eq!(msgs.len(), 1);
+    }
+
+    #[rstest]
+    fn system_with_subtype_and_no_content() {
+        let records = vec![json!({
+            "type": "system",
+            "subtype": "custom_summary"
+        })];
+        let msgs = parse_raw(&records);
+        // No content top-level or in message → no messages produced
+        assert_eq!(msgs.len(), 0);
+    }
+
+    #[rstest]
+    fn assistant_with_non_array_content() {
+        let records = vec![json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": "plain string content",
+                "id": "msg_1"
+            }
+        })];
+        let msgs = parse_raw(&records);
+        // Non-array content → parse_assistant_message returns empty vec
+        assert_eq!(msgs.len(), 0);
+    }
+
+    #[rstest]
+    fn document_content_block() {
+        let records = vec![json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "document", "source": {"media_type": "application/pdf"}}],
+                "id": "msg_1"
+            }
+        })];
+        let msgs = parse_raw(&records);
+        assert_eq!(msgs.len(), 1);
+        match &msgs[0].content[0] {
+            ContentBlock::Text { text } => assert!(text.contains("[document:")),
+            _ => panic!("expected Text content block"),
+        }
+    }
+
+    #[rstest]
+    fn unknown_content_block_type() {
+        let records = vec![json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "custom_unknown_type"}],
+                "id": "msg_1"
+            }
+        })];
+        let msgs = parse_raw(&records);
+        // Unknown type blocks are filtered out → parse_assistant_message returns empty
+        assert_eq!(msgs.len(), 0);
+    }
+
+    #[rstest]
+    fn user_with_tool_result_blocks() {
+        let records = vec![json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "done"},
+                    {"type": "tool_result", "tool_use_id": "toolu_01", "content": "result data"}
+                ]
+            }
+        })];
+        let msgs = parse_raw(&records);
+        // Should produce one user message + one tool_result message
+        assert!(msgs.len() >= 1);
+        let has_tool_result = msgs.iter().any(|m| m.is_tool_result());
+        assert!(has_tool_result);
     }
 }

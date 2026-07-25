@@ -25,7 +25,7 @@ describe("ApprovalCache", () => {
   it("overwrites existing decisions", () => {
     const store = new ApprovalCache();
     store.set("bash:git status", "deny");
-    store.set("bash:git status", "allow");
+    store.set("bash:git status", "allow"); // NOSONAR — intentional: testing overwrite behavior
     expect(store.get("bash:git status")).toBe("allow");
   });
 

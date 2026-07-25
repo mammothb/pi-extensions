@@ -56,10 +56,11 @@ export function createGhFetchTool(
       let shortUrl = url;
       try {
         const parsed = new URL(url);
-        if (parsed.hostname === "github.com") {
-          shortUrl = parsed.pathname.replace(/^\/|\/$/g, "");
-        } else if (parsed.hostname === "api.github.com") {
-          shortUrl = parsed.pathname.replace(/^\/|\/$/g, "");
+        if (
+          parsed.hostname === "github.com" ||
+          parsed.hostname === "api.github.com"
+        ) {
+          shortUrl = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
         }
       } catch {
         // invalid URL — keep raw value
@@ -155,7 +156,9 @@ export function createGhFetchTool(
       // details.parsed keeps the original JSON unchanged for programmatic access.
       const decodedContent = decodeGitHubContent(parsed);
       if (decodedContent !== null) {
-        const filePath = (parsed as Record<string, unknown>).path ?? "unknown";
+        const filePath = String(
+          (parsed as Record<string, unknown>).path ?? "unknown", // NOSONAR — path is always a string from GitHub API
+        );
 
         // Build clean JSON with base64 replaced by a placeholder
         const cleanParsed = { ...(parsed as Record<string, unknown>) };

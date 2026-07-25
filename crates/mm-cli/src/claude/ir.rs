@@ -40,100 +40,22 @@ pub fn emit_full(messages: &[Message], no_stats: bool) -> String {
     let mut global_line: usize = 0;
 
     for (i, chain) in chains.iter().enumerate() {
-        if chains.len() > 1 {
-            out.push_str(DOUBLE_SEP);
-            out.push('\n');
-            // TODO: model extraction from original records (not in Message yet).
-            out.push_str(&format!("Chain {} — system\n", i + 1));
-            out.push_str(DOUBLE_SEP);
-            out.push('\n');
-            out.push('\n');
-        }
+        emit_chain_header(&mut out, i, chains.len());
 
         let mut prev_role: Option<&str> = None;
 
         for msg in chain {
-            // Insert separator for role transitions that need visual grouping.
-            let needs_sep = match (prev_role, msg.role.as_str()) {
-                // assistant (with tool calls) -> tool_result
-                (Some("assistant"), "tool_result") => true,
-                // tool_result -> next assistant (new turn)
-                (Some("tool_result"), "assistant") => true,
-                // tool_result -> user (new turn)
-                (Some("tool_result"), "user") => true,
-                _ => false,
-            };
-            if needs_sep {
+            if needs_separator(prev_role, &msg.role) {
                 out.push_str(SEPARATOR);
                 out.push('\n');
                 out.push('\n');
             }
 
             match msg.role.as_str() {
-                "user" => {
-                    global_line += 1;
-                    out.push_str(&format!("[{global_line}]  user\n"));
-                    for block in &msg.content {
-                        if let ContentBlock::Text { text } = block {
-                            for line in text.lines() {
-                                out.push_str(&format!("     {line}\n"));
-                            }
-                        }
-                    }
-                }
-                "assistant" => {
-                    global_line += 1;
-                    out.push_str(&format!("[{global_line}]  assistant\n"));
-                    for block in &msg.content {
-                        match block {
-                            ContentBlock::Text { text } => {
-                                for line in text.lines() {
-                                    out.push_str(&format!("     {line}\n"));
-                                }
-                            }
-                            ContentBlock::ToolCall { id, name, input } => {
-                                global_line += 1;
-                                let summary = tool_call_summary(name, input);
-                                let sid = short_id(id);
-                                out.push_str(&format!(
-                                    "[{global_line}]    tool_call {summary}   #{sid}\n"
-                                ));
-                            }
-                            ContentBlock::Thinking { thinking, .. } => {
-                                out.push_str("     [thinking]\n");
-                                for line in thinking.lines() {
-                                    out.push_str(&format!("     {line}\n"));
-                                }
-                            }
-                            // ToolResult blocks shouldn't appear in assistant messages
-                            // after claude::parse unwinds them.
-                            ContentBlock::ToolResult { .. } => {}
-                        }
-                    }
-                }
-                "tool_result" => {
-                    global_line += 1;
-                    let name = msg.tool_name.as_deref().unwrap_or("<unknown>");
-                    out.push_str(&format!("[{global_line}]  tool_result [{name}]\n"));
-                    for block in &msg.content {
-                        if let ContentBlock::Text { text } = block {
-                            for line in text.lines() {
-                                out.push_str(&format!("     {line}\n"));
-                            }
-                        }
-                    }
-                }
-                "system" => {
-                    global_line += 1;
-                    out.push_str(&format!("[{global_line}]  system\n"));
-                    for block in &msg.content {
-                        if let ContentBlock::Text { text } = block {
-                            for line in text.lines() {
-                                out.push_str(&format!("     {line}\n"));
-                            }
-                        }
-                    }
-                }
+                "user" => emit_user(&mut out, &mut global_line, msg),
+                "assistant" => emit_assistant(&mut out, &mut global_line, msg),
+                "tool_result" => emit_tool_result(&mut out, &mut global_line, msg),
+                "system" => emit_system(&mut out, &mut global_line, msg),
                 _ => {} // chain_boundary and unknown — skip
             }
 
@@ -141,17 +63,113 @@ pub fn emit_full(messages: &[Message], no_stats: bool) -> String {
         }
     }
 
-    if !no_stats {
-        let footer = stats_footer(messages);
-        if !footer.is_empty() {
-            out.push_str(SEPARATOR);
-            out.push('\n');
-            out.push_str(&footer);
-            out.push('\n');
-        }
-    }
+    emit_footer(&mut out, messages, no_stats);
 
     out
+}
+
+/// Emit a chain header when there are multiple chains.
+fn emit_chain_header(out: &mut String, idx: usize, total_chains: usize) {
+    if total_chains > 1 {
+        out.push_str(DOUBLE_SEP);
+        out.push('\n');
+        // TODO: model extraction from original records (not in Message yet).
+        out.push_str(&format!("Chain {} — system\n", idx + 1));
+        out.push_str(DOUBLE_SEP);
+        out.push('\n');
+        out.push('\n');
+    }
+}
+
+/// Insert a separator for role transitions that need visual grouping.
+fn needs_separator(prev_role: Option<&str>, current_role: &str) -> bool {
+    matches!(
+        (prev_role, current_role),
+        (Some("assistant"), "tool_result")
+            | (Some("tool_result"), "assistant")
+            | (Some("tool_result"), "user")
+    )
+}
+
+fn emit_text_lines(out: &mut String, blocks: &[ContentBlock]) {
+    for block in blocks {
+        if let ContentBlock::Text { text } = block {
+            for line in text.lines() {
+                out.push_str(&format!("     {line}\n"));
+            }
+        }
+    }
+}
+
+fn emit_user(out: &mut String, global_line: &mut usize, msg: &Message) {
+    *global_line += 1;
+    let gl = *global_line;
+    out.push_str(&format!("[{gl}]  user\n"));
+    emit_text_lines(out, &msg.content);
+}
+
+fn emit_assistant(out: &mut String, global_line: &mut usize, msg: &Message) {
+    *global_line += 1;
+    let gl = *global_line;
+    out.push_str(&format!("[{gl}]  assistant\n"));
+    for block in &msg.content {
+        emit_assistant_block(out, global_line, block);
+    }
+}
+
+fn emit_assistant_block(out: &mut String, global_line: &mut usize, block: &ContentBlock) {
+    match block {
+        ContentBlock::Text { text } => {
+            for line in text.lines() {
+                out.push_str(&format!("     {line}\n"));
+            }
+        }
+        ContentBlock::ToolCall { id, name, input } => {
+            *global_line += 1;
+            let gl = *global_line;
+            let summary = tool_call_summary(name, input);
+            let sid = short_id(id);
+            out.push_str(&format!("[{gl}]    tool_call {summary}   #{sid}\n"));
+        }
+        ContentBlock::Thinking { thinking, .. } => {
+            out.push_str("     [thinking]\n");
+            for line in thinking.lines() {
+                out.push_str(&format!("     {line}\n"));
+            }
+        }
+        // ToolResult blocks shouldn't appear in assistant messages
+        // after claude::parse unwinds them.
+        ContentBlock::ToolResult { .. } => {}
+    }
+}
+
+fn emit_tool_result(out: &mut String, global_line: &mut usize, msg: &Message) {
+    *global_line += 1;
+    let gl = *global_line;
+    let name = msg.tool_name.as_deref().unwrap_or("<unknown>");
+    out.push_str(&format!("[{gl}]  tool_result [{name}]\n"));
+    emit_text_lines(out, &msg.content);
+}
+
+fn emit_system(out: &mut String, global_line: &mut usize, msg: &Message) {
+    *global_line += 1;
+    let gl = *global_line;
+    out.push_str(&format!("[{gl}]  system\n"));
+    emit_text_lines(out, &msg.content);
+}
+
+/// Append stats footer if not suppressed and non-empty.
+fn emit_footer(out: &mut String, messages: &[Message], no_stats: bool) {
+    if no_stats {
+        return;
+    }
+    let footer = stats_footer(messages);
+    if !footer.is_empty() {
+        out.push_str(SEPARATOR);
+        out.push('\n');
+        out.push_str(&footer);
+        out.push('\n');
+    }
 }
 
 /// Build a stats footer: "N messages · T tool calls · ~X tokens"

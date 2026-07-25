@@ -19,6 +19,16 @@ import { hasPython3, mockContext, text } from "./_helpers.js";
 const tool = createEvalTool();
 const cwd = process.cwd();
 
+function writeConfig(
+  agentDir: string,
+  config: { pythonPath?: string; nodeModulesPath?: string },
+): void {
+  writeFileSync(
+    join(agentDir, "pi-eval.json"),
+    JSON.stringify(config, null, 2),
+  );
+}
+
 describe("createEvalTool — definition shape", () => {
   it('has name "eval"', () => {
     expect(tool.name).toBe("eval");
@@ -305,7 +315,7 @@ describe("eval — pythonPath via config", () => {
   beforeEach(() => {
     tmpDir = join(
       tmpdir(),
-      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });
@@ -317,18 +327,8 @@ describe("eval — pythonPath via config", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  function writeConfig(config: {
-    pythonPath?: string;
-    nodeModulesPath?: string;
-  }): void {
-    writeFileSync(
-      join(agentDir, "pi-eval.json"),
-      JSON.stringify(config, null, 2),
-    );
-  }
-
   it("pythonPath: /nonexistent → clear error, not crash", async () => {
-    writeConfig({ pythonPath: "/nonexistent/python3" });
+    writeConfig(agentDir, { pythonPath: "/nonexistent/python3" });
     await expect(
       tool.execute(
         "pp1",
@@ -355,7 +355,7 @@ describe("eval — pythonPath via config", () => {
     if (!hasVenv) {
       return;
     }
-    writeConfig({ pythonPath: ".venv/bin/python3" });
+    writeConfig(agentDir, { pythonPath: ".venv/bin/python3" });
     const r = await tool.execute(
       "pp2",
       {
@@ -384,7 +384,7 @@ describe("eval — pythonPath via config", () => {
     if (!hasVenv) {
       return;
     }
-    writeConfig({ pythonPath: ".venv/bin/python3" });
+    writeConfig(agentDir, { pythonPath: ".venv/bin/python3" });
     // Try importing numpy; it may or may not be installed
     try {
       const r = await tool.execute(
@@ -519,7 +519,7 @@ describe("eval — nodeModulesPath via config", () => {
   beforeEach(() => {
     tmpDir = join(
       tmpdir(),
-      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });
@@ -530,16 +530,6 @@ describe("eval — nodeModulesPath via config", () => {
     delete process.env.PI_CODING_AGENT_DIR;
     rmSync(tmpDir, { recursive: true, force: true });
   });
-
-  function writeConfig(config: {
-    pythonPath?: string;
-    nodeModulesPath?: string;
-  }): void {
-    writeFileSync(
-      join(agentDir, "pi-eval.json"),
-      JSON.stringify(config, null, 2),
-    );
-  }
 
   it("require() fails without nodeModulesPath for non-core module", async () => {
     // No config set — should fail as before
@@ -568,7 +558,7 @@ describe("eval — nodeModulesPath via config", () => {
       return;
     }
 
-    writeConfig({ nodeModulesPath: "./node_modules" });
+    writeConfig(agentDir, { nodeModulesPath: "./node_modules" });
     const r = await tool.execute(
       "nmp2",
       {
@@ -601,7 +591,7 @@ describe("eval — cwd parameter", () => {
   it("cwd pointing to a different directory → subprocess runs there", async () => {
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     mkdirSync(tmpDir, { recursive: true });
     try {
@@ -656,7 +646,7 @@ describe("eval — cwd parameter", () => {
   it("cwd that is a file not a directory throws", async () => {
     const tmpFile = join(
       tmpdir(),
-      `pi-eval-cwd-file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-file-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     writeFileSync(tmpFile, "not a dir", "utf-8");
     try {
@@ -684,7 +674,7 @@ describe("eval — cwd parameter", () => {
     }
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     mkdirSync(tmpDir, { recursive: true });
     try {
@@ -709,7 +699,7 @@ describe("eval — cwd parameter", () => {
     // Create a temp project dir with its own .pi/pi-eval.json
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-config-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-config-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     const agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });

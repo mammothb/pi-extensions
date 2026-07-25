@@ -252,46 +252,13 @@ const fullText = (msg: Message): string => {
   return textOf(msg.content);
 };
 
-export const searchEntries = (
+function regexSearch(
   entries: RenderedEntry[],
   messages: Message[],
-  query?: string,
-): SearchHit[] => {
-  if (!query?.trim()) {
-    return entries;
-  }
-
-  const rawQuery = query.trim();
-
-  // If query looks like a single regex pattern (contains metacharacters),
-  // treat the whole thing as one pattern — don't split into terms
-  if (looksLikeRegex(rawQuery)) {
-    const regex = safeRegex(rawQuery);
-    const hits: SearchHit[] = [];
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      if (!e) {
-        continue;
-      }
-      const msg = messages[i];
-      const text = msg ? fullText(msg) : (e.summary ?? "");
-      const filePart = e.files?.join(" ") ?? "";
-      const hay = `${e.role} ${text} ${filePart}`;
-      if (regex.test(hay)) {
-        const snip = lineSnippet(text, regex);
-        hits.push({ ...e, snippet: snip, matchCount: 1 } as SearchHit);
-      }
-    }
-    return hits;
-  }
-
-  // Natural language / multi-word query: BM25 scoring
-  const rawTerms = rawQuery.split(/\s+/);
-  const terms = filterStopwords(rawTerms);
-  const snipRe = snippetRegex(terms);
-
-  // Build all docs for BM25 context
-  const docs: string[] = [];
+  rawQuery: string,
+): SearchHit[] {
+  const regex = safeRegex(rawQuery);
+  const hits: SearchHit[] = [];
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     if (!e) {
@@ -299,11 +266,28 @@ export const searchEntries = (
     }
     const msg = messages[i];
     const text = msg ? fullText(msg) : (e.summary ?? "");
-    const filePart = e.files?.join(" ") ?? "";
-    docs.push(`${e.role} ${text} ${filePart}`);
+    const hay = `${e.role} ${text} ${e.files?.join(" ") ?? ""}`;
+    if (regex.test(hay)) {
+      const snip = lineSnippet(text, regex);
+      hits.push({ ...e, snippet: snip, matchCount: 1 } as SearchHit);
+    }
   }
+  return hits;
+}
+
+function bm25Search(
+  entries: RenderedEntry[],
+  messages: Message[],
+  terms: string[],
+): SearchHit[] {
+  const docs = entries.map((e, i) => {
+    const msg = messages[i];
+    const text = msg ? fullText(msg) : (e?.summary ?? "");
+    return `${e?.role ?? ""} ${text} ${e?.files?.join(" ") ?? ""}`;
+  });
 
   const ctx = buildBM25Context(docs, terms);
+  const snipRe = snippetRegex(terms);
 
   const scored: Array<{ hit: SearchHit; score: number }> = [];
   for (let i = 0; i < entries.length; i++) {
@@ -326,7 +310,26 @@ export const searchEntries = (
     });
   }
 
-  // Sort by BM25 score desc
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.hit);
+}
+
+export const searchEntries = (
+  entries: RenderedEntry[],
+  messages: Message[],
+  query?: string,
+): SearchHit[] => {
+  if (!query?.trim()) {
+    return entries;
+  }
+
+  const rawQuery = query.trim();
+
+  if (looksLikeRegex(rawQuery)) {
+    return regexSearch(entries, messages, rawQuery);
+  }
+
+  const rawTerms = rawQuery.split(/\s+/);
+  const terms = filterStopwords(rawTerms);
+  return bm25Search(entries, messages, terms);
 };

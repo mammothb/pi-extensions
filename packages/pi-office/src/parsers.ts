@@ -241,6 +241,30 @@ export interface SearchXlsxResult {
   truncated: boolean;
 }
 
+function unmergeRange(raw: unknown[][], merge: XLSX.Range): void {
+  const { s, e } = merge;
+  const topVal = raw[s.r]?.[s.c];
+  if (
+    topVal === undefined ||
+    topVal === null ||
+    String(topVal).trim() === "" // NOSONAR — String() handles unknown→string, value is always a primitive
+  ) {
+    return;
+  }
+  for (let r = s.r; r <= e.r; r++) {
+    const row = raw[r];
+    if (!row) {
+      continue;
+    }
+    for (let c = s.c; c <= e.c; c++) {
+      if (r === s.r && c === s.c) {
+        continue;
+      }
+      row[c] = topVal;
+    }
+  }
+}
+
 /**
  * Fill merged cell values into all cells of the range in a raw 2D array.
  * Only the top-left cell of a merged range has a value from sheet_to_json;
@@ -248,29 +272,7 @@ export interface SearchXlsxResult {
  */
 function unmergeRaw(raw: unknown[][], merges: XLSX.Range[]): void {
   for (const merge of merges) {
-    const { s, e } = merge;
-    const topVal = raw[s.r]?.[s.c];
-    // Skip if the top-left cell is empty or missing (nothing to spread)
-    if (
-      topVal === undefined ||
-      topVal === null ||
-      String(topVal).trim() === ""
-    ) {
-      continue;
-    }
-    for (let r = s.r; r <= e.r; r++) {
-      const row = raw[r];
-      if (!row) {
-        continue;
-      }
-      for (let c = s.c; c <= e.c; c++) {
-        // Don't overwrite the top-left cell itself (already has the value)
-        if (r === s.r && c === s.c) {
-          continue;
-        }
-        row[c] = topVal;
-      }
-    }
+    unmergeRange(raw, merge);
   }
 }
 
@@ -303,8 +305,8 @@ function findHeaderRow(raw: unknown[][]): number {
     if (!row) {
       continue;
     }
-    const values = (row as unknown[])
-      .map((c) => String(c ?? "").trim())
+    const values = row
+      .map((c) => String(c ?? "").trim()) // NOSONAR — String() handles unknown→string, cell values are primitives
       .filter((v) => v !== "");
     if (values.length === 0) {
       continue;
@@ -367,6 +369,131 @@ function disambiguateHeaders(headers: string[]): string[] {
   });
 }
 
+async function readXlsxBuffer(filePath: string): Promise<ArrayBuffer> {
+  const resolved = resolvePath(filePath);
+  try {
+    const buf = await readFile(resolved);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } catch (err: unknown) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      throw new XlsxError(`File not found: ${filePath}`, "FILE_NOT_FOUND");
+    }
+    throw new XlsxError(
+      `Failed to read file: ${(err as Error).message ?? err}`,
+      "PARSE_FAILED",
+    );
+  }
+}
+
+function validateZipMagic(buffer: ArrayBuffer): void {
+  if (buffer.byteLength < 4) {
+    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+  }
+  const header = new Uint8Array(buffer, 0, 4);
+  const isZip =
+    header[0] === 0x50 &&
+    header[1] === 0x4b &&
+    header[2] === 0x03 &&
+    header[3] === 0x04;
+  if (!isZip) {
+    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+  }
+}
+
+function parseWorkbook(buffer: ArrayBuffer): XLSX.WorkBook {
+  try {
+    return XLSX.read(buffer, { type: "array" });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("Unsupported") ||
+      msg.includes("not a valid") ||
+      msg.includes("zip")
+    ) {
+      throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
+    }
+    throw new XlsxError(`Failed to parse XLSX: ${msg}`, "PARSE_FAILED");
+  }
+}
+
+function processSheet(
+  ws: XLSX.WorkSheet,
+  name: string,
+  options: ParseXlsxOptions | undefined,
+  maxRows: number,
+): {
+  info: XlsxSheetData | null;
+  found: XlsxSheetData | undefined;
+} {
+  const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, {
+    header: 1,
+    defval: "",
+    raw: options?.raw ?? true,
+  });
+
+  const merges = ws["!merges"];
+  if (merges && merges.length > 0) {
+    unmergeRaw(raw, merges);
+  }
+
+  const headerRow =
+    options?.headerRow !== undefined ? options.headerRow : findHeaderRow(raw);
+
+  const rawHeaders =
+    raw.length > headerRow
+      ? (raw[headerRow] as unknown[]).map((c) => String(c ?? "")) // NOSONAR — String() handles unknown→string, header cells are primitives
+      : [];
+  const headers = disambiguateHeaders(rawHeaders);
+  const cols = headers.length;
+
+  const bodyRows = raw.slice(headerRow + 1);
+
+  const toObjects = (rows: unknown[][]): Record<string, string>[] =>
+    rows.map((row) => {
+      const obj: Record<string, string> = {};
+      for (let i = 0; i < headers.length; i++) {
+        obj[headers[i] ?? ""] = String(row[i] ?? ""); // NOSONAR — String() handles unknown→string, cell values are primitives
+      }
+      return obj;
+    });
+
+  const allData = toObjects(bodyRows);
+
+  if (options?.sheet) {
+    if (name === options.sheet) {
+      return {
+        info: null,
+        found: {
+          name,
+          rows: allData.length,
+          cols,
+          headers,
+          data: allData,
+          headerRow,
+        },
+      };
+    }
+    return { info: null, found: undefined };
+  }
+
+  return {
+    info: {
+      name,
+      rows: bodyRows.length,
+      cols,
+      headers,
+      data: allData.slice(0, maxRows),
+      headerRow,
+    },
+    found: undefined,
+  };
+}
+
 /**
  * Read and parse an XLSX file.
  *
@@ -383,59 +510,12 @@ export async function parseXlsx(
   filePath: string,
   options?: ParseXlsxOptions,
 ): Promise<ParseXlsxResult> {
-  const resolved = resolvePath(filePath);
-
-  // Read file
-  let buffer: ArrayBuffer;
-  try {
-    const buf = await readFile(resolved);
-    buffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  } catch (err: unknown) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as NodeJS.ErrnoException).code === "ENOENT"
-    ) {
-      throw new XlsxError(`File not found: ${filePath}`, "FILE_NOT_FOUND");
-    }
-    throw new XlsxError(
-      `Failed to read file: ${(err as Error).message ?? err}`,
-      "PARSE_FAILED",
-    );
-  }
-
-  // Validate ZIP magic bytes (XLSX files are ZIP archives)
-  const header = new Uint8Array(buffer, 0, 4);
-  const isZip =
-    header[0] === 0x50 &&
-    header[1] === 0x4b &&
-    header[2] === 0x03 &&
-    header[3] === 0x04;
-  if (!isZip) {
-    throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
-  }
-
-  // Parse workbook
-  let workbook: XLSX.WorkBook;
-  try {
-    workbook = XLSX.read(buffer, { type: "array" });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("Unsupported") ||
-      msg.includes("not a valid") ||
-      msg.includes("zip")
-    ) {
-      throw new XlsxError("Not a valid XLSX file.", "INVALID_XLSX");
-    }
-    throw new XlsxError(`Failed to parse XLSX: ${msg}`, "PARSE_FAILED");
-  }
+  const buffer = await readXlsxBuffer(filePath);
+  validateZipMagic(buffer);
+  const workbook = parseWorkbook(buffer);
 
   const sheetNames = workbook.SheetNames;
   const maxRows = options?.maxRows ?? 10;
-
-  // Build data for each sheet
   const sheets: XlsxSheetData[] = [];
   let foundSheet: XlsxSheetData | undefined;
 
@@ -445,72 +525,13 @@ export async function parseXlsx(
       continue;
     }
 
-    const raw: unknown[][] = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      defval: "",
-      raw: options?.raw ?? true,
-    });
-
-    // Unmerge cells: fill top-left values into all cells of merged ranges
-    const merges = ws["!merges"];
-    if (merges && merges.length > 0) {
-      unmergeRaw(raw, merges);
+    const { info, found } = processSheet(ws, name, options, maxRows);
+    if (found) {
+      foundSheet = found;
     }
-
-    // Determine header row
-    const headerRow =
-      options?.headerRow !== undefined ? options.headerRow : findHeaderRow(raw);
-
-    const rawHeaders =
-      raw.length > headerRow
-        ? (raw[headerRow] as unknown[]).map((c) => String(c ?? ""))
-        : [];
-    const headers = disambiguateHeaders(rawHeaders);
-    const cols = headers.length;
-
-    // Data rows are everything after the header row
-    const bodyRows = raw.slice(headerRow + 1);
-
-    // Convert rows to array-of-objects
-    const toObjects = (rows: unknown[][]): Record<string, string>[] =>
-      rows.map((row) => {
-        const obj: Record<string, string> = {};
-        for (let i = 0; i < headers.length; i++) {
-          obj[headers[i] ?? ""] = String(row[i] ?? "");
-        }
-        return obj;
-      });
-
-    const allData = toObjects(bodyRows);
-    let data: Record<string, string>[];
-
-    if (options?.sheet) {
-      // Sheet mode: only return data if this is the requested sheet
-      if (name === options.sheet) {
-        data = allData;
-        foundSheet = {
-          name,
-          rows: allData.length,
-          cols,
-          headers,
-          data,
-          headerRow,
-        };
-      }
-      continue;
+    if (info) {
+      sheets.push(info);
     }
-
-    // Index mode: truncate to maxRows
-    data = allData.slice(0, maxRows);
-
-    sheets.push({
-      name,
-      rows: bodyRows.length,
-      cols,
-      headers,
-      data,
-      headerRow,
-    });
   }
 
   if (options?.sheet && !foundSheet) {
@@ -520,11 +541,40 @@ export async function parseXlsx(
     );
   }
 
-  return {
-    sheetNames,
-    sheets,
-    sheet: foundSheet,
-  };
+  return { sheetNames, sheets, sheet: foundSheet };
+}
+
+function searchSheetRows(
+  sheet: XlsxSheetData,
+  sheetName: string,
+  query: string,
+  maxMatches: number,
+  matches: XlsxSearchMatch[],
+): number {
+  let found = 0;
+  for (let rowIdx = 0; rowIdx < sheet.data.length; rowIdx++) {
+    const row = sheet.data[rowIdx];
+    if (!row) {
+      continue;
+    }
+
+    const hasMatch = Object.values(row).some((val) =>
+      val.toLowerCase().includes(query),
+    );
+    if (!hasMatch) {
+      continue;
+    }
+
+    found++;
+    if (matches.length < maxMatches) {
+      matches.push({
+        sheet: sheetName,
+        row: sheet.headerRow + rowIdx + 2,
+        cells: row,
+      });
+    }
+  }
+  return found;
 }
 
 /**
@@ -566,28 +616,13 @@ export async function searchXlsx(
       continue;
     }
 
-    for (let rowIdx = 0; rowIdx < sheet.data.length; rowIdx++) {
-      const row = sheet.data[rowIdx];
-      if (!row) {
-        continue;
-      }
-
-      const hasMatch = Object.values(row).some((val) =>
-        val.toLowerCase().includes(query),
-      );
-
-      if (hasMatch) {
-        totalMatches++;
-
-        if (matches.length < maxMatches) {
-          matches.push({
-            sheet: sheetName,
-            row: sheet.headerRow + rowIdx + 2, // 1-indexed; headerRow is 0-indexed, +1 for header row itself, +1 for first data row
-            cells: row,
-          });
-        }
-      }
-    }
+    totalMatches += searchSheetRows(
+      sheet,
+      sheetName,
+      query,
+      maxMatches,
+      matches,
+    );
   }
 
   return {
@@ -608,11 +643,25 @@ async function loadPdfPages(
   password?: string,
 ): Promise<{ totalPages: number; pageTexts: string[] }> {
   const resolved = resolvePath(filePath);
+  const buffer = await readFileSafe(filePath, resolved);
+  const pdf = await loadPdfDocument(buffer, password);
 
-  // Read file
-  let buffer: Buffer;
   try {
-    buffer = await readFile(resolved);
+    const result = await extractText(pdf, { mergePages: false });
+    return { totalPages: result.totalPages, pageTexts: result.text };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new PdfError(`Failed to extract text: ${msg}`, "PARSE_FAILED");
+  }
+}
+
+/** Read file, converting ENOENT to a FILE_NOT_FOUND PdfError. */
+async function readFileSafe(
+  filePath: string,
+  resolved: string,
+): Promise<Buffer> {
+  try {
+    return await readFile(resolved);
   } catch (err: unknown) {
     if (
       typeof err === "object" &&
@@ -627,17 +676,20 @@ async function loadPdfPages(
       "PARSE_FAILED",
     );
   }
+}
 
-  // Load PDF
+/** Load a PDF document, converting password/encrypted/invalid errors to PdfErrors. */
+async function loadPdfDocument(
+  buffer: Buffer,
+  password?: string,
+): Promise<Awaited<ReturnType<typeof getDocumentProxy>>> {
   const pdfOptions: Record<string, unknown> = {};
   if (password) {
     pdfOptions.password = password;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pdf: Awaited<ReturnType<typeof getDocumentProxy>>;
   try {
-    pdf = await getDocumentProxy(new Uint8Array(buffer), pdfOptions);
+    return await getDocumentProxy(new Uint8Array(buffer), pdfOptions);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("password") || msg.includes("Password")) {
@@ -650,15 +702,6 @@ async function loadPdfPages(
       throw new PdfError("Not a valid PDF file.", "INVALID_PDF");
     }
     throw new PdfError(`Failed to parse PDF: ${msg}`, "PARSE_FAILED");
-  }
-
-  // Extract text per page
-  try {
-    const result = await extractText(pdf, { mergePages: false });
-    return { totalPages: result.totalPages, pageTexts: result.text };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new PdfError(`Failed to extract text: ${msg}`, "PARSE_FAILED");
   }
 }
 
@@ -705,6 +748,47 @@ export async function parsePdf(
  * Returns matches with page number, line number, and context lines.
  * Case-insensitive substring matching.
  */
+function findMatchesInPage(
+  pageText: string,
+  pageIdx: number,
+  query: string,
+  contextLines: number,
+  maxMatches: number,
+  matches: SearchMatch[],
+): number {
+  const lines = pageText.split("\n");
+  let found = 0;
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const lowerLine = lines[lineIdx]?.toLowerCase() ?? "";
+    let searchFrom = 0;
+    while (true) {
+      searchFrom = lowerLine.indexOf(query, searchFrom);
+      if (searchFrom === -1) {
+        break;
+      }
+
+      found++;
+      if (matches.length < maxMatches) {
+        const lineStart = Math.max(0, lineIdx - contextLines);
+        const lineEnd = Math.min(lines.length - 1, lineIdx + contextLines);
+        const context = lines.slice(lineStart, lineEnd + 1).join("\n");
+        matches.push({
+          page: pageIdx + 1,
+          startLine: lineStart + 1,
+          endLine: lineEnd + 1,
+          matchLine: lineIdx + 1,
+          context,
+        });
+      }
+
+      searchFrom++;
+    }
+  }
+
+  return found;
+}
+
 export async function searchPdf(
   filePath: string,
   options: SearchPdfOptions,
@@ -731,39 +815,14 @@ export async function searchPdf(
       continue;
     }
 
-    const lines = pageText.split("\n");
-
-    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-      const line = lines[lineIdx];
-      const lowerLine = line.toLowerCase();
-
-      // Find all occurrences on this line
-      let searchFrom = 0;
-      while (true) {
-        searchFrom = lowerLine.indexOf(query, searchFrom);
-        if (searchFrom === -1) {
-          break;
-        }
-
-        totalMatches++;
-
-        if (matches.length < maxMatches) {
-          const lineStart = Math.max(0, lineIdx - contextLines);
-          const lineEnd = Math.min(lines.length - 1, lineIdx + contextLines);
-          const context = lines.slice(lineStart, lineEnd + 1).join("\n");
-
-          matches.push({
-            page: pageIdx + 1,
-            startLine: lineStart + 1,
-            endLine: lineEnd + 1,
-            matchLine: lineIdx + 1,
-            context,
-          });
-        }
-
-        searchFrom += query.length;
-      }
-    }
+    totalMatches += findMatchesInPage(
+      pageText,
+      pageIdx,
+      query,
+      contextLines,
+      maxMatches,
+      matches,
+    );
   }
 
   return {

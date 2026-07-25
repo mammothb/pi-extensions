@@ -24,9 +24,11 @@ function formatMatches(
     return `No matches found for "${query}" (${totalChars} characters searched).`;
   }
 
+  const matchPlural = totalMatches === 1 ? "" : "es";
+
   const header = truncated
     ? `Found ${totalMatches} matches. Showing first ${matches.length}:`
-    : `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"}:`;
+    : `Found ${totalMatches} match${matchPlural}:`;
 
   const blocks = matches.map(
     (m, i) => `[match ${i + 1}, offset ${m.charOffset}]\n${m.context}`,

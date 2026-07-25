@@ -247,6 +247,42 @@ async function runAllTasks(
 /**
  * Print a side-by-side comparison table.
  */
+function buildTaskRows(
+  _task: BenchmarkTask,
+  noEval:
+    | {
+        wallTimeMs: number;
+        toolCalls: number;
+        tokens: { input: number; output: number };
+        success: boolean;
+      }
+    | undefined,
+  yesEval:
+    | {
+        wallTimeMs: number;
+        toolCalls: number;
+        tokens: { input: number; output: number };
+        success: boolean;
+      }
+    | undefined,
+): Array<[string, number | string, number | string]> {
+  return [
+    [
+      "Time (s)",
+      noEval ? (noEval.wallTimeMs / 1000).toFixed(1) : "-",
+      yesEval ? (yesEval.wallTimeMs / 1000).toFixed(1) : "-",
+    ],
+    ["Tool calls", noEval?.toolCalls ?? "-", yesEval?.toolCalls ?? "-"],
+    ["Input tokens", noEval?.tokens.input ?? "-", yesEval?.tokens.input ?? "-"],
+    [
+      "Output tokens",
+      noEval?.tokens.output ?? "-",
+      yesEval?.tokens.output ?? "-",
+    ],
+    ["Success", noEval?.success ? "✅" : "❌", yesEval?.success ? "✅" : "❌"],
+  ];
+}
+
 function printComparison(
   tasks: BenchmarkTask[],
   withoutEval: AggregateMetrics,
@@ -270,29 +306,7 @@ function printComparison(
     const noEval = withoutEval.perTask.find((t) => t.taskId === task.id);
     const yesEval = withEval.perTask.find((t) => t.taskId === task.id);
 
-    const rows: Array<[string, number | string, number | string, string?]> = [
-      [
-        "Time (s)",
-        noEval ? (noEval.wallTimeMs / 1000).toFixed(1) : "-",
-        yesEval ? (yesEval.wallTimeMs / 1000).toFixed(1) : "-",
-      ],
-      ["Tool calls", noEval?.toolCalls ?? "-", yesEval?.toolCalls ?? "-"],
-      [
-        "Input tokens",
-        noEval?.tokens.input ?? "-",
-        yesEval?.tokens.input ?? "-",
-      ],
-      [
-        "Output tokens",
-        noEval?.tokens.output ?? "-",
-        yesEval?.tokens.output ?? "-",
-      ],
-      [
-        "Success",
-        noEval?.success ? "✅" : "❌",
-        yesEval?.success ? "✅" : "❌",
-      ],
-    ];
+    const rows = buildTaskRows(task, noEval, yesEval);
 
     for (let i = 0; i < rows.length; i++) {
       const [metric, noVal, yesVal] = rows[i]!;

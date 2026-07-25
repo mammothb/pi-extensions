@@ -132,6 +132,172 @@ export function renderTabBar(
   return [parts.join("")];
 }
 
+// ── Option row helpers ───────────────────────────────────────────────────────
+
+interface OptionCtx {
+  i: number;
+  isHighlighted: boolean;
+  isOther: boolean;
+  prefix: string;
+  recommendedSuffix: string;
+  label: string;
+}
+
+function makeOptionCtx(
+  i: number,
+  opt: NonNullable<ReturnType<typeof getOptions>[number]>,
+  q: Question,
+  state: QuestionState,
+  theme: Theme,
+): OptionCtx {
+  return {
+    i,
+    isHighlighted: i === state.cursorIndex,
+    isOther: opt.isOther === true,
+    prefix: i === state.cursorIndex ? theme.fg("accent", ">") : " ",
+    recommendedSuffix:
+      q.recommended === i ? theme.fg("dim", " (Recommended)") : "",
+    label: `${i + 1}. ${opt.label}`,
+  };
+}
+
+function renderOptionLine(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  q: Question,
+  state: QuestionState,
+  theme: Theme,
+): void {
+  if (q.multi && !ctx.isOther) {
+    renderMultiOption(add, ctx, state, theme);
+  } else if (ctx.isOther) {
+    renderOtherOption(add, ctx, state, q, theme);
+  } else {
+    renderSingleOption(add, ctx, state, theme);
+  }
+}
+
+function renderMultiOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  theme: Theme,
+): void {
+  const checked = state.selectedIndices.has(ctx.i);
+  const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
+  const labelColor = ctx.isHighlighted ? "accent" : "text";
+  add(
+    `${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
+  );
+}
+
+function renderOtherOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  q: Question,
+  theme: Theme,
+): void {
+  const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
+  const suffix = state.inEditMode ? theme.fg("accent", " ✎") : "";
+  const labelColor = ctx.isHighlighted ? "accent" : "muted";
+  if (q.multi) {
+    const box = hasFreeText
+      ? theme.fg("success", "[x]")
+      : theme.fg("dim", "[ ]");
+    add(`${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${suffix}`);
+  } else {
+    const check = hasFreeText ? theme.fg("success", "✓") : " ";
+    add(`${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${suffix}`);
+  }
+}
+
+function renderSingleOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  theme: Theme,
+): void {
+  const isConfirmedChoice = state.selectedIndex === ctx.i;
+  const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
+  const labelColor = ctx.isHighlighted ? "accent" : "text";
+  add(
+    `${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
+  );
+}
+
+function renderFreeTextPreview(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  q: Question,
+  theme: Theme,
+  width: number,
+): void {
+  if (!ctx.isOther) {
+    return;
+  }
+  const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
+  if (!hasFreeText) {
+    return;
+  }
+  const indent = " ".repeat(q.multi ? 9 : 7);
+  const preview = truncateText(
+    state.freeTextValue ?? "",
+    width - indent.length,
+  );
+  const quotedPreview = `"${preview}"`;
+  add(`${indent}${theme.fg("dim", quotedPreview)}`);
+}
+
+function renderOptionDescription(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  opt: NonNullable<ReturnType<typeof getOptions>[number]>,
+  q: Question,
+  theme: Theme,
+  width: number,
+): void {
+  if (ctx.isOther || !opt.description) {
+    return;
+  }
+  const indent = " ".repeat(q.multi ? 9 : 7);
+  const descWrapped = wrapTextWithAnsi(
+    theme.fg("muted", opt.description),
+    width - indent.length,
+  );
+  for (const line of descWrapped) {
+    add(`${indent}${line}`);
+  }
+}
+
+function renderFooter(
+  add: (s: string) => void,
+  state: QuestionState,
+  q: Question,
+  isSingle: boolean,
+  optsLength: number,
+  theme: Theme,
+): void {
+  if (state.inEditMode) {
+    add(theme.fg("dim", " Enter submit · Esc back"));
+    return;
+  }
+  const isOnOther = state.cursorIndex === optsLength - 1;
+  const tabHint = isSingle ? "" : " · ←→/hl switch tabs";
+  let actionHint: string;
+  if (isOnOther) {
+    actionHint = "Space/Tab open editor";
+  } else if (q.multi) {
+    actionHint = "Space toggle · Enter confirm";
+  } else {
+    actionHint = "Space/Enter select";
+  }
+  add(
+    theme.fg("dim", ` ↑↓/kj navigate · ${actionHint}${tabHint} · Esc cancel`),
+  );
+}
+
 // ── Question body ────────────────────────────────────────────────────────────
 
 export function renderQuestionBody(
@@ -159,70 +325,12 @@ export function renderQuestionBody(
     if (!opt) {
       continue;
     }
-    const isHighlighted = i === state.cursorIndex;
-    const isOther = opt.isOther === true;
-    const prefix = isHighlighted ? theme.fg("accent", ">") : " ";
 
-    const isRecommended = q.recommended === i;
-    const recommendedSuffix = isRecommended
-      ? theme.fg("dim", " (Recommended)")
-      : "";
+    const ctx = makeOptionCtx(i, opt, q, state, theme);
 
-    if (q.multi && !isOther) {
-      // Checkbox style
-      const checked = state.selectedIndices.has(i);
-      const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
-      const labelColor = isHighlighted ? "accent" : "text";
-      add(
-        `${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
-      );
-    } else if (isOther) {
-      const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
-      const suffix = state.inEditMode ? theme.fg("accent", " ✎") : "";
-      const labelColor = isHighlighted ? "accent" : "muted";
-      if (q.multi) {
-        const box = hasFreeText
-          ? theme.fg("success", "[x]")
-          : theme.fg("dim", "[ ]");
-        add(
-          `${prefix} ${box} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${suffix}`,
-        );
-      } else {
-        const check = hasFreeText ? theme.fg("success", "✓") : " ";
-        add(
-          `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${suffix}`,
-        );
-      }
-      // Preview of saved text below
-      if (hasFreeText) {
-        const indent = " ".repeat(q.multi ? 9 : 7);
-        const preview = truncateText(
-          state.freeTextValue ?? "",
-          width - indent.length,
-        );
-        add(`${indent}${theme.fg("dim", `"${preview}"`)}`);
-      }
-    } else {
-      // Single-select — show ✓ on the confirmed selection
-      const isConfirmedChoice = state.selectedIndex === i;
-      const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
-      const labelColor = isHighlighted ? "accent" : "text";
-      add(
-        `${prefix} ${check} ${theme.fg(labelColor, `${i + 1}. ${opt.label}`)}${recommendedSuffix}`,
-      );
-    }
-
-    // Description (if present, not for "Type your own answer...")
-    if (!isOther && opt.description) {
-      const indent = " ".repeat(q.multi ? 9 : 7);
-      const descWrapped = wrapTextWithAnsi(
-        theme.fg("muted", opt.description),
-        width - indent.length,
-      );
-      for (const line of descWrapped) {
-        add(`${indent}${line}`);
-      }
-    }
+    renderOptionLine(add, ctx, q, state, theme);
+    renderFreeTextPreview(add, ctx, state, q, theme, width);
+    renderOptionDescription(add, ctx, opt, q, theme, width);
   }
 
   // Inline editor (when in edit mode)
@@ -236,25 +344,7 @@ export function renderQuestionBody(
   }
 
   add("");
-
-  // Footer help — context-sensitive based on cursor position
-  if (state.inEditMode) {
-    add(theme.fg("dim", " Enter submit · Esc back"));
-  } else {
-    const isOnOther = state.cursorIndex === opts.length - 1;
-    const tabHint = isSingle ? "" : " · ←→/hl switch tabs";
-    let actionHint: string;
-    if (isOnOther) {
-      actionHint = "Space/Tab open editor";
-    } else if (q.multi) {
-      actionHint = "Space toggle · Enter confirm";
-    } else {
-      actionHint = "Space/Enter select";
-    }
-    add(
-      theme.fg("dim", ` ↑↓/kj navigate · ${actionHint}${tabHint} · Esc cancel`),
-    );
-  }
+  renderFooter(add, state, q, isSingle, opts.length, theme);
 
   return lines;
 }

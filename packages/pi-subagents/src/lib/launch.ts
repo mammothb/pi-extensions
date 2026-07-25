@@ -117,6 +117,59 @@ function extractFinalOutput(messages: Message[]): string {
  * Calls `onUpdate` after each recognized event so callers can stream progress.
  * Resolves with the final CumulativeResult when the stream ends.
  */
+function processJsonlLine(
+  line: string,
+  result: CumulativeResult,
+  onUpdate: ((result: CumulativeResult) => void) | undefined,
+): void {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  let event: { type: string; message?: unknown };
+  try {
+    event = JSON.parse(trimmed);
+  } catch {
+    console.warn("parseJsonlStream: skipping malformed JSON line");
+    return;
+  }
+
+  if (
+    (event.type !== "message_end" && event.type !== "tool_result_end") ||
+    !event.message
+  ) {
+    return;
+  }
+
+  const msg = event.message as Message;
+  result.messages.push(msg);
+
+  if (event.type === "message_end" && msg.role === "assistant") {
+    result.usage.turns++;
+    const usage = msg.usage;
+    if (usage) {
+      result.usage.input += usage.input ?? 0;
+      result.usage.output += usage.output ?? 0;
+      result.usage.cacheRead += usage.cacheRead ?? 0;
+      result.usage.cacheWrite += usage.cacheWrite ?? 0;
+      result.usage.total += usage.totalTokens ?? 0;
+    }
+    if (!result.model && msg.model) {
+      result.model = msg.model;
+    }
+    if (msg.stopReason) {
+      result.stopReason = msg.stopReason;
+    }
+    if (msg.errorMessage) {
+      result.errorMessage = msg.errorMessage;
+    }
+  }
+
+  result.finalOutput = extractFinalOutput(result.messages);
+  onUpdate?.(result);
+}
+
 export function parseJsonlStream(
   stream: Readable,
   onUpdate: ((result: CumulativeResult) => void) | undefined,
@@ -125,71 +178,24 @@ export function parseJsonlStream(
   let buffer = "";
 
   return new Promise<CumulativeResult>((resolve, reject) => {
-    const processLine = (line: string) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        return;
-      }
-
-      let event: { type: string; message?: unknown };
-      try {
-        event = JSON.parse(trimmed);
-      } catch {
-        console.warn(`parseJsonlStream: skipping malformed JSON line`);
-        return;
-      }
-
-      if (
-        (event.type === "message_end" || event.type === "tool_result_end") &&
-        event.message
-      ) {
-        const msg = event.message as Message;
-        result.messages.push(msg);
-
-        if (event.type === "message_end" && msg.role === "assistant") {
-          result.usage.turns++;
-          const usage = msg.usage;
-          if (usage) {
-            result.usage.input += usage.input || 0;
-            result.usage.output += usage.output || 0;
-            result.usage.cacheRead += usage.cacheRead || 0;
-            result.usage.cacheWrite += usage.cacheWrite || 0;
-            result.usage.total += usage.totalTokens || 0;
-          }
-          if (!result.model && msg.model) {
-            result.model = msg.model;
-          }
-          if (msg.stopReason) {
-            result.stopReason = msg.stopReason;
-          }
-          if (msg.errorMessage) {
-            result.errorMessage = msg.errorMessage;
-          }
-        }
-
-        result.finalOutput = extractFinalOutput(result.messages);
-        onUpdate?.(result);
-      }
-    };
-
     stream.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
       for (const line of lines) {
-        processLine(line);
+        processJsonlLine(line, result, onUpdate);
       }
     });
 
     stream.on("end", () => {
       if (buffer.trim()) {
-        processLine(buffer);
+        processJsonlLine(buffer, result, onUpdate);
       }
       resolve(result);
     });
 
     stream.on("error", (err) => {
-      reject(err);
+      reject(err); // NOSONAR — err is Error from stream
     });
   });
 }
@@ -238,16 +244,120 @@ export async function launchPiChild(
   stuckTimeoutMs: number,
 ): Promise<SubagentResult> {
   const invocation = getPiInvocation(piArgs);
-  return launchChild(
-    invocation.command,
-    invocation.args,
+  return launchChild({
+    command: invocation.command,
+    args: invocation.args,
     agent,
     task,
     cwd,
     signal,
     onUpdate,
     stuckTimeoutMs,
-  );
+  });
+}
+
+function createOnUpdateWrapper(
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  agent: AgentConfig,
+  task: string,
+  startedAt: number,
+  tracker: {
+    lastActivity: number;
+    stuckWarned: boolean;
+    lastUsage: SubagentResult["tokens"];
+    lastActivityDesc: string;
+  },
+): ((cumulative: CumulativeResult) => void) | undefined {
+  if (!onUpdate) {
+    return undefined;
+  }
+  return (cumulative: CumulativeResult) => {
+    tracker.lastActivity = Date.now();
+    tracker.stuckWarned = false;
+    tracker.lastUsage = { ...cumulative.usage };
+    const lastMsg = cumulative.messages[cumulative.messages.length - 1];
+    if (lastMsg) {
+      if (lastMsg.role === "toolResult") {
+        tracker.lastActivityDesc = `tool:${lastMsg.toolName}`;
+      } else if (lastMsg.role === "assistant") {
+        tracker.lastActivityDesc = "assistant message";
+      }
+    }
+    onUpdate({
+      agent: agent.name,
+      task,
+      output: cumulative.finalOutput || "(running...)",
+      exitCode: -1,
+      elapsed: Date.now() - startedAt,
+      tokens: { ...cumulative.usage },
+      model: cumulative.model,
+    });
+  };
+}
+
+function setupAbortHandlers(
+  signal: AbortSignal | undefined,
+  proc: ReturnType<typeof spawnChild>,
+): { wasAborted: () => boolean; cleanup: () => void } {
+  let wasAborted = false;
+  let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
+
+  if (!signal) {
+    return { wasAborted: () => false, cleanup: () => {} };
+  }
+
+  const killProc = () => {
+    wasAborted = true;
+    proc.kill("SIGTERM");
+    sigkillTimer = setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill("SIGKILL");
+      }
+      sigkillTimer = undefined;
+    }, 5000);
+  };
+
+  if (signal.aborted) {
+    killProc();
+    return {
+      wasAborted: () => true,
+      cleanup: () => {
+        if (sigkillTimer) {
+          clearTimeout(sigkillTimer);
+        }
+      },
+    };
+  }
+
+  signal.addEventListener("abort", killProc, { once: true });
+  return {
+    wasAborted: () => wasAborted,
+    cleanup: () => {
+      signal.removeEventListener("abort", killProc);
+      if (sigkillTimer) {
+        clearTimeout(sigkillTimer);
+      }
+    },
+  };
+}
+
+function buildSubagentError(
+  exitCode: number,
+  stderr: string,
+  cumulative: CumulativeResult,
+  spawnError: string | undefined,
+): string | undefined {
+  if (exitCode === 0) {
+    return cumulative.errorMessage || spawnError;
+  }
+  const stopMsg =
+    cumulative.stopReason &&
+    cumulative.stopReason !== "stop" &&
+    cumulative.stopReason !== "end"
+      ? cumulative.stopReason
+      : undefined;
+  const inner = stderr.trim() || stopMsg || `exit code ${exitCode}`;
+  return cumulative.errorMessage || spawnError || inner;
 }
 
 /**
@@ -255,16 +365,18 @@ export async function launchPiChild(
  * apply stuck detection and abort handling. Exported for testing with
  * arbitrary commands (e.g. node scripts that simulate pi JSONL output).
  */
-export async function launchChild(
-  command: string,
-  args: string[],
-  agent: AgentConfig,
-  task: string,
-  cwd: string,
-  signal: AbortSignal | undefined,
-  onUpdate: ((result: SubagentResult) => void) | undefined,
-  stuckTimeoutMs: number,
-): Promise<SubagentResult> {
+export async function launchChild(opts: {
+  command: string;
+  args: string[];
+  agent: AgentConfig;
+  task: string;
+  cwd: string;
+  signal?: AbortSignal;
+  onUpdate?: (result: SubagentResult) => void;
+  stuckTimeoutMs: number;
+}): Promise<SubagentResult> {
+  const { command, args, agent, task, cwd, signal, onUpdate, stuckTimeoutMs } =
+    opts;
   const startedAt = Date.now();
   const proc = spawnChild(command, args, cwd);
 
@@ -274,86 +386,51 @@ export async function launchChild(
   });
 
   // Stuck detection heartbeat
-  let lastActivity = Date.now();
-  let lastActivityDesc = "starting";
-  let stuckTimer: ReturnType<typeof setInterval> | undefined;
-  let stuckWarned = false;
-  let lastUsage: SubagentResult["tokens"] = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    total: 0,
-    turns: 0,
+  const tracker = {
+    lastActivity: Date.now(),
+    lastActivityDesc: "starting",
+    lastUsage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+      turns: 0,
+    } as SubagentResult["tokens"],
+    stuckWarned: false,
   };
+  let stuckTimer: ReturnType<typeof setInterval> | undefined;
 
   if (stuckTimeoutMs > 0) {
     stuckTimer = setInterval(() => {
-      const idleMs = Date.now() - lastActivity;
-      if (idleMs > stuckTimeoutMs && !stuckWarned) {
-        stuckWarned = true;
+      const idleMs = Date.now() - tracker.lastActivity;
+      if (idleMs > stuckTimeoutMs && !tracker.stuckWarned) {
+        tracker.stuckWarned = true;
         onUpdate?.({
           agent: agent.name,
           task,
-          output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
+          output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${tracker.lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
           exitCode: -1,
           elapsed: Date.now() - startedAt,
-          tokens: { ...lastUsage },
+          tokens: { ...tracker.lastUsage },
         });
       }
     }, 5000);
   }
 
-  // Wrap onUpdate to track activity for stuck detection
-  const wrappedOnUpdate = onUpdate
-    ? (cumulative: CumulativeResult) => {
-        lastActivity = Date.now();
-        stuckWarned = false;
-        lastUsage = { ...cumulative.usage };
-        const lastMsg = cumulative.messages[cumulative.messages.length - 1];
-        if (lastMsg) {
-          if (lastMsg.role === "toolResult") {
-            lastActivityDesc = `tool:${lastMsg.toolName}`;
-          } else if (lastMsg.role === "assistant") {
-            lastActivityDesc = "assistant message";
-          }
-        }
-
-        onUpdate({
-          agent: agent.name,
-          task,
-          output: cumulative.finalOutput || "(running...)",
-          exitCode: -1,
-          elapsed: Date.now() - startedAt,
-          tokens: { ...cumulative.usage },
-          model: cumulative.model,
-        });
-      }
-    : undefined;
+  const wrappedOnUpdate = createOnUpdateWrapper(
+    onUpdate,
+    agent,
+    task,
+    startedAt,
+    tracker,
+  );
 
   // Abort signal handling
-  let wasAborted = false;
-  let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
-  let onAbort: (() => void) | undefined;
-
-  if (signal) {
-    const killProc = () => {
-      wasAborted = true;
-      proc.kill("SIGTERM");
-      sigkillTimer = setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill("SIGKILL");
-        }
-        sigkillTimer = undefined;
-      }, 5000);
-    };
-    if (signal.aborted) {
-      killProc();
-    } else {
-      onAbort = killProc;
-      signal.addEventListener("abort", killProc, { once: true });
-    }
-  }
+  const { wasAborted, cleanup: abortCleanup } = setupAbortHandlers(
+    signal,
+    proc,
+  );
 
   // Capture exit code — set up before parsing to avoid race
   let spawnError: string | undefined;
@@ -380,23 +457,17 @@ export async function launchChild(
     }
   }
 
-  // Wait for process exit
   const exitCode = await exitCodePromise;
 
   // Cleanup
   if (stuckTimer) {
     clearInterval(stuckTimer);
   }
-  if (onAbort) {
-    signal?.removeEventListener("abort", onAbort);
-  }
-  if (sigkillTimer) {
-    clearTimeout(sigkillTimer);
-  }
+  abortCleanup();
 
   const elapsed = Date.now() - startedAt;
 
-  if (wasAborted) {
+  if (wasAborted()) {
     return {
       agent: agent.name,
       task,
@@ -409,19 +480,6 @@ export async function launchChild(
     };
   }
 
-  const error =
-    cumulative.errorMessage ||
-    spawnError ||
-    (exitCode !== 0
-      ? stderr.trim() ||
-        (cumulative.stopReason &&
-        cumulative.stopReason !== "stop" &&
-        cumulative.stopReason !== "end"
-          ? cumulative.stopReason
-          : undefined) ||
-        `exit code ${exitCode}`
-      : undefined);
-
   return {
     agent: agent.name,
     task,
@@ -430,7 +488,7 @@ export async function launchChild(
     elapsed,
     tokens: cumulative.usage,
     model: cumulative.model,
-    error,
+    error: buildSubagentError(exitCode, stderr, cumulative, spawnError),
   };
 }
 

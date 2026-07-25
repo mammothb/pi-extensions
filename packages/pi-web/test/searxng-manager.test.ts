@@ -93,7 +93,7 @@ let agentDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-web-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-web-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
   );
   agentDir = join(tmpDir, "agent");
   mkdirSync(agentDir, { recursive: true });
@@ -118,6 +118,11 @@ function givenSpawn(behavior: {
   error?: Error;
 }): void {
   mockSpawnImpl = (_cmd, _args, _opts) => createChild(behavior);
+}
+
+/** Resolves after setImmediate, flushing the microtask queue. */
+function waitImmediate(): Promise<void> {
+  return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +202,13 @@ describe("cleanStaleLocks", () => {
 // ---------------------------------------------------------------------------
 
 describe("runScript", () => {
+  /** Shared setup for shutdownPidDir tests — creates instances dir. */
+  function setupInstancesDir(): string {
+    const dir = join(tmpDir, "instances");
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
   it("resolves on successful exit (code 0)", async () => {
     givenSpawn({ exitCode: 0 });
 
@@ -308,7 +320,7 @@ describe("runScript", () => {
       expect(result).toBeUndefined();
     });
 
-    it("logs spawn errors via console.error", () => {
+    it("logs spawn errors via console.error", async () => {
       const consoleSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
@@ -316,16 +328,11 @@ describe("runScript", () => {
 
       runScript("down", undefined, { detached: true });
 
-      // Wait for the setImmediate error event
-      return new Promise<void>((resolve) => {
-        setImmediate(() => {
-          expect(consoleSpy).toHaveBeenCalledWith(
-            "pi-web: failed to run searxng down: ENOENT: bash not found",
-          );
-          consoleSpy.mockRestore();
-          resolve();
-        });
-      });
+      await waitImmediate();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "pi-web: failed to run searxng down: ENOENT: bash not found",
+      );
+      consoleSpy.mockRestore();
     });
 
     it("uses custom scriptPath with tilde expansion", () => {
@@ -351,110 +358,112 @@ describe("runScript", () => {
       consoleLogSpy.mockRestore();
     });
 
-    describe("with shutdownPidDir", () => {
-      let instancesDir: string;
+    // ── shutdownPidDir variants ──
 
-      beforeEach(() => {
-        instancesDir = join(tmpDir, "instances");
-        mkdirSync(instancesDir, { recursive: true });
+    it("spawns a bash wrapper with PID tracking when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
+
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("spawns a bash wrapper with PID tracking", () => {
-        givenSpawn({ exitCode: 0 });
+      expect(spawnMock).toHaveBeenCalledWith(
+        "bash",
+        expect.arrayContaining([
+          "-c",
+          expect.stringContaining("shutdown-$$.pid"),
+        ]),
+        { stdio: "ignore", detached: true },
+      );
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("calls unref on the child when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        expect(spawnMock).toHaveBeenCalledWith(
-          "bash",
-          ["-c", expect.stringContaining("shutdown-$$.pid")],
-          { stdio: "ignore", detached: true },
-        );
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("calls unref on the child", () => {
-        givenSpawn({ exitCode: 0 });
+      const child = spawnMock.mock.results[0]!.value as SpawnChild;
+      expect(child.unref).toHaveBeenCalled();
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("returns void when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        const child = spawnMock.mock.results[0]!.value as SpawnChild;
-        expect(child.unref).toHaveBeenCalled();
+      const result = runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("returns void", () => {
-        givenSpawn({ exitCode: 0 });
+      expect(result).toBeUndefined();
+    });
 
-        const result = runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("logs spawn errors via console.error when shutdownPidDir is set", async () => {
+      const instancesDir = setupInstancesDir();
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      givenSpawn({ error: new Error("ENOENT: bash not found") });
 
-        expect(result).toBeUndefined();
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("logs spawn errors via console.error", () => {
-        const consoleSpy = vi
-          .spyOn(console, "error")
-          .mockImplementation(() => {});
-        givenSpawn({ error: new Error("ENOENT: bash not found") });
+      await waitImmediate();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "pi-web: failed to run searxng down: ENOENT: bash not found",
+      );
+      consoleSpy.mockRestore();
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("includes the instances dir in the bash wrapper when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        return new Promise<void>((resolve) => {
-          setImmediate(() => {
-            expect(consoleSpy).toHaveBeenCalledWith(
-              "pi-web: failed to run searxng down: ENOENT: bash not found",
-            );
-            consoleSpy.mockRestore();
-            resolve();
-          });
-        });
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("includes the instances dir in the bash wrapper", () => {
-        givenSpawn({ exitCode: 0 });
+      // shutdownPidDir is passed as positional arg $1 (index 3)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[3]).toBe(instancesDir);
+    });
 
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("includes the custom script path (tilde-expanded) in the wrapper when shutdownPidDir is set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
+      const customPath = "~/my-searxng-script";
 
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain(instancesDir);
+      runScript("down", customPath, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("includes the custom script path (tilde-expanded) in the wrapper", () => {
-        givenSpawn({ exitCode: 0 });
-        const customPath = "~/my-searxng-script";
+      // script path is passed as positional arg $2 (index 4)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[4]).toBe(join(homedir(), "my-searxng-script"));
+    });
 
-        runScript("down", customPath, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
+    it("uses the default built-in script when no scriptPath is provided with shutdownPidDir set", () => {
+      const instancesDir = setupInstancesDir();
+      givenSpawn({ exitCode: 0 });
 
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain(join(homedir(), "my-searxng-script"));
+      runScript("down", undefined, {
+        detached: true,
+        shutdownPidDir: instancesDir,
       });
 
-      it("uses the default built-in script when no scriptPath is provided", () => {
-        givenSpawn({ exitCode: 0 });
-
-        runScript("down", undefined, {
-          detached: true,
-          shutdownPidDir: instancesDir,
-        });
-
-        const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-        expect(wrapperScript).toContain("bin/searxng");
-      });
+      // script path is passed as positional arg $2 (index 4)
+      const args = spawnMock.mock.calls[0]![1]! as string[];
+      expect(args[4]).toContain("bin/searxng");
     });
   });
 });
@@ -683,10 +692,11 @@ describe("unregisterInstance", () => {
 
     await unregisterInstance();
 
-    // Spawns a bash wrapper that runs the down command with PID tracking
+    // Spawns a bash wrapper that runs the down command with PID tracking.
+    // The -c script uses positional $2/$3 for script path and command.
     expect(spawnMock).toHaveBeenCalledWith(
       "bash",
-      ["-c", expect.stringContaining(`" down`)],
+      expect.arrayContaining(["-c", expect.stringContaining('"$2" "$3"')]),
       { stdio: "ignore", detached: true },
     );
   });
@@ -754,9 +764,9 @@ describe("unregisterInstance", () => {
 
     await unregisterInstance(customScript);
 
-    // The custom script path appears inside the bash wrapper
-    const wrapperScript = (spawnMock.mock.calls[0]![1]! as string[])[1]!;
-    expect(wrapperScript).toContain(customScript);
+    // The custom script path is passed as positional arg $2 (index 4)
+    const args = spawnMock.mock.calls[0]![1]! as string[];
+    expect(args[4]).toBe(customScript);
   });
 
   it("returns immediately without waiting for the detached down process", async () => {
@@ -794,7 +804,7 @@ describe("unregisterInstance", () => {
     // Detached down with PID tracking should be called since all other locks are irrelevant
     expect(spawnMock).toHaveBeenCalledWith(
       "bash",
-      ["-c", expect.stringContaining(`" down`)],
+      expect.arrayContaining(["-c", expect.stringContaining('"$2" "$3"')]),
       { stdio: "ignore", detached: true },
     );
   });

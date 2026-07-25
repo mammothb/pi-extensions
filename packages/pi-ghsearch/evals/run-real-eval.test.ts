@@ -222,7 +222,14 @@ if (runFull) {
           try {
             const r = await runOneQuery(session, entry, QUERY_TIMEOUT);
             results.push(r);
-            const status = r.error ? "ERR" : r.correct ? "PASS" : "FAIL";
+            let status: string;
+            if (r.error) {
+              status = "ERR";
+            } else if (r.correct) {
+              status = "PASS";
+            } else {
+              status = "FAIL";
+            }
             console.log(
               `  ${status} #${entry.id} triggered=[${r.triggeredTools.join(",")}] ` +
                 `expected=${entry.tool} should=${entry.should_trigger} ${r.error || ""}`,

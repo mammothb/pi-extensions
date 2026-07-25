@@ -10,7 +10,7 @@
  *   - Result stability: queries return consistent counts across runs
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,16 +53,18 @@ function loadQueries(): SearchQuery[] {
 // Execute a gh search
 // ---------------------------------------------------------------------------
 
-function runGhSearch(q: SearchQuery): SearchResult {
-  const flags = ["search", q.scope, q.query, "--limit", String(q.limit)];
-
-  // Use scope-appropriate --json fields
-  const jsonFields: Record<string, string> = {
+function buildJsonFields(_scope: string): Record<string, string> {
+  return {
     repos: "fullName,description,stargazersCount",
     issues: "number,title,state,repository",
     prs: "number,title,state,repository",
     commits: "sha,commit",
   };
+}
+
+function buildSearchFlags(q: SearchQuery): string[] {
+  const flags = ["search", q.scope, q.query, "--limit", String(q.limit)];
+  const jsonFields = buildJsonFields(q.scope);
   if (q.scope !== "code" && jsonFields[q.scope]) {
     flags.push("--json", jsonFields[q.scope]!);
   }
@@ -72,79 +74,98 @@ function runGhSearch(q: SearchQuery): SearchResult {
   if (q.state) {
     flags.push("--state", q.state);
   }
+  return flags;
+}
 
-  // Build shell-safe command
-  const cmd = [
-    "gh",
-    ...flags.map((f) => (f.includes(" ") ? `'${f}'` : f)),
-  ].join(" ");
+interface ParsedCount {
+  count: number;
+  containsPass: boolean;
+}
+
+/** Parse raw gh CLI output, returning either an error result or parsed counts. */
+function parseSearchOutput(
+  raw: string,
+  q: SearchQuery,
+): SearchResult | ParsedCount {
+  if (!raw || raw === "[]") {
+    return {
+      query: q,
+      count: 0,
+      raw,
+      passed: false,
+      contains_pass: false,
+      error: "No results returned",
+    };
+  }
+
+  if (q.scope === "code") {
+    return {
+      count: raw.split("\n").filter((l) => l.trim()).length,
+      containsPass: true,
+    };
+  }
 
   try {
-    const stdout = execSync(cmd, { encoding: "utf-8", timeout: 30_000 });
-    const raw = stdout.trim();
-
-    if (!raw || raw === "[]") {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
       return {
         query: q,
         count: 0,
         raw,
         passed: false,
         contains_pass: false,
-        error: "No results returned",
+        error: `Expected JSON array, got ${typeof parsed}`,
       };
     }
 
-    // Count results: for code scope, count non-empty lines;
-    // for JSON scopes, parse the array
-    let count: number;
     let containsPass = true;
-
-    if (q.scope === "code") {
-      count = raw.split("\n").filter((l) => l.trim()).length;
-    } else {
-      try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) {
-          return {
-            query: q,
-            count: 0,
-            raw,
-            passed: false,
-            contains_pass: false,
-            error: `Expected JSON array, got ${typeof parsed}`,
-          };
+    if (q.expected_contains) {
+      const text = JSON.stringify(parsed).toLowerCase();
+      for (const expected of q.expected_contains) {
+        if (!text.includes(expected.toLowerCase())) {
+          containsPass = false;
+          break;
         }
-        count = parsed.length;
-
-        // Check contains expectations
-        if (q.expected_contains) {
-          const text = JSON.stringify(parsed).toLowerCase();
-          for (const expected of q.expected_contains) {
-            if (!text.includes(expected.toLowerCase())) {
-              containsPass = false;
-              break;
-            }
-          }
-        }
-      } catch {
-        return {
-          query: q,
-          count: 0,
-          raw,
-          passed: false,
-          contains_pass: false,
-          error: "Failed to parse JSON output",
-        };
       }
     }
 
+    return { count: parsed.length, containsPass };
+  } catch {
     return {
       query: q,
-      count,
+      count: 0,
       raw,
-      passed: count >= q.expected_min_results && containsPass,
-      contains_pass: containsPass,
+      passed: false,
+      contains_pass: false,
+      error: "Failed to parse JSON output",
     };
+  }
+}
+
+function runGhSearch(q: SearchQuery): SearchResult {
+  const flags = buildSearchFlags(q);
+
+  try {
+    const stdout = execFileSync("gh", flags, {
+      encoding: "utf-8",
+      timeout: 30_000,
+    });
+    const raw = stdout.trim();
+    const parsed = parseSearchOutput(raw, q);
+
+    if (!("query" in parsed)) {
+      const { count, containsPass } = parsed;
+      return {
+        query: q,
+        count,
+        raw,
+        passed: count >= q.expected_min_results && containsPass,
+        contains_pass: containsPass,
+      };
+    }
+
+    // Error result from parseSearchOutput — return directly
+    return parsed;
   } catch (err: any) {
     return {
       query: q,

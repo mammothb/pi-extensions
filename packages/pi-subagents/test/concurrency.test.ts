@@ -13,11 +13,11 @@ import { mapWithConcurrencyLimit } from "../src/lib/concurrency.js";
 function delay<T>(ms: number, value: T, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal?.aborted) {
-      return reject(new DOMException("Aborted", "AbortError"));
+      return reject(new DOMException("Aborted", "AbortError")); // NOSONAR
     }
     const onAbort = () => {
       clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
+      reject(new DOMException("Aborted", "AbortError")); // NOSONAR
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     const timer = setTimeout(() => {

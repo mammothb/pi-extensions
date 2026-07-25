@@ -8,6 +8,75 @@ type TriggerStore = {
   prompts: Map<string, TriggerDefinition>;
 };
 
+function processTriggerToken(
+  token: { start: number; end: number; namespace: string; name: string },
+  store: TriggerStore,
+  text: string,
+  tokens: Array<{
+    start: number;
+    end: number;
+    namespace: string;
+    name: string;
+  }>,
+): {
+  expansion: {
+    namespace: string;
+    name: string;
+    location: string;
+    content: string;
+    block: string;
+  } | null;
+  removal: { start: number; end: number } | null;
+} {
+  let def: TriggerDefinition | undefined;
+
+  if (token.namespace === "skill") {
+    def = store.skills.get(token.name);
+    if (!def) {
+      return { expansion: null, removal: null };
+    }
+    const result = expandSkill(def);
+    return {
+      expansion: {
+        namespace: "skill",
+        name: token.name,
+        location: def.filePath,
+        content: result.content,
+        block: result.block,
+      },
+      removal: { start: token.start, end: token.end },
+    };
+  }
+
+  if (token.namespace === "prompt") {
+    def = store.prompts.get(token.name);
+    if (!def) {
+      return { expansion: null, removal: null };
+    }
+
+    const nextRemoval = [...tokens]
+      .filter((t) => t.start > token.end)
+      .sort((a, b) => a.start - b.start)[0];
+    const argsEnd = nextRemoval ? nextRemoval.start : text.length;
+    const argsText = text.slice(token.end, argsEnd);
+    const argsTrimmed = argsText.trim();
+
+    const result = expandPrompt(def, argsTrimmed || undefined);
+    return {
+      expansion: {
+        namespace: "prompt",
+        name: token.name,
+        location: def.filePath,
+        content: result.content,
+        block: result.block,
+      },
+      removal: { start: token.start, end: argsEnd },
+    };
+  }
+
+  return { expansion: null, removal: null };
+}
+
 /**
  * Handle the "input" event. Scans for /skill:name and /prompt:name tokens
  * anywhere in the text, expands them, sends custom messages, and returns
@@ -24,9 +93,7 @@ export function createInputHandler(store: TriggerStore) {
       return;
     }
 
-    // Build removal ranges: each token's start → end, plus args for prompts
     const removals: Array<{ start: number; end: number }> = [];
-
     const expansions: Array<{
       namespace: string;
       name: string;
@@ -36,47 +103,12 @@ export function createInputHandler(store: TriggerStore) {
     }> = [];
 
     for (const token of tokens) {
-      let def: TriggerDefinition | undefined;
-
-      if (token.namespace === "skill") {
-        def = store.skills.get(token.name);
-        if (!def) {
-          continue;
-        }
-        const result = expandSkill(def);
-        expansions.push({
-          namespace: "skill",
-          name: token.name,
-          location: def.filePath,
-          content: result.content,
-          block: result.block,
-        });
-        removals.push({ start: token.start, end: token.end });
-      } else if (token.namespace === "prompt") {
-        def = store.prompts.get(token.name);
-        if (!def) {
-          continue;
-        }
-
-        // Find the args region: from token.end to next token.start or end of text
-        const nextRemoval = [...tokens]
-          .filter((t) => t.start > token.end)
-          .sort((a, b) => a.start - b.start)[0];
-        const argsEnd = nextRemoval ? nextRemoval.start : event.text.length;
-        const argsText = event.text.slice(token.end, argsEnd);
-        const argsTrimmed = argsText.trim();
-
-        const result = expandPrompt(def, argsTrimmed || undefined);
-        expansions.push({
-          namespace: "prompt",
-          name: token.name,
-          location: def.filePath,
-          content: result.content,
-          block: result.block,
-        });
-
-        // Remove token + trailing args (up to next token or end)
-        removals.push({ start: token.start, end: argsEnd });
+      const r = processTriggerToken(token, store, event.text, tokens);
+      if (r.expansion) {
+        expansions.push(r.expansion);
+      }
+      if (r.removal) {
+        removals.push(r.removal);
       }
     }
 

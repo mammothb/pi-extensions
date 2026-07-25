@@ -160,10 +160,8 @@ export function autoConfirmIfAnswered(state: QuestionState, q: Question): void {
     if (state.selectedIndices.size > 0 || state.freeTextValue !== null) {
       state.confirmed = true;
     }
-  } else {
-    if (state.freeTextValue !== null || state.selectedIndex !== null) {
-      state.confirmed = true;
-    }
+  } else if (state.freeTextValue !== null || state.selectedIndex !== null) {
+    state.confirmed = true;
   }
 }
 

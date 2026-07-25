@@ -42,13 +42,11 @@ interface ParsedOutput {
 /** Parse the STDOUT/STDERR formatted output text back into sections. */
 function parseOutput(text: string): ParsedOutput {
   const truncated = text.includes("[Output truncated at 1 MB]");
-  const signalMatch = text.match(/\[Process killed by signal: ([^\]]+)\]/);
+  const signalMatch = /\[Process killed by signal: ([^\]]+)\]/.exec(text);
   const signal = signalMatch ? (signalMatch[1] ?? null) : null;
 
-  const stdoutMatch = text.match(
-    /^STDOUT:\n([\s\S]*?)(?:\n\nSTDERR:|\n\n\[|$)/,
-  );
-  const stderrMatch = text.match(/STDERR:\n([\s\S]*?)(?:\n\n\[|$)/);
+  const stdoutMatch = /^STDOUT:\n([\s\S]*?)(?:\n\nSTDERR:|\n\n\[|$)/.exec(text);
+  const stderrMatch = /STDERR:\n([\s\S]*?)(?:\n\n\[|$)/.exec(text);
 
   const stdout = stdoutMatch ? (stdoutMatch[1] ?? "") : "";
   const stderr = stderrMatch ? (stderrMatch[1] ?? "") : "";
@@ -76,16 +74,26 @@ function firstNonEmptyLines(s: string, n: number): string[] {
  * Build a stats header line.
  * Format: `exit 0 | 3 lines | truncated | Ctrl+O to expand`
  */
-function buildStatsLine(
-  details: EvalDetails | undefined,
-  rawText: string,
-  isError: boolean,
-  parsed: ParsedOutput,
-  totalLines: number,
-  theme: Theme,
-  expandKey: string,
-  showExpandHint: boolean,
-): string {
+function buildStatsLine(opts: {
+  details: EvalDetails | undefined;
+  rawText: string;
+  isError: boolean;
+  parsed: ParsedOutput;
+  totalLines: number;
+  theme: Theme;
+  expandKey: string;
+  showExpandHint: boolean;
+}): string {
+  const {
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint,
+  } = opts;
   const statusColor = isError ? "error" : "success";
   const parts: string[] = [];
 
@@ -120,6 +128,102 @@ function buildStatsLine(
   }
 
   return parts.join(" ");
+}
+
+interface EvalOutput {
+  details: EvalDetails | undefined;
+  rawText: string;
+  isError: boolean;
+  parsed: ParsedOutput;
+}
+
+function renderCollapsedView(
+  previewSource: string,
+  output: EvalOutput,
+  totalLines: number,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const { details, rawText, isError, parsed } = output;
+  const previewLines = firstNonEmptyLines(previewSource, PREVIEW_LINES);
+  const allNonEmptyCount = firstNonEmptyLines(
+    previewSource,
+    Number.MAX_SAFE_INTEGER,
+  ).length;
+  const remaining = Math.max(0, allNonEmptyCount - previewLines.length);
+  const showHintInHeader = isError || remaining > 0;
+
+  const statsHeader = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint: showHintInHeader,
+  });
+
+  const parts: string[] = [statsHeader];
+
+  if (previewLines.length > 0) {
+    parts.push(previewLines.join("\n"));
+  }
+
+  if (remaining > 0) {
+    parts.push(
+      theme.fg("muted", `... (${remaining} more lines, `) +
+        theme.fg("muted", expandKey) +
+        theme.fg("muted", " to expand)"),
+    );
+  } else if (previewLines.length > 0 && !showHintInHeader) {
+    parts.push(theme.fg("muted", `  ${expandKey} to expand`));
+  }
+
+  return new Text(parts.join("\n"), 0, 0);
+}
+
+function renderEvalExpanded(
+  details: EvalDetails | undefined,
+  rawText: string,
+  isError: boolean,
+  parsed: ParsedOutput,
+  totalLines: number,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const header = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint: false,
+  });
+  return new Text(`${header}\n${rawText}\n${getCollapseHint(theme)}`, 0, 0);
+}
+
+function renderEvalEmpty(
+  details: EvalDetails | undefined,
+  rawText: string,
+  isError: boolean,
+  parsed: ParsedOutput,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const header = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines: 0,
+    theme,
+    expandKey,
+    showExpandHint: false,
+  });
+  return new Text(header, 0, 0);
 }
 
 export function createEvalTool(): ToolDefinition<
@@ -194,18 +298,13 @@ export function createEvalTool(): ToolDefinition<
       const expandKey = getExpandKey();
 
       // Determine which output stream to preview
-      let previewSource: string;
-      if (isError) {
-        previewSource = (parsed.stderr || parsed.stdout || "").trim();
-      } else {
-        previewSource = (parsed.stdout || "").trim();
-      }
-
+      const previewSource = isError
+        ? (parsed.stderr || parsed.stdout || "").trim()
+        : (parsed.stdout || "").trim();
       const totalLines = countLines(previewSource);
 
-      // Phase 4: Expanded view — show raw text with stats header
       if (options.expanded) {
-        const header = buildStatsLine(
+        return renderEvalExpanded(
           details,
           rawText,
           isError,
@@ -213,72 +312,27 @@ export function createEvalTool(): ToolDefinition<
           totalLines,
           theme,
           expandKey,
-          false, // no expand hint in expanded mode
-        );
-        return new Text(
-          `${header}\n${rawText}\n${getCollapseHint(theme)}`,
-          0,
-          0,
         );
       }
 
-      // No output at all — just stats header, no Ctrl+O
       if (!previewSource || totalLines === 0) {
-        const header = buildStatsLine(
+        return renderEvalEmpty(
           details,
           rawText,
           isError,
           parsed,
-          0,
           theme,
           expandKey,
-          false,
         );
-        return new Text(header, 0, 0);
       }
 
-      // Collapsed view with output
-      const previewLines = firstNonEmptyLines(previewSource, PREVIEW_LINES);
-      const allNonEmptyCount = firstNonEmptyLines(
+      return renderCollapsedView(
         previewSource,
-        Number.MAX_SAFE_INTEGER,
-      ).length;
-      const remaining = Math.max(0, allNonEmptyCount - previewLines.length);
-
-      // Expand hint in header only when there are hidden lines (remaining > 0)
-      // or when it's an error (errors always get the hint in the header)
-      const showHintInHeader = isError || remaining > 0;
-
-      // Stats header
-      const statsHeader = buildStatsLine(
-        details,
-        rawText,
-        isError,
-        parsed,
+        { details, rawText, isError, parsed },
         totalLines,
         theme,
         expandKey,
-        showHintInHeader,
       );
-
-      // Build result as a single Text (avoids Container/Box padding issues)
-      const parts: string[] = [statsHeader];
-
-      if (previewLines.length > 0) {
-        parts.push(previewLines.join("\n"));
-      }
-
-      if (remaining > 0) {
-        parts.push(
-          theme.fg("muted", `... (${remaining} more lines, `) +
-            theme.fg("muted", expandKey) +
-            theme.fg("muted", " to expand)"),
-        );
-      } else if (previewLines.length > 0 && !showHintInHeader) {
-        parts.push(theme.fg("muted", `  ${expandKey} to expand`));
-      }
-
-      return new Text(parts.join("\n"), 0, 0);
     },
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const { language, code, cwd: paramsCwd } = params;

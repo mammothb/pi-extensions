@@ -13,7 +13,7 @@ let projectDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-eval-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-eval-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
   );
   agentDir = join(tmpDir, "agent");
   projectDir = join(tmpDir, "project");

@@ -174,6 +174,11 @@ function addRepeated(
   }
 }
 
+/** Convert unknown to string, using fallback for null/undefined. */
+function str(val: unknown, fallback: string): string {
+  return val != null ? String(val) : fallback;
+}
+
 /** Build a one-line preview of the first search result for collapsed display. */
 function formatFirstItem(
   scope: string,
@@ -185,32 +190,32 @@ function formatFirstItem(
 
   switch (scope) {
     case "repos": {
-      const fullName = String(item.fullName ?? "?");
-      const stars = item.stargazersCount ?? "?";
-      const lang = item.language ?? "no lang";
+      const fullName = str(item.fullName, "?");
+      const stars = str(item.stargazersCount, "?");
+      const lang = str(item.language, "no lang");
       return `${fullName} (stars: ${stars}, ${lang})`;
     }
     case "issues": {
-      const num = item.number ?? "?";
-      const title = String(item.title ?? "");
-      const state = item.state ?? "?";
+      const num = str(item.number, "?");
+      const title = str(item.title, "");
+      const state = str(item.state, "?");
       return `#${num} ${title} (${state})`;
     }
     case "prs": {
-      const num = item.number ?? "?";
-      const title = String(item.title ?? "");
+      const num = str(item.number, "?");
+      const title = str(item.title, "");
       const draft = item.isDraft;
-      const label = draft ? "draft" : (item.state ?? "?");
+      const label = draft ? "draft" : str(item.state, "?");
       return `#${num} ${title} (${label})`;
     }
     case "commits": {
-      const sha = String(item.sha ?? "").slice(0, 7);
+      const sha = str(item.sha, "").slice(0, 7);
       const commit = item.commit as Record<string, unknown> | undefined;
-      const msg = String(commit?.message ?? "").split("\n")[0] ?? "";
+      const msg = str(commit?.message, "").split("\n")[0] ?? "";
       return `${sha} ${msg}`;
     }
     default:
-      return String(item.fullName ?? item.number ?? item.sha ?? "?");
+      return str(item.fullName ?? item.number ?? item.sha, "?");
   }
 }
 
@@ -295,7 +300,8 @@ export function createGhSearchTool(
 
       let text = `${theme.fg("accent", String(count))} ${theme.fg("muted", scopeLabel)} — ${preview}`;
       if (count > 1) {
-        text += `, ${theme.fg("muted", `+${count - 1} more`)}`;
+        const moreLabel = `+${count - 1} more`;
+        text += `, ${theme.fg("muted", moreLabel)}`;
       }
 
       if (details?.truncation) {

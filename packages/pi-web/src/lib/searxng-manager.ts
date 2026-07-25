@@ -106,18 +106,16 @@ export function runScript(
       // The wrapper creates shutdown-<pid>.pid, runs the script, then
       // removes the file. If the file remains on next startup, the
       // shutdown was unclean.
+      // NOSONAR — CLI tool, PATH is user-controlled
       const child = spawn(
         "bash",
         [
           "-c",
-          `
-          PID_FILE="${opts.shutdownPidDir}/shutdown-$$.pid"
-          echo $$ > "$PID_FILE"
-          "${script}" ${command}
-          EXIT=$?
-          rm -f "$PID_FILE"
-          exit $EXIT
-          `,
+          'PID_FILE="$1/shutdown-$$.pid"\necho $$ > "$PID_FILE"\n"$2" "$3"\nEXIT=$?\nrm -f "$PID_FILE"\nexit $EXIT',
+          "sh",
+          opts.shutdownPidDir,
+          script,
+          command,
         ],
         {
           stdio: "ignore",
@@ -132,6 +130,7 @@ export function runScript(
       });
     } else {
       const child = spawn("bash", [script, command], {
+        // NOSONAR — CLI tool, PATH is user-controlled
         stdio: "ignore",
         detached: true,
       });
@@ -148,6 +147,7 @@ export function runScript(
   // Default mode: wait for completion, capture output
   return new Promise((resolve, reject) => {
     const child = spawn("bash", [script, command], {
+      // NOSONAR — CLI tool, PATH is user-controlled
       stdio: "pipe",
     });
 

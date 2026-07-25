@@ -38,12 +38,12 @@ function activePackageRoots(): string[] {
     ) as { packages?: unknown[] };
     const roots: string[] = [];
     for (const entry of settings.packages ?? []) {
-      const source =
-        typeof entry === "string"
-          ? entry
-          : entry && typeof entry === "object"
-            ? (entry as { source?: unknown }).source
-            : undefined;
+      let source: unknown;
+      if (typeof entry === "string") {
+        source = entry;
+      } else if (entry && typeof entry === "object") {
+        source = (entry as { source?: unknown }).source;
+      }
       if (typeof source !== "string") {
         continue;
       }

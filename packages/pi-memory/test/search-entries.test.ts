@@ -69,7 +69,7 @@ describe("searchEntries", () => {
   it("supports regex pattern: alternation", () => {
     const r = searchEntries(entries, messages, "login|auth");
     expect(r).toHaveLength(3); // "login bug", "auth.ts", "auth module"
-    expect(r.map((h) => h.index).sort()).toEqual([0, 1, 3]);
+    expect(r.map((h) => h.index).sort((a, b) => a - b)).toEqual([0, 1, 3]);
   });
 
   it("supports regex pattern: wildcard", () => {

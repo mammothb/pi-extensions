@@ -22,19 +22,19 @@ export const registerMmRecallCommand = (pi: ExtensionAPI) => {
           : undefined;
 
       // Parse page:N from args
-      const pageMatch = parsed.text.match(/\bpage:(\d+)\b/i);
+      const pageMatch = /\bpage:(\d+)\b/i.exec(parsed.text);
       const page = pageMatch?.[1]
         ? Math.max(1, parseInt(pageMatch[1], 10))
         : undefined;
       const query =
         parsed.text.replace(/\bpage:\d+\b/i, "").trim() || undefined;
 
-      const continuationPrompt =
-        query && parsed.scope !== "all"
-          ? `/mm-recall ${query} page:`
-          : query
-            ? `/mm-recall ${query} scope:all page:`
-            : undefined;
+      let continuationPrompt: string | undefined;
+      if (query && parsed.scope !== "all") {
+        continuationPrompt = `/mm-recall ${query} page:`;
+      } else if (query) {
+        continuationPrompt = `/mm-recall ${query} scope:all page:`;
+      }
 
       const { text } = runRecallPipeline({
         sessionFile,

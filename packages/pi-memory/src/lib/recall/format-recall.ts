@@ -11,11 +11,14 @@ export const formatRecallOutput = (
       : "No entries in session history.";
   }
 
-  const header = headerOverride
-    ? `${headerOverride} for "${query}":`
-    : query
-      ? `Found ${entries.length} matches for "${query}":`
-      : `Session history (${entries.length} entries):`;
+  let header: string;
+  if (headerOverride) {
+    header = `${headerOverride} for "${query}":`;
+  } else if (query) {
+    header = `Found ${entries.length} matches for "${query}":`;
+  } else {
+    header = `Session history (${entries.length} entries):`;
+  }
 
   const lines = entries.map((e) => {
     const fileSuffix = e.files?.length ? ` files:[${e.files.join(", ")}]` : "";

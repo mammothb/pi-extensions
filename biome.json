@@ -18,6 +18,7 @@
       "**",
       "!dist",
       "!coverage",
+      "!sonar-*",
       "!packages/*/dist",
       "!packages/*/coverage",
       "!node_modules",

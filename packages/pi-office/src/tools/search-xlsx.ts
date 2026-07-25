@@ -42,9 +42,12 @@ function formatMatches(
     ].join("\n");
   }
 
+  const matchPlural = totalMatches === 1 ? "" : "es";
+  const sheetPlural = sheetsSearched === 1 ? "" : "s";
+
   const header = truncated
-    ? `Found ${totalMatches} matches across ${sheetsSearched} sheet${sheetsSearched === 1 ? "" : "s"} (${totalSheets} total). Showing first ${matches.length}:`
-    : `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${sheetsSearched} sheet${sheetsSearched === 1 ? "" : "s"} (${totalSheets} total):`;
+    ? `Found ${totalMatches} matches across ${sheetsSearched} sheet${sheetPlural} (${totalSheets} total). Showing first ${matches.length}:`
+    : `Found ${totalMatches} match${matchPlural} across ${sheetsSearched} sheet${sheetPlural} (${totalSheets} total):`;
 
   const blocks = matches.map((m) => formatMatchRow(m, query));
 

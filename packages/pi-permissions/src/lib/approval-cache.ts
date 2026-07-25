@@ -5,7 +5,7 @@
  * permission requests don't re-prompt. Resets on pi restart.
  */
 export class ApprovalCache {
-  #approvals = new Map<string, "allow" | "deny">();
+  readonly #approvals = new Map<string, "allow" | "deny">();
 
   /** Check if a decision exists for the given key. */
   has(key: string): boolean {

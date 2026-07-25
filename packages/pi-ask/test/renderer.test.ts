@@ -91,7 +91,7 @@ describe("renderTabBar", () => {
     states[1]!.confirmed = true;
 
     const lines = renderTabBar([q1, q2], states, 0, theme, 80);
-    // Tab 1 (Todo) should show [success] because it's confirmed but not active
+    // Tab 1 should show [success] because it's confirmed but not active
     expect(lines[0]).toContain("[success]");
   });
 

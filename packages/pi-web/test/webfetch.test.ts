@@ -195,6 +195,20 @@ describe("execute — happy paths", () => {
 // ---------------------------------------------------------------------------
 // execute — error & edge cases
 // ---------------------------------------------------------------------------
+/** Returns a fetch mock that hangs forever, rejecting on abort signal. */
+function createHangingFetchMock(): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation((_url, init) => {
+    return new Promise((_resolve, reject) => {
+      const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+      if (init?.signal?.aborted) {
+        onAbort();
+      } else {
+        init?.signal?.addEventListener("abort", onAbort, { once: true });
+      }
+    });
+  });
+}
+
 describe("execute — error & edge cases", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -252,16 +266,7 @@ describe("execute — error & edge cases", () => {
     vi.useFakeTimers();
 
     // Mock fetch that hangs (pends forever unless aborted)
-    const mock = vi.fn().mockImplementation((_url, init) => {
-      return new Promise((_resolve, reject) => {
-        const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
-        if (init?.signal?.aborted) {
-          onAbort();
-        } else {
-          init?.signal?.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    });
+    const mock = createHangingFetchMock();
     vi.stubGlobal("fetch", mock);
 
     const tool = createWebfetchTool();
@@ -286,16 +291,7 @@ describe("execute — error & edge cases", () => {
   it("timeout is capped at 120 seconds even if higher value passed", async () => {
     vi.useFakeTimers();
 
-    const mock = vi.fn().mockImplementation((_url, init) => {
-      return new Promise((_resolve, reject) => {
-        const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
-        if (init?.signal?.aborted) {
-          onAbort();
-        } else {
-          init?.signal?.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    });
+    const mock = createHangingFetchMock();
     vi.stubGlobal("fetch", mock);
 
     const tool = createWebfetchTool();
@@ -320,16 +316,7 @@ describe("execute — error & edge cases", () => {
   it("timeout converts seconds to milliseconds correctly", async () => {
     vi.useFakeTimers();
 
-    const mock = vi.fn().mockImplementation((_url, init) => {
-      return new Promise((_resolve, reject) => {
-        const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
-        if (init?.signal?.aborted) {
-          onAbort();
-        } else {
-          init?.signal?.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    });
+    const mock = createHangingFetchMock();
     vi.stubGlobal("fetch", mock);
 
     const tool = createWebfetchTool();
