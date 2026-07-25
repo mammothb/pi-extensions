@@ -141,52 +141,63 @@ fn parse_merged(records: &[ClaudeRecord]) -> Vec<Message> {
                 message: sys_msg,
                 content,
             } => {
-                match subtype.as_deref() {
-                    Some("compact_boundary") => {
-                        messages.push(Message {
-                            role: "chain_boundary".into(),
-                            content: vec![],
-                            tool_call_id: None,
-                            tool_name: None,
-                            is_error: false,
-                            command: None,
-                            output: None,
-                            exit_code: None,
-                        });
-                    }
-                    Some("init") => {} // skip
-                    _ => {
-                        // Prefer top-level content, fall back to message.content
-                        let text = content
-                            .as_deref()
-                            .or_else(|| {
-                                sys_msg
-                                    .as_ref()
-                                    .and_then(|m| m.content.as_ref())
-                                    .and_then(|v| v.as_str())
-                            })
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string());
-                        if let Some(t) = text {
-                            messages.push(Message {
-                                role: "system".into(),
-                                content: vec![ContentBlock::Text { text: t }],
-                                tool_call_id: None,
-                                tool_name: None,
-                                is_error: false,
-                                command: None,
-                                output: None,
-                                exit_code: None,
-                            });
-                        }
-                    }
-                }
+                messages.extend(parse_system_record(subtype, sys_msg, content));
             }
             ClaudeRecord::Other => {}
         }
     }
 
     messages
+}
+
+/// Parse a system record into zero or more Messages.
+fn parse_system_record(
+    subtype: &Option<String>,
+    sys_msg: &Option<ClaudeMessage>,
+    content: &Option<String>,
+) -> Vec<Message> {
+    match subtype.as_deref() {
+        Some("compact_boundary") => {
+            vec![Message {
+                role: "chain_boundary".into(),
+                content: vec![],
+                tool_call_id: None,
+                tool_name: None,
+                is_error: false,
+                command: None,
+                output: None,
+                exit_code: None,
+            }]
+        }
+        Some("init") => vec![],
+        _ => {
+            // Prefer top-level content, fall back to message.content
+            let text = content
+                .as_deref()
+                .or_else(|| {
+                    sys_msg
+                        .as_ref()
+                        .and_then(|m| m.content.as_ref())
+                        .and_then(|v| v.as_str())
+                })
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            if let Some(t) = text {
+                vec![Message {
+                    role: "system".into(),
+                    content: vec![ContentBlock::Text { text: t }],
+                    tool_call_id: None,
+                    tool_name: None,
+                    is_error: false,
+                    command: None,
+                    output: None,
+                    exit_code: None,
+                }]
+            } else {
+                vec![]
+            }
+        }
+    }
 }
 
 /// Partition a user message's content into text/image/document blocks (-> user
