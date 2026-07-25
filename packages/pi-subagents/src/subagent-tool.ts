@@ -68,6 +68,210 @@ function validateCwd(
   return { cwd: resolvedCwd };
 }
 
+async function executeSingle(
+  params: { agent?: string; task?: string; cwd?: string },
+  signal: AbortSignal | undefined,
+  onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
+  ctx: { cwd: string },
+  agents: ReturnType<typeof discoverAgents>,
+  stuckTimeoutMs: number,
+): Promise<AgentToolResult<SubagentResult>> {
+  const agentName = params.agent ?? "";
+  const taskDesc = params.task ?? "";
+
+  if (!agentName) {
+    return {
+      content: [{ type: "text", text: "agent is required in single mode" }],
+      details: failedResult("", taskDesc, "agent is required"),
+    };
+  }
+  if (!taskDesc) {
+    return {
+      content: [{ type: "text", text: "task is required in single mode" }],
+      details: failedResult(agentName, "", "task is required"),
+    };
+  }
+
+  const agent = agents.find((a) => a.name === agentName);
+  if (!agent) {
+    const available = agents.map((a) => a.name).join(", ") || "none";
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Unknown agent "${agentName}". Available: ${available}`,
+        },
+      ],
+      details: failedResult(
+        agentName,
+        taskDesc,
+        `Unknown agent "${agentName}". Available: ${available}`,
+      ),
+    };
+  }
+
+  const cwdResult = validateCwd(params.cwd, ctx.cwd);
+  if ("error" in cwdResult) {
+    return {
+      content: [{ type: "text", text: cwdResult.error }],
+      details: failedResult(agent.name, taskDesc, cwdResult.error),
+    };
+  }
+
+  const result = await launchSubagent(
+    agent,
+    taskDesc,
+    cwdResult.cwd,
+    signal,
+    onUpdate
+      ? (r) =>
+          onUpdate({
+            content: [{ type: "text", text: r.output || "(running...)" }],
+            details: r,
+          })
+      : undefined,
+    stuckTimeoutMs,
+  );
+
+  if (result.exitCode !== 0) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Agent "${result.agent}" failed (exit ${result.exitCode}): ${result.error || result.output}`,
+        },
+      ],
+      details: result,
+    };
+  }
+
+  return {
+    content: [{ type: "text", text: result.output || "(no output)" }],
+    details: result,
+  };
+}
+
+async function executeParallel(
+  params: { tasks?: Array<{ agent: string; task: string }>; cwd?: string },
+  signal: AbortSignal | undefined,
+  onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
+  ctx: { cwd: string },
+  agents: ReturnType<typeof discoverAgents>,
+  stuckTimeoutMs: number,
+): Promise<AgentToolResult<SubagentResult>> {
+  const tasks = params.tasks;
+  if (!tasks || tasks.length === 0) {
+    return {
+      content: [{ type: "text", text: "tasks array must not be empty" }],
+      details: failedResult("parallel", "", "tasks array is empty"),
+    };
+  }
+
+  const cwdResult = validateCwd(params.cwd, ctx.cwd);
+  if ("error" in cwdResult) {
+    return {
+      content: [{ type: "text", text: cwdResult.error }],
+      details: failedResult("parallel", "", cwdResult.error),
+    };
+  }
+  const resolvedCwd = cwdResult.cwd;
+
+  const settled = new Map<number, SubagentResult>();
+  let results: SubagentResult[];
+  try {
+    await mapWithConcurrencyLimit(
+      tasks,
+      MAX_CONCURRENT,
+      async ({ agent: agentName, task: taskDesc }, index, childSignal) => {
+        const agent = agents.find((a) => a.name === agentName);
+        if (!agent) {
+          const available = agents.map((a) => a.name).join(", ") || "none";
+          const r = failedResult(
+            agentName,
+            taskDesc,
+            `Unknown agent "${agentName}". Available: ${available}`,
+          );
+          settled.set(index, r);
+          return r;
+        }
+
+        const r = await launchSubagent(
+          agent,
+          taskDesc,
+          resolvedCwd,
+          childSignal,
+          onUpdate
+            ? (sr) =>
+                onUpdate({
+                  content: [
+                    {
+                      type: "text",
+                      text: `[${sr.agent}] ${sr.output || "(running...)"}`,
+                    },
+                  ],
+                  details: sr,
+                })
+            : undefined,
+          stuckTimeoutMs,
+        );
+        settled.set(index, r);
+        return r;
+      },
+      signal,
+    );
+    results = tasks.map((_, i) => {
+      const r = settled.get(i);
+      if (!r) {
+        throw new Error(`Internal error: task ${i} has no settled result`);
+      }
+      return r;
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      results = tasks.map((t) =>
+        failedResult(t.agent, t.task, "Subagent was aborted"),
+      );
+    } else {
+      results = tasks.map(
+        (t, i) =>
+          settled.get(i) ??
+          failedResult(t.agent, t.task, "Subagent was aborted"),
+      );
+    }
+  }
+
+  results = results.map(
+    (r, i) =>
+      r ??
+      failedResult(
+        tasks[i]?.agent ?? "unknown",
+        tasks[i]?.task ?? "",
+        "Subagent was aborted",
+      ),
+  );
+
+  const summary = summaryText(results);
+  return {
+    content: [{ type: "text", text: summary }],
+    details: {
+      agent: "parallel",
+      task: `${tasks.length} tasks`,
+      output: summary,
+      exitCode: results.every((r) => r.exitCode === 0) ? 0 : 1,
+      elapsed: results.reduce((sum, r) => sum + r.elapsed, 0),
+      tokens: {
+        input: results.reduce((sum, r) => sum + r.tokens.input, 0),
+        output: results.reduce((sum, r) => sum + r.tokens.output, 0),
+        cacheRead: results.reduce((sum, r) => sum + r.tokens.cacheRead, 0),
+        cacheWrite: results.reduce((sum, r) => sum + r.tokens.cacheWrite, 0),
+        total: results.reduce((sum, r) => sum + r.tokens.total, 0),
+        turns: results.reduce((sum, r) => sum + r.tokens.turns, 0),
+      },
+      results,
+    },
+  };
+}
+
 export function createSubagentTool() {
   return {
     name: "subagent",
@@ -112,7 +316,6 @@ export function createSubagentTool() {
       const agents = discoverAgents(ctx.cwd);
       const config = loadSubagentConfig();
 
-      // --- Mode detection: exactly one of {agent+task} or {tasks} must be provided ---
       const hasSingle = params.agent !== undefined || params.task !== undefined;
       const hasParallel = params.tasks !== undefined;
 
@@ -148,211 +351,25 @@ export function createSubagentTool() {
         };
       }
 
-      // --- Single mode ---
       if (hasSingle) {
-        const agentName = params.agent ?? "";
-        const taskDesc = params.task ?? "";
-
-        if (!agentName) {
-          return {
-            content: [
-              { type: "text", text: "agent is required in single mode" },
-            ],
-            details: failedResult("", taskDesc, "agent is required"),
-          };
-        }
-        if (!taskDesc) {
-          return {
-            content: [
-              { type: "text", text: "task is required in single mode" },
-            ],
-            details: failedResult(agentName, "", "task is required"),
-          };
-        }
-
-        const agent = agents.find((a) => a.name === agentName);
-        if (!agent) {
-          const available = agents.map((a) => a.name).join(", ") || "none";
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Unknown agent "${agentName}". Available: ${available}`,
-              },
-            ],
-            details: failedResult(
-              agentName,
-              taskDesc,
-              `Unknown agent "${agentName}". Available: ${available}`,
-            ),
-          };
-        }
-
-        const cwdResult = validateCwd(params.cwd, ctx.cwd);
-        if ("error" in cwdResult) {
-          return {
-            content: [{ type: "text", text: cwdResult.error }],
-            details: failedResult(agent.name, taskDesc, cwdResult.error),
-          };
-        }
-        const resolvedCwd = cwdResult.cwd;
-
-        const result = await launchSubagent(
-          agent,
-          taskDesc,
-          resolvedCwd,
+        return executeSingle(
+          params,
           signal,
-          onUpdate
-            ? (r) =>
-                onUpdate({
-                  content: [{ type: "text", text: r.output || "(running...)" }],
-                  details: r,
-                })
-            : undefined,
+          onUpdate,
+          ctx,
+          agents,
           config.stuckTimeoutMs,
         );
-
-        if (result.exitCode !== 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Agent "${result.agent}" failed (exit ${result.exitCode}): ${result.error || result.output}`,
-              },
-            ],
-            details: result,
-          };
-        }
-
-        return {
-          content: [{ type: "text", text: result.output || "(no output)" }],
-          details: result,
-        };
       }
 
-      // --- Parallel mode ---
-      const tasks = params.tasks;
-      if (!tasks || tasks.length === 0) {
-        return {
-          content: [{ type: "text", text: "tasks array must not be empty" }],
-          details: failedResult("parallel", "", "tasks array is empty"),
-        };
-      }
-
-      const cwdResult = validateCwd(params.cwd, ctx.cwd);
-      if ("error" in cwdResult) {
-        return {
-          content: [{ type: "text", text: cwdResult.error }],
-          details: failedResult("parallel", "", cwdResult.error),
-        };
-      }
-      const resolvedCwd = cwdResult.cwd;
-
-      // Collect settled results by index so a thrown worker error
-      // doesn't lose results from already-completed siblings.
-      const settled = new Map<number, SubagentResult>();
-      let results: SubagentResult[];
-      try {
-        await mapWithConcurrencyLimit(
-          tasks,
-          MAX_CONCURRENT,
-          async ({ agent: agentName, task: taskDesc }, index, childSignal) => {
-            const agent = agents.find((a) => a.name === agentName);
-            if (!agent) {
-              const available = agents.map((a) => a.name).join(", ") || "none";
-              const r = failedResult(
-                agentName,
-                taskDesc,
-                `Unknown agent "${agentName}". Available: ${available}`,
-              );
-              settled.set(index, r);
-              return r;
-            }
-
-            const r = await launchSubagent(
-              agent,
-              taskDesc,
-              resolvedCwd,
-              childSignal,
-              onUpdate
-                ? (sr) =>
-                    onUpdate({
-                      content: [
-                        {
-                          type: "text",
-                          text: `[${sr.agent}] ${sr.output || "(running...)"}`,
-                        },
-                      ],
-                      details: sr,
-                    })
-                : undefined,
-              config.stuckTimeoutMs,
-            );
-            settled.set(index, r);
-            return r;
-          },
-          signal,
-        );
-        // Normal completion: all tasks processed
-        results = tasks.map((_, i) => {
-          const r = settled.get(i);
-          if (!r) {
-            throw new Error(`Internal error: task ${i} has no settled result`);
-          }
-          return r;
-        });
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          // Pre-aborted signal: no workers ever started, all tasks cancelled
-          results = tasks.map((t) =>
-            failedResult(t.agent, t.task, "Subagent was aborted"),
-          );
-        } else {
-          // Worker threw an unexpected error. Preserve any results that
-          // completed before the error propagated (settled siblings),
-          // and fill the rest as aborted.
-          results = tasks.map(
-            (t, i) =>
-              settled.get(i) ??
-              failedResult(t.agent, t.task, "Subagent was aborted"),
-          );
-        }
-      }
-
-      // Fill holes from abort (unprocessed task slots are undefined)
-      results = results.map(
-        (r, i) =>
-          r ??
-          failedResult(
-            tasks[i]?.agent ?? "unknown",
-            tasks[i]?.task ?? "",
-            "Subagent was aborted",
-          ),
+      return executeParallel(
+        params,
+        signal,
+        onUpdate,
+        ctx,
+        agents,
+        config.stuckTimeoutMs,
       );
-
-      const summary = summaryText(results);
-      return {
-        content: [{ type: "text", text: summary }],
-        details: {
-          agent: "parallel",
-          task: `${tasks.length} tasks`,
-          output: summary,
-          exitCode: results.every((r) => r.exitCode === 0) ? 0 : 1,
-          elapsed: results.reduce((sum, r) => sum + r.elapsed, 0),
-          tokens: {
-            input: results.reduce((sum, r) => sum + r.tokens.input, 0),
-            output: results.reduce((sum, r) => sum + r.tokens.output, 0),
-            cacheRead: results.reduce((sum, r) => sum + r.tokens.cacheRead, 0),
-            cacheWrite: results.reduce(
-              (sum, r) => sum + r.tokens.cacheWrite,
-              0,
-            ),
-            total: results.reduce((sum, r) => sum + r.tokens.total, 0),
-            turns: results.reduce((sum, r) => sum + r.tokens.turns, 0),
-          },
-          results,
-        },
-      };
     },
   };
 }

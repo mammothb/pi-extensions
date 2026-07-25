@@ -250,6 +250,103 @@ export async function launchPiChild(
   });
 }
 
+function createOnUpdateWrapper(
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  agent: AgentConfig,
+  task: string,
+  startedAt: number,
+  tracker: {
+    lastActivity: number;
+    stuckWarned: boolean;
+    lastUsage: SubagentResult["tokens"];
+    lastActivityDesc: string;
+  },
+): ((cumulative: CumulativeResult) => void) | undefined {
+  if (!onUpdate) {
+    return undefined;
+  }
+  return (cumulative: CumulativeResult) => {
+    tracker.lastActivity = Date.now();
+    tracker.stuckWarned = false;
+    tracker.lastUsage = { ...cumulative.usage };
+    const lastMsg = cumulative.messages[cumulative.messages.length - 1];
+    if (lastMsg) {
+      if (lastMsg.role === "toolResult") {
+        tracker.lastActivityDesc = `tool:${lastMsg.toolName}`;
+      } else if (lastMsg.role === "assistant") {
+        tracker.lastActivityDesc = "assistant message";
+      }
+    }
+    onUpdate({
+      agent: agent.name,
+      task,
+      output: cumulative.finalOutput || "(running...)",
+      exitCode: -1,
+      elapsed: Date.now() - startedAt,
+      tokens: { ...cumulative.usage },
+      model: cumulative.model,
+    });
+  };
+}
+
+function setupAbortHandlers(
+  signal: AbortSignal | undefined,
+  proc: ReturnType<typeof spawnChild>,
+): { wasAborted: () => boolean; cleanup: () => void } {
+  let wasAborted = false;
+  let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
+
+  if (!signal) {
+    return { wasAborted: () => false, cleanup: () => {} };
+  }
+
+  const killProc = () => {
+    wasAborted = true;
+    proc.kill("SIGTERM");
+    sigkillTimer = setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill("SIGKILL");
+      }
+      sigkillTimer = undefined;
+    }, 5000);
+  };
+
+  if (signal.aborted) {
+    killProc();
+    return { wasAborted: () => true, cleanup: () => {} };
+  }
+
+  signal.addEventListener("abort", killProc, { once: true });
+  return {
+    wasAborted: () => wasAborted,
+    cleanup: () => {
+      signal.removeEventListener("abort", killProc);
+      if (sigkillTimer) {
+        clearTimeout(sigkillTimer);
+      }
+    },
+  };
+}
+
+function buildSubagentError(
+  exitCode: number,
+  stderr: string,
+  cumulative: CumulativeResult,
+  spawnError: string | undefined,
+): string | undefined {
+  if (exitCode === 0) {
+    return cumulative.errorMessage || spawnError;
+  }
+  const stopMsg =
+    cumulative.stopReason &&
+    cumulative.stopReason !== "stop" &&
+    cumulative.stopReason !== "end"
+      ? cumulative.stopReason
+      : undefined;
+  const inner = stderr.trim() || stopMsg || `exit code ${exitCode}`;
+  return cumulative.errorMessage || spawnError || inner;
+}
+
 /**
  * Launch a child process with given command + args, parse JSONL stdout,
  * apply stuck detection and abort handling. Exported for testing with
@@ -276,86 +373,51 @@ export async function launchChild(opts: {
   });
 
   // Stuck detection heartbeat
-  let lastActivity = Date.now();
-  let lastActivityDesc = "starting";
-  let stuckTimer: ReturnType<typeof setInterval> | undefined;
-  let stuckWarned = false;
-  let lastUsage: SubagentResult["tokens"] = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    total: 0,
-    turns: 0,
+  const tracker = {
+    lastActivity: Date.now(),
+    lastActivityDesc: "starting",
+    lastUsage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+      turns: 0,
+    } as SubagentResult["tokens"],
+    stuckWarned: false,
   };
+  let stuckTimer: ReturnType<typeof setInterval> | undefined;
 
   if (stuckTimeoutMs > 0) {
     stuckTimer = setInterval(() => {
-      const idleMs = Date.now() - lastActivity;
-      if (idleMs > stuckTimeoutMs && !stuckWarned) {
-        stuckWarned = true;
+      const idleMs = Date.now() - tracker.lastActivity;
+      if (idleMs > stuckTimeoutMs && !tracker.stuckWarned) {
+        tracker.stuckWarned = true;
         onUpdate?.({
           agent: agent.name,
           task,
-          output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
+          output: `⚠️ No progress for ${Math.round(idleMs / 1000)}s. Last activity: ${tracker.lastActivityDesc}. Ctrl+C to abort, or wait — the model may be thinking.`,
           exitCode: -1,
           elapsed: Date.now() - startedAt,
-          tokens: { ...lastUsage },
+          tokens: { ...tracker.lastUsage },
         });
       }
     }, 5000);
   }
 
-  // Wrap onUpdate to track activity for stuck detection
-  const wrappedOnUpdate = onUpdate
-    ? (cumulative: CumulativeResult) => {
-        lastActivity = Date.now();
-        stuckWarned = false;
-        lastUsage = { ...cumulative.usage };
-        const lastMsg = cumulative.messages[cumulative.messages.length - 1];
-        if (lastMsg) {
-          if (lastMsg.role === "toolResult") {
-            lastActivityDesc = `tool:${lastMsg.toolName}`;
-          } else if (lastMsg.role === "assistant") {
-            lastActivityDesc = "assistant message";
-          }
-        }
-
-        onUpdate({
-          agent: agent.name,
-          task,
-          output: cumulative.finalOutput || "(running...)",
-          exitCode: -1,
-          elapsed: Date.now() - startedAt,
-          tokens: { ...cumulative.usage },
-          model: cumulative.model,
-        });
-      }
-    : undefined;
+  const wrappedOnUpdate = createOnUpdateWrapper(
+    onUpdate,
+    agent,
+    task,
+    startedAt,
+    tracker,
+  );
 
   // Abort signal handling
-  let wasAborted = false;
-  let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
-  let onAbort: (() => void) | undefined;
-
-  if (signal) {
-    const killProc = () => {
-      wasAborted = true;
-      proc.kill("SIGTERM");
-      sigkillTimer = setTimeout(() => {
-        if (!proc.killed) {
-          proc.kill("SIGKILL");
-        }
-        sigkillTimer = undefined;
-      }, 5000);
-    };
-    if (signal.aborted) {
-      killProc();
-    } else {
-      onAbort = killProc;
-      signal.addEventListener("abort", killProc, { once: true });
-    }
-  }
+  const { wasAborted, cleanup: abortCleanup } = setupAbortHandlers(
+    signal,
+    proc,
+  );
 
   // Capture exit code — set up before parsing to avoid race
   let spawnError: string | undefined;
@@ -382,23 +444,17 @@ export async function launchChild(opts: {
     }
   }
 
-  // Wait for process exit
   const exitCode = await exitCodePromise;
 
   // Cleanup
   if (stuckTimer) {
     clearInterval(stuckTimer);
   }
-  if (onAbort) {
-    signal?.removeEventListener("abort", onAbort);
-  }
-  if (sigkillTimer) {
-    clearTimeout(sigkillTimer);
-  }
+  abortCleanup();
 
   const elapsed = Date.now() - startedAt;
 
-  if (wasAborted) {
+  if (wasAborted()) {
     return {
       agent: agent.name,
       task,
@@ -411,19 +467,6 @@ export async function launchChild(opts: {
     };
   }
 
-  let innerError: string | undefined;
-  if (exitCode !== 0) {
-    const stopMsg =
-      cumulative.stopReason &&
-      cumulative.stopReason !== "stop" &&
-      cumulative.stopReason !== "end"
-        ? cumulative.stopReason
-        : undefined;
-    innerError = stderr.trim() || stopMsg || `exit code ${exitCode}`;
-  }
-
-  const error = cumulative.errorMessage || spawnError || innerError;
-
   return {
     agent: agent.name,
     task,
@@ -432,7 +475,7 @@ export async function launchChild(opts: {
     elapsed,
     tokens: cumulative.usage,
     model: cumulative.model,
-    error,
+    error: buildSubagentError(exitCode, stderr, cumulative, spawnError),
   };
 }
 
