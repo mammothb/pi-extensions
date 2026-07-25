@@ -139,6 +139,18 @@ export function validateConfig(
 }
 
 /**
+ * Resolve a model tier alias (e.g. "cheap") to its provider/model string.
+ * Direct provider/model strings pass through unchanged.
+ * No recursive resolution — a tier value that is itself an alias stays as-is.
+ */
+export function resolveModel(
+  raw: string,
+  tiers: Record<string, string>,
+): string {
+  return tiers[raw] ?? raw;
+}
+
+/**
  * Discover and parse all agent definition files.
  * Scans user-level (~/.pi/agent/agents/) and project-level (.pi/agents/) directories.
  * Project agents override user agents with the same name.

@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseFrontmatter, validateConfig } from "../src/lib/agents.js";
+import {
+  parseFrontmatter,
+  resolveModel,
+  validateConfig,
+} from "../src/lib/agents.js";
 import { loadSubagentConfig } from "../src/lib/config.js";
 
 const FIXTURES = join(__dirname, "fixtures", "agents");
@@ -278,5 +282,36 @@ describe("validateConfig", () => {
 
     expect(config).not.toBeNull();
     expect(config!.body).toBe("line one\nline two");
+  });
+});
+
+describe("resolveModel", () => {
+  it("resolves tier alias to provider/model", () => {
+    const tiers = { cheap: "google/gemini-2.5-flash" };
+    expect(resolveModel("cheap", tiers)).toBe("google/gemini-2.5-flash");
+  });
+
+  it("passes through direct provider/model unchanged", () => {
+    const tiers = { cheap: "google/gemini-2.5-flash" };
+    expect(resolveModel("bedrock/us.anthropic.claude-sonnet-4-5", tiers)).toBe(
+      "bedrock/us.anthropic.claude-sonnet-4-5",
+    );
+  });
+
+  it("passes through when tiers is empty", () => {
+    expect(resolveModel("cheap", {})).toBe("cheap");
+  });
+
+  it("passes through when alias not found in tiers", () => {
+    const tiers = { expensive: "bedrock/us.anthropic.claude-opus-4-8" };
+    expect(resolveModel("cheap", tiers)).toBe("cheap");
+  });
+
+  it("does not recursively resolve tier values", () => {
+    const tiers = {
+      cheap: "balanced",
+      balanced: "bedrock/us.anthropic.claude-sonnet-4-5",
+    };
+    expect(resolveModel("cheap", tiers)).toBe("balanced");
   });
 });
