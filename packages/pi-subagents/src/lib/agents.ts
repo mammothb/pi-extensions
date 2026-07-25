@@ -73,12 +73,21 @@ export function parseFrontmatter(
       );
       return { frontmatter: null, body: content };
     }
-    // Force all values to strings (YAML may parse numbers, booleans, etc.)
+    // Normalize YAML values to strings, preserving scalars.
+    // Reject nested objects and arrays — frontmatter is flat key-value only.
     frontmatter = {};
     for (const [key, value] of Object.entries(
       parsed as Record<string, unknown>,
     )) {
-      frontmatter[key] = String(value);
+      if (value === null || value === undefined) {
+        frontmatter[key] = "";
+      } else if (typeof value === "object") {
+        console.warn(
+          `parseFrontmatter: skipping key "${key}" in ${filename} — nested values not supported`,
+        );
+      } else {
+        frontmatter[key] = String(value);
+      }
     }
   } catch (err) {
     console.warn(
@@ -213,9 +222,12 @@ export function discoverAgents(
   const config = loadSubagentConfig(agentDir);
   const files = discoverAgentFiles(cwd, userDir);
 
-  const agents: AgentConfig[] = [];
+  // Use Map keyed by resolved AgentConfig.name for deduplication.
+  // Project agents already override user agents by stem (from discoverAgentFiles),
+  // but the name frontmatter field may differ from filename stem.
+  const seen = new Map<string, AgentConfig>();
 
-  for (const [_name, path] of files) {
+  for (const [_stem, path] of files) {
     let content: string;
     try {
       content = readFileSync(path, "utf-8");
@@ -235,9 +247,17 @@ export function discoverAgents(
     }
 
     agentConfig.model = resolveModel(agentConfig.model, config.tiers);
-    agents.push(agentConfig);
+
+    const existing = seen.get(agentConfig.name);
+    if (existing) {
+      console.warn(
+        `discoverAgents: duplicate agent name "${agentConfig.name}" — ${path} overrides earlier definition`,
+      );
+    }
+    seen.set(agentConfig.name, agentConfig);
   }
 
+  const agents = [...seen.values()];
   agents.sort((a, b) => a.name.localeCompare(b.name));
   return agents;
 }

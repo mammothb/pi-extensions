@@ -93,6 +93,24 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter).toEqual({ name: "x" });
     expect(result.body).toBe("");
   });
+
+  it("rejects nested objects in frontmatter values", () => {
+    const content = "---\nname: ok\nnested:\n  key: value\n---\nbody";
+    const result = parseFrontmatter(content, "nested.md");
+
+    expect(result.frontmatter).not.toBeNull();
+    expect(result.frontmatter).toEqual({ name: "ok" });
+    // nested key should be skipped with warning
+    expect(result.frontmatter!.nested).toBeUndefined();
+  });
+
+  it("handles null values as empty string", () => {
+    const content = "---\nname: ok\nempty: null\n---\nbody";
+    const result = parseFrontmatter(content, "nullval.md");
+
+    expect(result.frontmatter).not.toBeNull();
+    expect(result.frontmatter).toEqual({ name: "ok", empty: "" });
+  });
 });
 
 describe("loadSubagentConfig", () => {
@@ -170,6 +188,55 @@ describe("loadSubagentConfig", () => {
         tiers: { cheap: "google/gemini-2.5-flash" },
         stuckTimeoutMs: 90_000,
       });
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("rejects tiers when it is an array", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, { tiers: ["bad"] });
+      const config = loadSubagentConfig(dir);
+      expect(config.tiers).toEqual({});
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("rejects tiers when it is a string", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, { tiers: "not-an-object" });
+      const config = loadSubagentConfig(dir);
+      expect(config.tiers).toEqual({});
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("rejects stuckTimeoutMs when it is a string", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, { stuckTimeoutMs: "120000" });
+      const config = loadSubagentConfig(dir);
+      expect(config.stuckTimeoutMs).toBe(60_000);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("filters non-string tier values", () => {
+    const dir = tempDir();
+    try {
+      writeConfig(dir, {
+        tiers: {
+          cheap: "google/gemini-2.5-flash",
+          bad: 123,
+        },
+      });
+      const config = loadSubagentConfig(dir);
+      expect(config.tiers).toEqual({ cheap: "google/gemini-2.5-flash" });
     } finally {
       rmSync(dir, { recursive: true });
     }
@@ -550,6 +617,39 @@ describe("discoverAgents", () => {
       expect(agents).toHaveLength(1);
       expect(agents[0]!.name).toBe("project-worker");
       expect(agents[0]!.body).toBe("project version");
+    } finally {
+      rmSync(userDir, { recursive: true });
+      rmSync(cwd, { recursive: true });
+    }
+  });
+
+  it("deduplicates by resolved name, not filename stem", () => {
+    const userDir = makeDir();
+    const cwd = makeDir();
+    try {
+      // Same name in frontmatter, different filenames
+      writeFile(
+        userDir,
+        "alpha.md",
+        "---\nname: same\nmodel: cheap\n---\nalpha file",
+      );
+      writeFile(
+        userDir,
+        "beta.md",
+        "---\nname: same\nmodel: cheap\n---\nbeta file",
+      );
+      writeFile(
+        userDir,
+        "subagents.json",
+        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
+      );
+
+      const agents = discoverAgents(cwd, userDir, userDir);
+
+      expect(agents).toHaveLength(1);
+      expect(agents[0]!.name).toBe("same");
+      // beta.md loaded after alpha.md, so it wins
+      expect(agents[0]!.body).toBe("beta file");
     } finally {
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
