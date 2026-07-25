@@ -42,13 +42,11 @@ interface ParsedOutput {
 /** Parse the STDOUT/STDERR formatted output text back into sections. */
 function parseOutput(text: string): ParsedOutput {
   const truncated = text.includes("[Output truncated at 1 MB]");
-  const signalMatch = text.match(/\[Process killed by signal: ([^\]]+)\]/);
+  const signalMatch = /\[Process killed by signal: ([^\]]+)\]/.exec(text);
   const signal = signalMatch ? (signalMatch[1] ?? null) : null;
 
-  const stdoutMatch = text.match(
-    /^STDOUT:\n([\s\S]*?)(?:\n\nSTDERR:|\n\n\[|$)/,
-  );
-  const stderrMatch = text.match(/STDERR:\n([\s\S]*?)(?:\n\n\[|$)/);
+  const stdoutMatch = /^STDOUT:\n([\s\S]*?)(?:\n\nSTDERR:|\n\n\[|$)/.exec(text);
+  const stderrMatch = /STDERR:\n([\s\S]*?)(?:\n\n\[|$)/.exec(text);
 
   const stdout = stdoutMatch ? (stdoutMatch[1] ?? "") : "";
   const stderr = stderrMatch ? (stderrMatch[1] ?? "") : "";

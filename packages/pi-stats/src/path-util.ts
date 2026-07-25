@@ -23,9 +23,10 @@ export function getExtNameFromPath(extPath: string): string | undefined {
     }
   }
   // local extension file or dir: ~/.pi/agent/extensions/<name>(.ts|/index.ts)
-  const match = extPath.match(
-    /extensions[\\/]([^\\/]+?)(?:\.[tj]s)?(?:[\\/]index\.[tj]s)?$/,
-  );
+  const match =
+    /extensions[\\/]([^\\/]+?)(?:\.[tj]s)?(?:[\\/]index\.[tj]s)?$/.exec(
+      extPath,
+    );
   if (match) {
     return match[1];
   }

@@ -22,7 +22,7 @@ export const registerMmRecallCommand = (pi: ExtensionAPI) => {
           : undefined;
 
       // Parse page:N from args
-      const pageMatch = parsed.text.match(/\bpage:(\d+)\b/i);
+      const pageMatch = /\bpage:(\d+)\b/i.exec(parsed.text);
       const page = pageMatch?.[1]
         ? Math.max(1, parseInt(pageMatch[1], 10))
         : undefined;

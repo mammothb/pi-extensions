@@ -60,7 +60,7 @@ const wrapLine = (line: string, maxChars: number): string[] => {
     return [line];
   }
 
-  const indent = line.match(/^\s*(?:[-*]\s+|\d+\.\s+)?/)?.[0] ?? "";
+  const indent = /^\s*(?:[-*]\s+|\d+\.\s+)?/.exec(line)?.[0] ?? "";
   const continuationIndent = indent
     ? " ".repeat(Math.min(indent.length, 8))
     : "";

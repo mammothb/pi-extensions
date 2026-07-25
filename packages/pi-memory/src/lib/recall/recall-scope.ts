@@ -10,7 +10,7 @@ export const normalizeRecallScope = (scope?: unknown): RecallScope =>
 export const parseRecallScope = (
   text: string,
 ): { scope: RecallScope; text: string } => {
-  const match = text.match(SCOPE_RE);
+  const match = SCOPE_RE.exec(text);
   return {
     scope: normalizeRecallScope(match?.[1]),
     text: text.replace(SCOPE_RE, "").replace(/\s+/g, " ").trim(),
