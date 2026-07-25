@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAgentRoster } from "../src/lib/ambient.js";
+import { computeRosterChange, formatAgentRoster } from "../src/lib/ambient.js";
 import type { AgentConfig } from "../src/lib/types.js";
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
@@ -101,5 +101,37 @@ describe("formatAgentRoster", () => {
     expect(agentLines[1]).toContain("beta");
     expect(agentLines[2]).toContain("charlie");
     expect(agentLines[3]).toContain("zebra");
+  });
+});
+
+describe("computeRosterChange", () => {
+  const roster =
+    '<context name="subagent-roster">\n- **foo**: bar\n</context>\n';
+  const other =
+    '<context name="subagent-roster">\n- **baz**: qux\n</context>\n';
+
+  it("injects on first non-empty roster (null → content)", () => {
+    const result = computeRosterChange(roster, null);
+    expect(result).toEqual({ shouldInject: true, newSignature: roster });
+  });
+
+  it("skips when roster unchanged", () => {
+    const result = computeRosterChange(roster, roster);
+    expect(result).toEqual({ shouldInject: false, newSignature: roster });
+  });
+
+  it("injects when roster changed", () => {
+    const result = computeRosterChange(other, roster);
+    expect(result).toEqual({ shouldInject: true, newSignature: other });
+  });
+
+  it("clears signature when roster becomes empty", () => {
+    const result = computeRosterChange("", roster);
+    expect(result).toEqual({ shouldInject: false, newSignature: null });
+  });
+
+  it("no-op for persistent empty roster", () => {
+    const result = computeRosterChange("", null);
+    expect(result).toEqual({ shouldInject: false, newSignature: null });
   });
 });
