@@ -1,0 +1,28 @@
+name: SonarQube Scan
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  scan-npm:
+    name: SonarQube (npm packages)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scanwise Scan
+        uses: VIDADv1/scanwise@0407ab88200ab74d6289269e4211ffda55ad1763 # v1
+        with:
+          sonar-source-path: "packages"
+          sonar-project-name: "pi-extensions-npm"
+          sonar-project-key: "pi-extensions-npm"
+          generate-pr-comment: true
+          new-code-n-days: "3d"
+          reports-scopes: '["overall", "new"]'
+          reports-extensions: '["md", "html"]'
+          reports-retention-days: "7"
