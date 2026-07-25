@@ -19,6 +19,7 @@ import {
   spawnChild,
 } from "../src/lib/launch.js";
 import type { AgentConfig, SubagentResult } from "../src/lib/types.js";
+import { createResumeTool } from "../src/resume-tool.js";
 import { createSubagentTool } from "../src/subagent-tool.js";
 
 const nodeBin = process.execPath;
@@ -974,4 +975,141 @@ describe("createSubagentTool", () => {
       "Parallel: 0/2 succeeded.",
     );
   });
+});
+
+// =============================================================================
+// createResumeTool
+// =============================================================================
+
+describe("createResumeTool", () => {
+  let tmpDir: string;
+
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      sessionManager: { getSessionFile: () => undefined },
+    } as unknown as Parameters<
+      ReturnType<typeof createResumeTool>["execute"]
+    >[4];
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("registers as tool named 'subagent_resume'", () => {
+    const tool = createResumeTool(60_000);
+    expect(tool.name).toBe("subagent_resume");
+    expect(tool.label).toBe("Subagent Resume");
+    expect(typeof tool.description).toBe("string");
+    expect(tool.description.length).toBeGreaterThan(0);
+  });
+
+  it("schema has session (required), task (required), cwd (optional)", () => {
+    const tool = createResumeTool(60_000);
+    const props = (tool.parameters as { properties: Record<string, unknown> })
+      .properties;
+    expect(props.session).toBeDefined();
+    expect(props.task).toBeDefined();
+    // cwd is optional — TypeBox Optional marks it differently
+  });
+
+  it("returns error when session file does not exist", async () => {
+    const tool = createResumeTool(60_000);
+    const result = await tool.execute(
+      "tc-1",
+      {
+        session: join(tmpDir, "nonexistent.jsonl"),
+        task: "continue work",
+      },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("not found");
+  });
+
+  it("returns error when session has no launch metadata", async () => {
+    // Create a session file without launch metadata
+    const sessionFile = join(tmpDir, "old-session.jsonl");
+    writeFileSync(
+      sessionFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: tmpDir,
+      })}\n`,
+      "utf8",
+    );
+
+    const tool = createResumeTool(60_000);
+    const result = await tool.execute(
+      "tc-1",
+      { session: sessionFile, task: "continue work" },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("launch metadata");
+  });
+
+  it("returns error when cwd is outside project directory", async () => {
+    // Create a parent session with actual content so fork produces metadata
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const parentFile = join(tmpDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: tmpDir,
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    const sessionFile = gen(tmpDir);
+    seed(parentFile, sessionFile, baseAgent, tmpDir);
+
+    const tool = createResumeTool(60_000);
+    const result = await tool.execute(
+      "tc-1",
+      {
+        session: sessionFile,
+        task: "continue work",
+        cwd: "/outside/project",
+      },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("outside the project directory");
+  });
+
+  it.todo("session with metadata triggers launch (requires pi runtime)");
 });

@@ -5,10 +5,15 @@ import {
   EMPTY_ROSTER_MESSAGE,
   formatAgentRoster,
 } from "./src/lib/ambient.js";
+import { loadSubagentConfig } from "./src/lib/config.js";
+import { createResumeTool } from "./src/resume-tool.js";
 import { createSubagentTool } from "./src/subagent-tool.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
+  const config = loadSubagentConfig();
+
   pi.registerTool(createSubagentTool());
+  pi.registerTool(createResumeTool(config.stuckTimeoutMs));
 
   // Ambient awareness: inject available agents into parent LLM context each turn.
   // Uses content-based change detection: identical roster is not re-injected.
