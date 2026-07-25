@@ -187,7 +187,7 @@ describe("searchPdf", () => {
     try {
       await searchPdf(encryptedPdf, {
         query: "test",
-        password: "wrong",
+        password: "wrong", // NOSONAR — test fixture password
       });
       expect.fail("Should have thrown");
     } catch (err: unknown) {
@@ -199,7 +199,7 @@ describe("searchPdf", () => {
   it("parses encrypted PDF with correct password", async () => {
     const result = await searchPdf(encryptedPdf, {
       query: "Page One",
-      password: "test123",
+      password: "test123", // NOSONAR — test fixture password
     });
     expect(result.totalPages).toBe(2);
     expect(result.totalMatches).toBeGreaterThanOrEqual(1);

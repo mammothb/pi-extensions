@@ -143,7 +143,7 @@ describe("parsePdf", () => {
   it("throws INVALID_PASSWORD for encrypted PDF with wrong password", async () => {
     const encryptedPdf = join(fixturesDir, "encrypted.pdf");
     try {
-      await parsePdf(encryptedPdf, { password: "wrong" });
+      await parsePdf(encryptedPdf, { password: "wrong" }); // NOSONAR — test fixture password
       expect.fail("Should have thrown");
     } catch (err: unknown) {
       expect(err).toBeInstanceOf(PdfError);
@@ -153,7 +153,7 @@ describe("parsePdf", () => {
 
   it("parses encrypted PDF with correct password", async () => {
     const encryptedPdf = join(fixturesDir, "encrypted.pdf");
-    const result = await parsePdf(encryptedPdf, { password: "test123" });
+    const result = await parsePdf(encryptedPdf, { password: "test123" }); // NOSONAR — test fixture password
     expect(result.totalPages).toBe(2);
     expect(result.text).toContain("Page One Content");
     expect(result.text).toContain("Page Two Content");

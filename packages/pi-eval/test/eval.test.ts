@@ -315,7 +315,7 @@ describe("eval — pythonPath via config", () => {
   beforeEach(() => {
     tmpDir = join(
       tmpdir(),
-      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });
@@ -519,7 +519,7 @@ describe("eval — nodeModulesPath via config", () => {
   beforeEach(() => {
     tmpDir = join(
       tmpdir(),
-      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });
@@ -591,7 +591,7 @@ describe("eval — cwd parameter", () => {
   it("cwd pointing to a different directory → subprocess runs there", async () => {
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     mkdirSync(tmpDir, { recursive: true });
     try {
@@ -646,7 +646,7 @@ describe("eval — cwd parameter", () => {
   it("cwd that is a file not a directory throws", async () => {
     const tmpFile = join(
       tmpdir(),
-      `pi-eval-cwd-file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-file-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     writeFileSync(tmpFile, "not a dir", "utf-8");
     try {
@@ -674,7 +674,7 @@ describe("eval — cwd parameter", () => {
     }
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-py-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     mkdirSync(tmpDir, { recursive: true });
     try {
@@ -699,7 +699,7 @@ describe("eval — cwd parameter", () => {
     // Create a temp project dir with its own .pi/pi-eval.json
     const tmpDir = join(
       tmpdir(),
-      `pi-eval-cwd-config-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      `pi-eval-cwd-config-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
     );
     const agentDir = join(tmpDir, "agent");
     mkdirSync(agentDir, { recursive: true });

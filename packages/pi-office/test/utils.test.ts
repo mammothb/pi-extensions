@@ -104,7 +104,7 @@ describe("truncatePreview", () => {
 
 describe("buildToolResponse", () => {
   it("returns a valid AgentToolResult shape", () => {
-    const details = { outputPath: "/tmp/test.txt", stats: { chars: 100 } };
+    const details = { outputPath: "/tmp/test.txt", stats: { chars: 100 } }; // NOSONAR — test fixture path
     const result = buildToolResponse("preview text", details);
 
     expect(result.content).toEqual([{ type: "text", text: "preview text" }]);

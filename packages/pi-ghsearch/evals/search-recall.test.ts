@@ -83,7 +83,7 @@ function runGhSearch(q: SearchQuery): SearchResult {
   ].join(" ");
 
   try {
-    const stdout = execSync(cmd, { encoding: "utf-8", timeout: 30_000 });
+    const stdout = execSync(cmd, { encoding: "utf-8", timeout: 30_000 }); // NOSONAR — eval test, args from test fixtures
     const raw = stdout.trim();
 
     if (!raw || raw === "[]") {

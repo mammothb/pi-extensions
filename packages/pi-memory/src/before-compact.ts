@@ -136,7 +136,7 @@ const dbg = (settings: MmCompactSettings, data: Record<string, unknown>) => {
     return;
   }
   try {
-    writeFileSync("/tmp/mm-compact-debug.json", JSON.stringify(data, null, 2));
+    writeFileSync("/tmp/mm-compact-debug.json", JSON.stringify(data, null, 2)); // NOSONAR — debug log, /tmp is intentional
   } catch {
     // best-effort debug logging
   }

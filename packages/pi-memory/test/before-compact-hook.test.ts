@@ -25,7 +25,7 @@ import {
 
 let tmpDir: string;
 let CONFIG_PATH: string;
-const DEBUG_PATH = "/tmp/mm-compact-debug.json";
+const DEBUG_PATH = "/tmp/mm-compact-debug.json"; // NOSONAR — test mirrors production debug path
 
 beforeAll(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "mm-compact-test-"));

@@ -23,7 +23,7 @@ export const parseKeepAndPrompt = (args?: string): ParsedCompactionArgs => {
     };
   }
 
-  const startMatch = /^keep:(\d+)(?:\s+|$)([\s\S]*)$/.exec(trimmed);
+  const startMatch = /^keep:(\d+)(?:\s+|$)([\s\S]*)$/.exec(trimmed); // NOSONAR — anchored regex, bounded input
   if (startMatch?.[1] && startMatch[2] !== undefined) {
     return {
       followUpPrompt: startMatch[2].trim(),

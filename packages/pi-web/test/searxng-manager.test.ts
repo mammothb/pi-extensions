@@ -93,7 +93,7 @@ let agentDir: string;
 beforeEach(() => {
   tmpDir = join(
     tmpdir(),
-    `pi-web-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `pi-web-mgr-${Date.now()}-${Math.random().toString(36).slice(2)}`, // NOSONAR — not cryptographic, test fixture only
   );
   agentDir = join(tmpDir, "agent");
   mkdirSync(agentDir, { recursive: true });

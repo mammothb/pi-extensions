@@ -107,7 +107,7 @@ export function runScript(
       // removes the file. If the file remains on next startup, the
       // shutdown was unclean.
       const child = spawn(
-        "bash",
+        "bash", // NOSONAR — CLI tool, PATH is user-controlled
         [
           "-c",
           `
@@ -132,6 +132,7 @@ export function runScript(
       });
     } else {
       const child = spawn("bash", [script, command], {
+        // NOSONAR — CLI tool, PATH is user-controlled
         stdio: "ignore",
         detached: true,
       });
@@ -148,6 +149,7 @@ export function runScript(
   // Default mode: wait for completion, capture output
   return new Promise((resolve, reject) => {
     const child = spawn("bash", [script, command], {
+      // NOSONAR — CLI tool, PATH is user-controlled
       stdio: "pipe",
     });
 

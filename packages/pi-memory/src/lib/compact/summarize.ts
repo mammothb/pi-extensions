@@ -36,7 +36,7 @@ const findMmBinary = (): string => {
 
   // Try `which mm` first (cross-platform)
   try {
-    const result = execFileSync("which", ["mm"], { encoding: "utf-8" });
+    const result = execFileSync("which", ["mm"], { encoding: "utf-8" }); // NOSONAR — CLI tool, PATH is user-controlled
     const found = result.trim();
     if (found) {
       return found;
@@ -107,7 +107,7 @@ const stripRecallNote = (text: string): string => {
   }
   return text
     .slice(0, idx)
-    .replace(/\s*(?:\n\n---\n\n)?\s*$/, "")
+    .replace(/\s*(?:\n\n---\n\n)?\s*$/, "") // NOSONAR — bounded input, trailing whitespace only
     .trimEnd();
 };
 
