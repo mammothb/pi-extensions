@@ -35,24 +35,17 @@ jobs:
     name: SonarQube
     runs-on: ubuntu-latest
     needs: clippy
-    # Elevated permissions allow the scan action to comment on pull requests and issues.
     permissions:
       contents: read
       pull-requests: write
       issues: write
     steps:
-      - name: Restore extensions cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        id: extensions-cache
-        with:
-          path: ~/.scanwise/extensions
-          key: scanwise-extensions-${{ runner.os }}
       - name: Download - Clippy report
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: clippy-report
       - name: Scan - SonarQube
-        uses: VIDADv1/scanwise@0407ab88200ab74d6289269e4211ffda55ad1763 # v1
+        uses: ./.github/actions/scanwise
         with:
           sonar-source-path: "."
           sonar-project-name: "pi-extensions"
@@ -60,6 +53,5 @@ jobs:
           generate-pr-comment: true
           new-code-n-days: "3d"
           reports-scopes: '["overall", "new"]'
-          reports-extensions: '["md", "html"]'
           reports-retention-days: "7"
           sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json -Dsonar.issue.ignore.multicriteria=s6606 -Dsonar.issue.ignore.multicriteria.s6606.ruleKey=typescript:S6606 -Dsonar.issue.ignore.multicriteria.s6606.resourceKey=**/*"

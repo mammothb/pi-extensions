@@ -1,0 +1,337 @@
+name: "Scanwise Code Analysis"
+description: "SonarQube Scan + Analysis Summary (vendored, MD-only, Docker-cached)"
+author: "VIDADv1 / mammothb"
+
+inputs:
+  sonar-project-name:
+    description: "SonarQube Project Name"
+    required: false
+    default: ${{ github.event.repository.name }}
+  sonar-project-key:
+    description: "SonarQube Project Key"
+    required: false
+    default: ${{ github.event.repository.name }}
+  sonar-source-path:
+    description: "SonarQube Source Path from Git Root"
+    required: false
+    default: "."
+  sonar-metrics-path:
+    description: "SonarQube Metrics JSON Path from Git Root"
+    required: false
+    default: "./sonar-metrics.json"
+  sonar-instance-port:
+    description: "SonarQube Instance Port"
+    required: false
+    default: "9234"
+  sonar-options:
+    description: "SonarQube Scanner Options"
+    required: false
+  pre-scan-script:
+    description: "Path to a Bash script or raw multi-line script executed before scan"
+    required: false
+  generate-pr-comment:
+    description: "Comment on PR with SonarQube Analysis Summary"
+    required: false
+    default: "false"
+  new-code-n-days:
+    description: "Number of days for new-code period (e.g. '3d')"
+    required: false
+    default: "30d"
+  reports-scopes:
+    description: 'Comma separated list: ["overall", "new"], ["new"], or []'
+    required: false
+    default: "[]"
+  reports-retention-days:
+    description: "How many days to retain report artifacts"
+    required: false
+    default: "7"
+
+runs:
+  using: "composite"
+  steps:
+    # ── Setup ──────────────────────────────────────────────────────────────
+
+    - name: Guess execution mode (BRANCH or PR)
+      id: setup
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        EVENT_NAME: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+        HEAD_REF: ${{ github.head_ref }}
+        PR_NB: ${{ github.event.pull_request.number }}
+      run: |
+        echo "started=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+
+        if [ "$EVENT_NAME" == "pull_request" ]; then
+          echo "mode=PR" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NB" >> $GITHUB_OUTPUT
+          echo "branch_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+        else
+          echo "mode=BRANCH" >> $GITHUB_OUTPUT
+          echo "pr_number=" >> $GITHUB_OUTPUT
+          echo "branch_ref=$REF" >> $GITHUB_OUTPUT
+        fi
+
+        chmod +x $ACTION_PATH/scripts/makefile.sh
+        chmod +x $ACTION_PATH/scripts/fetch-reports.sh
+        chmod +x $ACTION_PATH/scripts/generate-summary-and-reports.sh
+      shell: bash
+
+    - name: Checkout Code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        ref: ${{ steps.setup.outputs.branch_ref }}
+
+    - name: Prepare runner
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        mkdir -p reports/overall reports/new
+        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
+          PR_COMMITS_DATA=$(gh pr view ${{ steps.setup.outputs.pr_number }} --json commits --jq '.commits[] | "\(.committedDate) \(.authors[].email)"')
+          echo "$PR_COMMITS_DATA" > pr-commits-data.txt
+        fi
+      shell: bash
+
+    # ── Docker image cache ─────────────────────────────────────────────────
+
+    - name: Restore Docker image cache
+      id: docker-cache
+      uses: actions/cache@v6
+      with:
+        path: /tmp/docker-cache
+        key: scanwise-docker-${{ hashFiles(format('{0}/scripts/makefile.sh', github.action_path)) }}
+
+    - name: Load cached Docker images
+      if: steps.docker-cache.outputs.cache-hit == 'true'
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: $ACTION_PATH/scripts/makefile.sh docker-cache-load /tmp/docker-cache
+      shell: bash
+
+    # ── Docker deps + scan ─────────────────────────────────────────────────
+
+    - name: Get Docker Deps
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: $ACTION_PATH/scripts/makefile.sh docker-deps-get
+      shell: bash
+
+    - name: Save Docker images to cache
+      if: steps.docker-cache.outputs.cache-hit != 'true'
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: $ACTION_PATH/scripts/makefile.sh docker-cache-save /tmp/docker-cache
+      shell: bash
+
+    - name: Execute pre-scan-script (file or inline)
+      if: inputs.pre-scan-script != ''
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
+        SONAR_SOURCE_PATH: ${{ inputs.sonar-source-path }}
+        SONAR_METRICS_PATH: ${{ inputs.sonar-metrics-path }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        SONAR_OPTIONS: ${{ inputs.sonar-options }}
+        SONAR_GITROOT: ${{ github.workspace }}
+      run: |
+        echo "➡️ Running pre-scan-script..."
+        if [ -f "${{ inputs.pre-scan-script }}" ] && [ ! -d "${{ inputs.pre-scan-script }}" ]; then
+          chmod +x "${{ inputs.pre-scan-script }}"
+          "${{ inputs.pre-scan-script }}"
+        else
+          echo "${{ inputs.pre-scan-script }}" > pre-scan-script.sh
+          chmod +x pre-scan-script.sh
+          ./pre-scan-script.sh
+        fi
+      shell: bash
+
+    - name: Scanning
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
+        SONAR_SOURCE_PATH: ${{ inputs.sonar-source-path }}
+        SONAR_METRICS_PATH: ${{ inputs.sonar-metrics-path }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        SONAR_OPTIONS: ${{ inputs.sonar-options }}
+        SONAR_GITROOT: ${{ github.workspace }}
+      run: $ACTION_PATH/scripts/makefile.sh scan
+      shell: bash
+
+    - name: Scan Results
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_PROJECT_KEY: ${{ inputs.sonar-project-key }}
+        SONAR_SOURCE_PATH: ${{ inputs.sonar-source-path }}
+        SONAR_METRICS_PATH: ${{ inputs.sonar-metrics-path }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        SONAR_GITROOT: ${{ github.workspace }}
+      run: $ACTION_PATH/scripts/makefile.sh results
+      shell: bash
+
+    - name: Reindex SonarQube DB
+      if: inputs.reports-scopes != '[]'
+      env:
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: $ACTION_PATH/scripts/makefile.sh reindex
+      shell: bash
+
+    # ── Overall reports ────────────────────────────────────────────────────
+
+    - name: Fetch overall Issues
+      if: contains(fromJSON(inputs.reports-scopes), 'overall')
+      env:
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        $ACTION_PATH/scripts/fetch-reports.sh create_overall_issues_report_json "reports/overall/issues-report.json"
+        $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_issues_report_md \
+          "reports/overall/issues-report.json" "reports/overall/issues-report.md"
+      shell: bash
+
+    - name: Fetch overall Security Hotspots
+      if: contains(fromJSON(inputs.reports-scopes), 'overall')
+      env:
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        $ACTION_PATH/scripts/fetch-reports.sh create_overall_hotspots_report_json "reports/overall/hotspots-report.json"
+        $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_hotspots_report_md \
+          "reports/overall/hotspots-report.json" "reports/overall/hotspots-report.md"
+      shell: bash
+
+    # ── New-code reports ───────────────────────────────────────────────────
+
+    - name: Fetch new Issues
+      if: contains(fromJSON(inputs.reports-scopes), 'new')
+      env:
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
+          $ACTION_PATH/scripts/fetch-reports.sh create_pr_issues_report_json "reports/new/issues-report.json" "pr-commits-data.txt"
+        else
+          $ACTION_PATH/scripts/fetch-reports.sh create_n_days_issues_report_json "reports/new/issues-report.json" "${{ inputs.new-code-n-days }}"
+        fi
+        $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_issues_report_md \
+          "reports/new/issues-report.json" "reports/new/issues-report.md"
+      shell: bash
+
+    - name: Fetch new Security Hotspots
+      if: contains(fromJSON(inputs.reports-scopes), 'new')
+      env:
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+        SONAR_INSTANCE_PORT: ${{ inputs.sonar-instance-port }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ "${{ steps.setup.outputs.mode }}" == "PR" ]; then
+          $ACTION_PATH/scripts/fetch-reports.sh create_pr_hotspots_report_json \
+            "reports/overall/hotspots-report.json" \
+            "reports/new/hotspots-report.json" \
+            "pr-commits-data.txt"
+        else
+          $ACTION_PATH/scripts/fetch-reports.sh create_n_days_hotspots_report_json \
+            "reports/overall/hotspots-report.json" \
+            "reports/new/hotspots-report.json" \
+            "${{ inputs.new-code-n-days }}"
+        fi
+        $ACTION_PATH/scripts/generate-summary-and-reports.sh generate_hotspots_report_md \
+          "reports/new/hotspots-report.json" "reports/new/hotspots-report.md"
+      shell: bash
+
+    # ── Artifact upload ────────────────────────────────────────────────────
+
+    - name: Upload overall reports
+      if: contains(fromJSON(inputs.reports-scopes), 'overall')
+      id: upload-overall
+      uses: actions/upload-artifact@v6
+      with:
+        name: sonar-overall-reports-${{ steps.setup.outputs.started }}
+        path: reports/overall/*.md
+        retention-days: ${{ inputs.reports-retention-days }}
+
+    - name: Upload new-code reports
+      if: contains(fromJSON(inputs.reports-scopes), 'new')
+      id: upload-new
+      uses: actions/upload-artifact@v6
+      with:
+        name: sonar-new-reports-${{ steps.setup.outputs.started }}
+        path: reports/new/*.md
+        retention-days: ${{ inputs.reports-retention-days }}
+
+    # ── Step summary ───────────────────────────────────────────────────────
+
+    - name: Generate Scanwise Analysis Summary
+      id: scanwise-summary
+      env:
+        SONAR_GITROOT: ${{ github.workspace }}
+        ACTION_PATH: ${{ github.action_path }}
+        SONAR_METRICS_PATH: ${{ inputs.sonar-metrics-path }}
+        SONAR_PROJECT_NAME: ${{ inputs.sonar-project-name }}
+      shell: bash
+      run: |
+        new_link=""
+        overall_link=""
+        if [ "${{ contains(fromJSON(inputs.reports-scopes), 'new') }}" == "true" ]; then
+          new_link="${{ steps.upload-new.outputs.artifact-url || '' }}"
+        fi
+        if [ "${{ contains(fromJSON(inputs.reports-scopes), 'overall') }}" == "true" ]; then
+          overall_link="${{ steps.upload-overall.outputs.artifact-url || '' }}"
+        fi
+
+        summary=$($ACTION_PATH/scripts/generate-summary-and-reports.sh generate_scanwise_analysis_summary_md \
+          "reports/new/issues-report.json" \
+          "reports/new/hotspots-report.json" \
+          "$new_link" \
+          "$overall_link"
+        )
+
+        echo -e "summary<<EOF\n$summary\nEOF" >> $GITHUB_OUTPUT
+        echo -e "$summary" >> $GITHUB_STEP_SUMMARY
+
+    # ── PR comment ─────────────────────────────────────────────────────────
+
+    - name: Find Comment
+      uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
+      id: find-comment
+      if: inputs.generate-pr-comment == 'true' && steps.setup.outputs.mode == 'PR'
+      with:
+        issue-number: ${{ steps.setup.outputs.pr_number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: Scanwise Analysis Summary
+
+    - name: Create Or Update Comment
+      uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
+      if: inputs.generate-pr-comment == 'true' && steps.setup.outputs.mode == 'PR'
+      with:
+        repository: ${{ github.repository }}
+        issue-number: ${{ steps.setup.outputs.pr_number }}
+        edit-mode: replace
+        comment-id: ${{ steps.find-comment.outputs.comment-id }}
+        body: |
+          ${{ steps.scanwise-summary.outputs.summary }}
+
+outputs:
+  scanwise-overall-reports-artifact-id:
+    description: "Artifact ID for overall reports"
+    value: ${{ steps.upload-overall.outputs.artifact-id }}
+  scanwise-new-reports-artifact-id:
+    description: "Artifact ID for new-code reports"
+    value: ${{ steps.upload-new.outputs.artifact-id }}
+  scanwise-analysis-summary:
+    description: "Analysis summary markdown"
+    value: ${{ steps.scanwise-summary.outputs.summary }}
+
+branding:
+  icon: "target"
+  color: "blue"
