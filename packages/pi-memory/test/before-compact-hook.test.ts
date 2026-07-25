@@ -161,7 +161,7 @@ describe("registerBeforeCompactHook: cancel paths", () => {
     registerBeforeCompactHook(pi);
 
     const entries = [msg("m1", "user"), msg("m2", "assistant")];
-    const result = invokeBefore(makeEvent(entries, undefined));
+    const result = invokeBefore(makeEvent(entries));
     expect(result).toEqual({ cancel: true });
     expect(notifyCalls).toHaveLength(1);
     expect(notifyCalls[0]!.level).toBe("warning");
@@ -173,7 +173,7 @@ describe("registerBeforeCompactHook: cancel paths", () => {
     registerBeforeCompactHook(pi);
 
     const entries = [msg("m1", "user"), msg("m2", "assistant")];
-    const result = invokeBefore(makeEvent(entries, undefined));
+    const result = invokeBefore(makeEvent(entries));
     expect(result).toBeUndefined();
     expect(notifyCalls).toHaveLength(0);
   });
