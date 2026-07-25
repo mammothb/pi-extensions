@@ -189,7 +189,7 @@ export function parseJsonlStream(
     });
 
     stream.on("error", (err) => {
-      reject(err);
+      reject(err); // NOSONAR — err is Error from stream
     });
   });
 }
