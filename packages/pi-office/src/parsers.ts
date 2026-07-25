@@ -636,11 +636,25 @@ async function loadPdfPages(
   password?: string,
 ): Promise<{ totalPages: number; pageTexts: string[] }> {
   const resolved = resolvePath(filePath);
+  const buffer = await readFileSafe(filePath, resolved);
+  const pdf = await loadPdfDocument(buffer, password);
 
-  // Read file
-  let buffer: Buffer;
   try {
-    buffer = await readFile(resolved);
+    const result = await extractText(pdf, { mergePages: false });
+    return { totalPages: result.totalPages, pageTexts: result.text };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new PdfError(`Failed to extract text: ${msg}`, "PARSE_FAILED");
+  }
+}
+
+/** Read file, converting ENOENT to a FILE_NOT_FOUND PdfError. */
+async function readFileSafe(
+  filePath: string,
+  resolved: string,
+): Promise<Buffer> {
+  try {
+    return await readFile(resolved);
   } catch (err: unknown) {
     if (
       typeof err === "object" &&
@@ -655,8 +669,13 @@ async function loadPdfPages(
       "PARSE_FAILED",
     );
   }
+}
 
-  // Load PDF
+/** Load a PDF document, converting password/encrypted/invalid errors to PdfErrors. */
+async function loadPdfDocument(
+  buffer: Buffer,
+  password?: string,
+): Promise<Awaited<ReturnType<typeof getDocumentProxy>>> {
   const pdfOptions: Record<string, unknown> = {};
   if (password) {
     pdfOptions.password = password;
@@ -679,15 +698,7 @@ async function loadPdfPages(
     }
     throw new PdfError(`Failed to parse PDF: ${msg}`, "PARSE_FAILED");
   }
-
-  // Extract text per page
-  try {
-    const result = await extractText(pdf, { mergePages: false });
-    return { totalPages: result.totalPages, pageTexts: result.text };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new PdfError(`Failed to extract text: ${msg}`, "PARSE_FAILED");
-  }
+  return pdf;
 }
 
 /**
