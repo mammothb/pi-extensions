@@ -169,33 +169,61 @@ function renderOptionLine(
   theme: Theme,
 ): void {
   if (q.multi && !ctx.isOther) {
-    const checked = state.selectedIndices.has(ctx.i);
-    const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
-    const labelColor = ctx.isHighlighted ? "accent" : "text";
-    add(
-      `${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
-    );
+    renderMultiOption(add, ctx, state, theme);
   } else if (ctx.isOther) {
-    const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
-    const suffix = state.inEditMode ? theme.fg("accent", " ✎") : "";
-    const labelColor = ctx.isHighlighted ? "accent" : "muted";
-    if (q.multi) {
-      const box = hasFreeText
-        ? theme.fg("success", "[x]")
-        : theme.fg("dim", "[ ]");
-      add(`${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${suffix}`);
-    } else {
-      const check = hasFreeText ? theme.fg("success", "✓") : " ";
-      add(`${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${suffix}`);
-    }
+    renderOtherOption(add, ctx, state, q, theme);
   } else {
-    const isConfirmedChoice = state.selectedIndex === ctx.i;
-    const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
-    const labelColor = ctx.isHighlighted ? "accent" : "text";
-    add(
-      `${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
-    );
+    renderSingleOption(add, ctx, state, theme);
   }
+}
+
+function renderMultiOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  theme: Theme,
+): void {
+  const checked = state.selectedIndices.has(ctx.i);
+  const box = checked ? theme.fg("accent", "[x]") : theme.fg("dim", "[ ]");
+  const labelColor = ctx.isHighlighted ? "accent" : "text";
+  add(
+    `${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
+  );
+}
+
+function renderOtherOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  q: Question,
+  theme: Theme,
+): void {
+  const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
+  const suffix = state.inEditMode ? theme.fg("accent", " ✎") : "";
+  const labelColor = ctx.isHighlighted ? "accent" : "muted";
+  if (q.multi) {
+    const box = hasFreeText
+      ? theme.fg("success", "[x]")
+      : theme.fg("dim", "[ ]");
+    add(`${ctx.prefix} ${box} ${theme.fg(labelColor, ctx.label)}${suffix}`);
+  } else {
+    const check = hasFreeText ? theme.fg("success", "✓") : " ";
+    add(`${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${suffix}`);
+  }
+}
+
+function renderSingleOption(
+  add: (s: string) => void,
+  ctx: OptionCtx,
+  state: QuestionState,
+  theme: Theme,
+): void {
+  const isConfirmedChoice = state.selectedIndex === ctx.i;
+  const check = isConfirmedChoice ? theme.fg("success", "✓") : " ";
+  const labelColor = ctx.isHighlighted ? "accent" : "text";
+  add(
+    `${ctx.prefix} ${check} ${theme.fg(labelColor, ctx.label)}${ctx.recommendedSuffix}`,
+  );
 }
 
 function renderFreeTextPreview(
