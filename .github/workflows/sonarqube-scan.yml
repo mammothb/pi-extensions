@@ -21,26 +21,6 @@ jobs:
         with:
           path: ~/.scanwise/extensions
           key: scanwise-extensions-${{ runner.os }}
-      - name: Prepare Rust plugin script
-        run: |
-          cat > /tmp/install-rust-plugin.sh << 'SCRIPT'
-          #!/bin/bash
-          set -euo pipefail
-          RUST_PLUGIN_DIR="${HOME}/.scanwise/extensions"
-          RUST_PLUGIN_JAR="community-rust-plugin-0.2.7.jar"
-          RUST_PLUGIN_URL="https://github.com/C4tWithShell/community-rust/releases/download/v0.2.7/${RUST_PLUGIN_JAR}"
-
-          mkdir -p "${RUST_PLUGIN_DIR}"
-
-          if [ ! -f "${RUST_PLUGIN_DIR}/${RUST_PLUGIN_JAR}" ]; then
-            echo "Downloading community-rust plugin v0.2.7..."
-            curl -sSL --fail --progress-bar "${RUST_PLUGIN_URL}" -o "${RUST_PLUGIN_DIR}/${RUST_PLUGIN_JAR}"
-            echo "Rust plugin downloaded (${RUST_PLUGIN_JAR})"
-          else
-            echo "Rust plugin already cached"
-          fi
-          SCRIPT
-          chmod +x /tmp/install-rust-plugin.sh
       - name: Scanwise Scan
         uses: VIDADv1/scanwise@0407ab88200ab74d6289269e4211ffda55ad1763 # v1
         with:
@@ -52,5 +32,14 @@ jobs:
           reports-scopes: '["overall", "new"]'
           reports-extensions: '["md", "html"]'
           reports-retention-days: "7"
-          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/**"
-          pre-scan-script: "/tmp/install-rust-plugin.sh"
+          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/**,crates/**"
+  clippy:
+    name: Clippy (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          components: clippy
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
