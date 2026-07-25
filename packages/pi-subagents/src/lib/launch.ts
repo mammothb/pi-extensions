@@ -1,9 +1,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Readable } from "node:stream";
 import type { Message } from "@earendil-works/pi-ai";
 import { wrapWithBubblewrap } from "./sandbox.js";
+import { generateChildSessionFile, seedForkSession } from "./session.js";
 import type { AgentConfig, SubagentResult } from "./types.js";
 
 /**
@@ -210,6 +211,10 @@ export function parseJsonlStream(
  *
  * Builds CLI args from agent config, resolves pi invocation, then delegates
  * to launchChild for process management.
+ *
+ * When agent.mode is "fork" and parentSessionFile is provided, a child
+ * session file is seeded with the parent's transcript before launch.
+ * The child session is cleaned up after exit unless noSession is false.
  */
 export async function launchSubagent(
   agent: AgentConfig,
@@ -218,17 +223,43 @@ export async function launchSubagent(
   signal: AbortSignal | undefined,
   onUpdate: ((result: SubagentResult) => void) | undefined,
   stuckTimeoutMs: number,
+  parentSessionFile?: string,
 ): Promise<SubagentResult> {
-  const args = buildCliArgs(agent, task);
-  return launchPiChild(
-    args,
-    agent,
-    task,
-    cwd,
-    signal,
-    onUpdate,
-    stuckTimeoutMs,
-  );
+  let forkFile: string | undefined;
+
+  if (agent.mode === "fork" && parentSessionFile) {
+    forkFile = generateChildSessionFile();
+    seedForkSession(parentSessionFile, forkFile, agent, cwd);
+  } else if (agent.mode === "fork" && !parentSessionFile) {
+    console.warn(
+      `[pi-subagents] agent "${agent.name}" has mode=fork but parent has no session file. Falling back to clean.`,
+    );
+  }
+
+  const args = buildCliArgs(agent, task, forkFile);
+  try {
+    const result = await launchPiChild(
+      args,
+      agent,
+      task,
+      cwd,
+      signal,
+      onUpdate,
+      stuckTimeoutMs,
+    );
+    if (forkFile) {
+      result.sessionFile = forkFile;
+    }
+    return result;
+  } finally {
+    if (forkFile && agent.noSession) {
+      try {
+        rmSync(forkFile, { force: true });
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+  }
 }
 
 /**

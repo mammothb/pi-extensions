@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -709,6 +716,99 @@ describe("launchChild", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toBe("sandboxed hello");
     expect(result.error).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Fork session lifecycle
+  // -------------------------------------------------------------------------
+
+  it("fork session: buildCliArgs includes --session when fork file provided", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+
+    // Create minimal parent session
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n`,
+      "utf8",
+    );
+
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const forkFile = gen(join(parentDir, "children"));
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+    seed(parentFile, forkFile, forkAgent, process.cwd());
+
+    expect(existsSync(forkFile)).toBe(true);
+
+    // buildCliArgs passes --session for fork file
+    const args = buildCliArgs(forkAgent, "fork task", forkFile);
+    expect(args).toContain("--session");
+    expect(args).toContain(forkFile);
+    expect(args).not.toContain("--no-session");
+
+    rmSync(parentDir, { recursive: true, force: true });
+  });
+
+  it("fork session: child can run with node and fork file exists", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const forkFile = gen(join(parentDir, "children"));
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: false,
+    };
+    seed(parentFile, forkFile, forkAgent, process.cwd());
+
+    // Fork file should exist and contain parent context + boundary
+    const content = readFileSync(forkFile, "utf8");
+    expect(content).toContain("parent context");
+    expect(content).toContain("subagent_boundary");
+    expect(content).toContain("pi-subagents_launch_metadata");
+
+    // The child can be launched separately — for this test we verify
+    // the fork file is valid (parseable JSONL) by reading it back
+    const lines = content.trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+
+    rmSync(parentDir, { recursive: true, force: true });
   });
 });
 
