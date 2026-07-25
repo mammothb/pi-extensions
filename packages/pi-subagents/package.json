@@ -16,7 +16,8 @@
     ]
   },
   "dependencies": {
-    "@mammothb/pi-shared": "workspace:*"
+    "@mammothb/pi-shared": "workspace:*",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "typebox": "catalog:",

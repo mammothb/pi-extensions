@@ -48,6 +48,9 @@ catalogs:
     xlsx:
       specifier: npm:@e965/xlsx@0.20.3
       version: 0.20.3
+    yaml:
+      specifier: ^2.9.0
+      version: 2.9.0
 
 overrides:
   '@earendil-works/pi-agent-core': 0.80.10
@@ -248,6 +251,9 @@ importers:
       '@mammothb/pi-shared':
         specifier: workspace:*
         version: link:../pi-shared
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
     devDependencies:
       typebox:
         specifier: 'catalog:'
