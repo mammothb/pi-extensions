@@ -178,6 +178,49 @@ function renderCollapsedView(
   return new Text(parts.join("\n"), 0, 0);
 }
 
+function renderEvalExpanded(
+  details: EvalDetails | undefined,
+  rawText: string,
+  isError: boolean,
+  parsed: ParsedOutput,
+  totalLines: number,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const header = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines,
+    theme,
+    expandKey,
+    showExpandHint: false,
+  });
+  return new Text(`${header}\n${rawText}\n${getCollapseHint(theme)}`, 0, 0);
+}
+
+function renderEvalEmpty(
+  details: EvalDetails | undefined,
+  rawText: string,
+  isError: boolean,
+  parsed: ParsedOutput,
+  theme: Theme,
+  expandKey: string,
+): Text {
+  const header = buildStatsLine({
+    details,
+    rawText,
+    isError,
+    parsed,
+    totalLines: 0,
+    theme,
+    expandKey,
+    showExpandHint: false,
+  });
+  return new Text(header, 0, 0);
+}
+
 export function createEvalTool(): ToolDefinition<
   typeof Parameters,
   EvalDetails
@@ -250,18 +293,13 @@ export function createEvalTool(): ToolDefinition<
       const expandKey = getExpandKey();
 
       // Determine which output stream to preview
-      let previewSource: string;
-      if (isError) {
-        previewSource = (parsed.stderr || parsed.stdout || "").trim();
-      } else {
-        previewSource = (parsed.stdout || "").trim();
-      }
-
+      const previewSource = isError
+        ? (parsed.stderr || parsed.stdout || "").trim()
+        : (parsed.stdout || "").trim();
       const totalLines = countLines(previewSource);
 
-      // Phase 4: Expanded view — show raw text with stats header
       if (options.expanded) {
-        const header = buildStatsLine({
+        return renderEvalExpanded(
           details,
           rawText,
           isError,
@@ -269,31 +307,20 @@ export function createEvalTool(): ToolDefinition<
           totalLines,
           theme,
           expandKey,
-          showExpandHint: false, // no expand hint in expanded mode
-        });
-        return new Text(
-          `${header}\n${rawText}\n${getCollapseHint(theme)}`,
-          0,
-          0,
         );
       }
 
-      // No output at all — just stats header, no Ctrl+O
       if (!previewSource || totalLines === 0) {
-        const header = buildStatsLine({
+        return renderEvalEmpty(
           details,
           rawText,
           isError,
           parsed,
-          totalLines: 0,
           theme,
           expandKey,
-          showExpandHint: false,
-        });
-        return new Text(header, 0, 0);
+        );
       }
 
-      // Collapsed view with output
       return renderCollapsedView(
         previewSource,
         details,
