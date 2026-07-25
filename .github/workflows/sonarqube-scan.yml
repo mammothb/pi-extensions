@@ -11,9 +11,27 @@ permissions:
   pull-requests: write
   issues: write
 jobs:
+  clippy:
+    name: Clippy (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup - Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          components: clippy
+      - name: Run clippy
+        run: cargo clippy --workspace --message-format=json > clippy-report.json
+      - name: Upload - Clippy report
+        uses: actions/upload-artifact@v7
+        with:
+          name: clippy-report
+          path: clippy-report.json
   scan:
     name: SonarQube
     runs-on: ubuntu-latest
+    needs: clippy
     steps:
       - name: Restore extensions cache
         uses: actions/cache@v6
@@ -21,7 +39,11 @@ jobs:
         with:
           path: ~/.scanwise/extensions
           key: scanwise-extensions-${{ runner.os }}
-      - name: Scanwise Scan
+      - name: Download - Clippy report
+        uses: actions/download-artifact@v8
+        with:
+          name: clippy-report
+      - name: Scan - SonarQube
         uses: VIDADv1/scanwise@0407ab88200ab74d6289269e4211ffda55ad1763 # v1
         with:
           sonar-source-path: "."
@@ -32,14 +54,4 @@ jobs:
           reports-scopes: '["overall", "new"]'
           reports-extensions: '["md", "html"]'
           reports-retention-days: "7"
-          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/**,crates/**"
-  clippy:
-    name: Clippy (Rust)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          components: clippy
-      - name: Run clippy
-        run: cargo clippy --workspace -- -D warnings
+          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json"
