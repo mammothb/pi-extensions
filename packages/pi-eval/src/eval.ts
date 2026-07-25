@@ -130,16 +130,21 @@ function buildStatsLine(opts: {
   return parts.join(" ");
 }
 
+interface EvalOutput {
+  details: EvalDetails | undefined;
+  rawText: string;
+  isError: boolean;
+  parsed: ParsedOutput;
+}
+
 function renderCollapsedView(
   previewSource: string,
-  details: EvalDetails | undefined,
-  rawText: string,
-  isError: boolean,
-  parsed: ParsedOutput,
+  output: EvalOutput,
   totalLines: number,
   theme: Theme,
   expandKey: string,
 ): Text {
+  const { details, rawText, isError, parsed } = output;
   const previewLines = firstNonEmptyLines(previewSource, PREVIEW_LINES);
   const allNonEmptyCount = firstNonEmptyLines(
     previewSource,
@@ -323,10 +328,7 @@ export function createEvalTool(): ToolDefinition<
 
       return renderCollapsedView(
         previewSource,
-        details,
-        rawText,
-        isError,
-        parsed,
+        { details, rawText, isError, parsed },
         totalLines,
         theme,
         expandKey,
