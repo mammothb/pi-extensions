@@ -2,6 +2,7 @@ import { resolve, sep } from "node:path";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
+  ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { discoverAgents } from "./lib/agents.js";
@@ -72,9 +73,10 @@ async function executeSingle(
   params: { agent?: string; task?: string; cwd?: string },
   signal: AbortSignal | undefined,
   onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-  ctx: { cwd: string },
+  ctx: ExtensionContext,
   agents: ReturnType<typeof discoverAgents>,
   stuckTimeoutMs: number,
+  parentSessionFile: string | undefined,
 ): Promise<AgentToolResult<SubagentResult>> {
   const agentName = params.agent ?? "";
   const taskDesc = params.task ?? "";
@@ -131,6 +133,7 @@ async function executeSingle(
           })
       : undefined,
     stuckTimeoutMs,
+    parentSessionFile,
   );
 
   if (result.exitCode !== 0) {
@@ -155,9 +158,10 @@ async function executeParallel(
   params: { tasks?: Array<{ agent: string; task: string }>; cwd?: string },
   signal: AbortSignal | undefined,
   onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-  ctx: { cwd: string },
+  ctx: ExtensionContext,
   agents: ReturnType<typeof discoverAgents>,
   stuckTimeoutMs: number,
+  parentSessionFile: string | undefined,
 ): Promise<AgentToolResult<SubagentResult>> {
   const tasks = params.tasks;
   if (!tasks || tasks.length === 0) {
@@ -213,6 +217,7 @@ async function executeParallel(
                 })
             : undefined,
           stuckTimeoutMs,
+          parentSessionFile,
         );
         settled.set(index, r);
         return r;
@@ -300,10 +305,12 @@ export function createSubagentTool() {
       },
       signal: AbortSignal | undefined,
       onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-      ctx: { cwd: string },
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<SubagentResult>> {
       const agents = discoverAgents(ctx.cwd);
       const config = loadSubagentConfig();
+      const parentSessionFile =
+        ctx.sessionManager.getSessionFile() ?? undefined;
 
       const hasSingle = params.agent !== undefined || params.task !== undefined;
       const hasParallel = params.tasks !== undefined;
@@ -348,6 +355,7 @@ export function createSubagentTool() {
           ctx,
           agents,
           config.stuckTimeoutMs,
+          parentSessionFile,
         );
       }
 
@@ -358,6 +366,7 @@ export function createSubagentTool() {
         ctx,
         agents,
         config.stuckTimeoutMs,
+        parentSessionFile,
       );
     },
   };

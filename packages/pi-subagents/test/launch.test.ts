@@ -819,6 +819,15 @@ describe("launchChild", () => {
 describe("createSubagentTool", () => {
   let tmpDir: string;
 
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      sessionManager: { getSessionFile: () => undefined },
+    } as unknown as Parameters<
+      ReturnType<typeof createSubagentTool>["execute"]
+    >[4];
+  }
+
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
   });
@@ -851,7 +860,7 @@ describe("createSubagentTool", () => {
       { agent: "nonexistent-agent", task: "do something" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -869,7 +878,7 @@ describe("createSubagentTool", () => {
       { agent: "foo", task: "bar", tasks: [] },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
@@ -878,9 +887,13 @@ describe("createSubagentTool", () => {
 
   it("returns error when neither agent nor tasks are provided", async () => {
     const tool = createSubagentTool();
-    const result = await tool.execute("tc-1", {}, undefined, undefined, {
-      cwd: tmpDir,
-    });
+    const result = await tool.execute(
+      "tc-1",
+      {},
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
     ).toContain("Provide either");
@@ -898,7 +911,7 @@ describe("createSubagentTool", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     const details = result.details;
@@ -922,7 +935,7 @@ describe("createSubagentTool", () => {
       { tasks: [] },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
@@ -944,7 +957,7 @@ describe("createSubagentTool", () => {
       },
       controller.signal,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     const details = result.details;

@@ -11,6 +11,15 @@ import { createSubagentTool } from "../src/subagent-tool.js";
 describe("createSubagentTool — extended", () => {
   let tmpDir: string;
 
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      sessionManager: { getSessionFile: () => undefined },
+    } as unknown as Parameters<
+      ReturnType<typeof createSubagentTool>["execute"]
+    >[4];
+  }
+
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
   });
@@ -28,7 +37,7 @@ describe("createSubagentTool — extended", () => {
       { agent: "", task: "do something" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -44,7 +53,7 @@ describe("createSubagentTool — extended", () => {
       { agent: "some-agent", task: "" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -61,7 +70,7 @@ describe("createSubagentTool — extended", () => {
       { task: "do something" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -76,7 +85,7 @@ describe("createSubagentTool — extended", () => {
       { agent: "some-agent" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -96,7 +105,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -114,7 +123,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     // cwd validation passes, falls through to agent lookup which fails
@@ -136,7 +145,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -153,7 +162,7 @@ describe("createSubagentTool — extended", () => {
       { agent: "my-agent", task: "do stuff" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(result.details.agent).toBe("my-agent");
@@ -168,7 +177,7 @@ describe("createSubagentTool — extended", () => {
       { agent: "agent-x", task: "task-y" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(result.details.exitCode).toBe(1);
@@ -189,7 +198,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(result.details.exitCode).toBe(1);
@@ -206,7 +215,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect((result.content[0] as { type: "text"; text: string }).text).toBe(
@@ -227,7 +236,7 @@ describe("createSubagentTool — extended", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect((result.content[0] as { type: "text"; text: string }).text).toBe(
