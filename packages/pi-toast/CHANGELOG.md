@@ -1,5 +1,12 @@
 # @mammothb/pi-toast
 
+## 2.1.3
+
+### Patch Changes
+
+- Updated dependencies [b913f85]
+  - @mammothb/pi-shared@1.4.1
+
 ## 2.1.2
 
 ### Patch Changes
