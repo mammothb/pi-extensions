@@ -57,9 +57,9 @@ export function createGhFetchTool(
       try {
         const parsed = new URL(url);
         if (parsed.hostname === "github.com") {
-          shortUrl = parsed.pathname.replace(/^\/|\/$/g, "");
+          shortUrl = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
         } else if (parsed.hostname === "api.github.com") {
-          shortUrl = parsed.pathname.replace(/^\/|\/$/g, "");
+          shortUrl = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
         }
       } catch {
         // invalid URL — keep raw value

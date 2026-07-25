@@ -18,7 +18,7 @@ export function githubUrlToEndpoint(url: string): string {
   }
 
   // Strip leading and trailing slashes from pathname
-  const path = parsed.pathname.replace(/^\/|\/$/g, "");
+  const path = parsed.pathname.replace(/(?:^\/|\/$)/g, "");
 
   if (!path) {
     throw new Error(
