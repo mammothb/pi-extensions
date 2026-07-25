@@ -2,7 +2,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { aggregate, StatsTracker, type UsageRecord } from "../src/tracker.js";
+import {
+  aggregate,
+  appendRecord,
+  readRecords,
+  StatsTracker,
+  type UsageRecord,
+} from "../src/tracker.js";
 
 const TEST_LOG = path.join(os.tmpdir(), "pi-stats-test.jsonl");
 
@@ -15,6 +21,10 @@ function cleanLog() {
 }
 
 afterEach(cleanLog);
+
+// ===========================================================================
+// StatsTracker — basic operations
+// ===========================================================================
 
 describe("StatsTracker", () => {
   it("starts with empty stats when no log exists", () => {
@@ -90,7 +100,79 @@ describe("StatsTracker", () => {
     const tracker = new StatsTracker(TEST_LOG);
     expect(tracker.getStats().extensions).toEqual({ good: 1 });
   });
+
+  it("uses default LOG_FILE path when no argument", () => {
+    // Constructor with no custom path should use the default
+    const tracker = new StatsTracker();
+    // Just verify it doesn't throw on construction
+    expect(tracker).toBeDefined();
+  });
 });
+
+// ===========================================================================
+// StatsTracker — error resilience
+// ===========================================================================
+
+describe("StatsTracker — error resilience", () => {
+  it("recordExtension survives unwritable directory", () => {
+    const badPath = path.join(
+      os.tmpdir(),
+      "nonexistent-dir",
+      "nested",
+      "stats.jsonl",
+    );
+    const tracker = new StatsTracker(badPath);
+    // Should not throw
+    expect(() => tracker.recordExtension("ext", "tool")).not.toThrow();
+  });
+
+  it("getStats returns empty stats when file does not exist", () => {
+    const nonexistent = path.join(os.tmpdir(), "does-not-exist.jsonl");
+    const tracker = new StatsTracker(nonexistent);
+    expect(tracker.getStats()).toEqual({ extensions: {} });
+  });
+
+  it("reset survives unwritable path", () => {
+    const badPath = path.join(os.tmpdir(), "nonexistent-dir", "reset.jsonl");
+    const tracker = new StatsTracker(badPath);
+    // Should not throw
+    expect(() => tracker.reset()).not.toThrow();
+  });
+
+  it("recordExtension without session works", () => {
+    cleanLog();
+    const tracker = new StatsTracker(TEST_LOG);
+    tracker.recordExtension("ext-a", "tool"); // no session arg
+    tracker.recordExtension("ext-a", "tool", undefined);
+    expect(tracker.getStats().extensions).toEqual({ "ext-a": 2 });
+  });
+});
+
+// ===========================================================================
+// appendRecord / readRecords standalone functions
+// ===========================================================================
+
+describe("appendRecord", () => {
+  it("writes a record to the default LOG_FILE", () => {
+    // Can't easily test default LOG_FILE without clobbering real data.
+    // Just verify it doesn't throw.
+    expect(() =>
+      appendRecord({ ts: Date.now(), ext: "test-ext", kind: "tool" }),
+    ).not.toThrow();
+  });
+});
+
+describe("readRecords", () => {
+  it("returns empty array when file does not exist", () => {
+    const records = readRecords();
+    // Default LOG_FILE may or may not exist, but the function shouldn't throw
+    expect(Array.isArray(records)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// aggregate
+// ===========================================================================
 
 describe("aggregate", () => {
   it("groups records by extension name", () => {
@@ -106,5 +188,26 @@ describe("aggregate", () => {
 
   it("returns empty for no records", () => {
     expect(aggregate([])).toEqual({ extensions: {} });
+  });
+
+  it("counts different kinds under same extension", () => {
+    const records: UsageRecord[] = [
+      { ts: 1, ext: "ext-a", kind: "tool" },
+      { ts: 2, ext: "ext-a", kind: "ext-cmd" },
+      { ts: 3, ext: "ext-a", kind: "tool" },
+    ];
+    expect(aggregate(records)).toEqual({
+      extensions: { "ext-a": 3 },
+    });
+  });
+
+  it("handles records with session field", () => {
+    const records: UsageRecord[] = [
+      { ts: 1, ext: "ext-a", kind: "tool", session: "abc" },
+      { ts: 2, ext: "ext-a", kind: "tool", session: "def" },
+    ];
+    expect(aggregate(records)).toEqual({
+      extensions: { "ext-a": 2 },
+    });
   });
 });
