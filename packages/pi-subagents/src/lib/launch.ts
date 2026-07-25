@@ -409,18 +409,18 @@ export async function launchChild(
     };
   }
 
-  const error =
-    cumulative.errorMessage ||
-    spawnError ||
-    (exitCode !== 0
-      ? stderr.trim() ||
-        (cumulative.stopReason &&
-        cumulative.stopReason !== "stop" &&
-        cumulative.stopReason !== "end"
-          ? cumulative.stopReason
-          : undefined) ||
-        `exit code ${exitCode}`
-      : undefined);
+  let innerError: string | undefined;
+  if (exitCode !== 0) {
+    const stopMsg =
+      cumulative.stopReason &&
+      cumulative.stopReason !== "stop" &&
+      cumulative.stopReason !== "end"
+        ? cumulative.stopReason
+        : undefined;
+    innerError = stderr.trim() || stopMsg || `exit code ${exitCode}`;
+  }
+
+  const error = cumulative.errorMessage || spawnError || innerError;
 
   return {
     agent: agent.name,

@@ -25,9 +25,12 @@ function formatMatches(
     return `No matches found for "${query}" in ${totalPages} page${totalPages === 1 ? "" : "s"}.`;
   }
 
+  const matchPlural = totalMatches === 1 ? "" : "es";
+  const pagePlural = totalPages === 1 ? "" : "s";
+
   const header = truncated
-    ? `Found ${totalMatches} matches across ${totalPages} page${totalPages === 1 ? "" : "s"}. Showing first ${matches.length}:`
-    : `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${totalPages} page${totalPages === 1 ? "" : "s"}:`;
+    ? `Found ${totalMatches} matches across ${totalPages} page${pagePlural}. Showing first ${matches.length}:`
+    : `Found ${totalMatches} match${matchPlural} across ${totalPages} page${pagePlural}:`;
 
   const blocks = matches.map((m) => {
     const lineRange =

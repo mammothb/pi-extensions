@@ -29,12 +29,12 @@ export const registerMmRecallCommand = (pi: ExtensionAPI) => {
       const query =
         parsed.text.replace(/\bpage:\d+\b/i, "").trim() || undefined;
 
-      const continuationPrompt =
-        query && parsed.scope !== "all"
-          ? `/mm-recall ${query} page:`
-          : query
-            ? `/mm-recall ${query} scope:all page:`
-            : undefined;
+      let continuationPrompt: string | undefined;
+      if (query && parsed.scope !== "all") {
+        continuationPrompt = `/mm-recall ${query} page:`;
+      } else if (query) {
+        continuationPrompt = `/mm-recall ${query} scope:all page:`;
+      }
 
       const { text } = runRecallPipeline({
         sessionFile,

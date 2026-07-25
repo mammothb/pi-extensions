@@ -54,7 +54,14 @@ export function detectFetchType(parsed: unknown): {
       typeof obj.state === "string" &&
       ("draft" in obj || "merged" in obj || "pull_request" in obj)
     ) {
-      const draft = obj.draft ? "draft" : obj.merged ? "merged" : obj.state;
+      let draft: string;
+      if (obj.draft) {
+        draft = "draft";
+      } else if (obj.merged) {
+        draft = "merged";
+      } else {
+        draft = obj.state as string;
+      }
       return {
         type: "pr",
         summary: `[pr] #${obj.number} "${obj.title}" — ${draft}`,

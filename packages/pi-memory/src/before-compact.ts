@@ -71,11 +71,12 @@ const formatTokens = (n: number): string => {
 };
 
 export const formatCompactionStats = (stats: CompactionStats): string => {
-  const fallbackNote = stats.keepFallbackToCompactAll
-    ? stats.keepUserTurnsExplicit
+  let fallbackNote = "";
+  if (stats.keepFallbackToCompactAll) {
+    fallbackNote = stats.keepUserTurnsExplicit
       ? `; requested keep:${stats.requestedKeepUserTurns}, compact-all fallback`
-      : "; compact-all fallback"
-    : "";
+      : "; compact-all fallback";
+  }
   return `mm-compact: ${stats.summarized} source entries processed; tail kept ${stats.keptUserTurns}/${stats.totalUserTurns} user turns${fallbackNote} (${stats.kept} messages, ~${formatTokens(stats.keptTokensEst)} tok).`;
 };
 
