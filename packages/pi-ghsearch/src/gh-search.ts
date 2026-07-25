@@ -186,21 +186,21 @@ function formatFirstItem(
   switch (scope) {
     case "repos": {
       const fullName = String(item.fullName ?? "?");
-      const stars = item.stargazersCount ?? "?";
-      const lang = item.language ?? "no lang";
+      const stars = String(item.stargazersCount ?? "?");
+      const lang = String(item.language ?? "no lang");
       return `${fullName} (stars: ${stars}, ${lang})`;
     }
     case "issues": {
-      const num = item.number ?? "?";
+      const num = String(item.number ?? "?");
       const title = String(item.title ?? "");
-      const state = item.state ?? "?";
+      const state = String(item.state ?? "?");
       return `#${num} ${title} (${state})`;
     }
     case "prs": {
-      const num = item.number ?? "?";
+      const num = String(item.number ?? "?");
       const title = String(item.title ?? "");
       const draft = item.isDraft;
-      const label = draft ? "draft" : (item.state ?? "?");
+      const label = draft ? "draft" : String(item.state ?? "?");
       return `#${num} ${title} (${label})`;
     }
     case "commits": {

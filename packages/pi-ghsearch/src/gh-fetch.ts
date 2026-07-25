@@ -156,7 +156,9 @@ export function createGhFetchTool(
       // details.parsed keeps the original JSON unchanged for programmatic access.
       const decodedContent = decodeGitHubContent(parsed);
       if (decodedContent !== null) {
-        const filePath = (parsed as Record<string, unknown>).path ?? "unknown";
+        const filePath = String(
+          (parsed as Record<string, unknown>).path ?? "unknown",
+        );
 
         // Build clean JSON with base64 replaced by a placeholder
         const cleanParsed = { ...(parsed as Record<string, unknown>) };
