@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildCliArgs,
   getPiInvocation,
@@ -8,6 +11,7 @@ import {
   spawnChild,
 } from "../src/lib/launch.js";
 import type { AgentConfig, SubagentResult } from "../src/lib/types.js";
+import { createSubagentTool } from "../src/subagent-tool.js";
 
 const nodeBin = process.execPath;
 
@@ -268,7 +272,11 @@ describe("parseJsonlStream", () => {
     const result = await parseJsonlStream(stream, undefined);
 
     expect(result.messages).toHaveLength(1);
-    expect(result.messages[0].role).toBe("assistant");
+    const msg = result.messages[0];
+    if (!msg) {
+      throw new Error("expected message");
+    }
+    expect(msg.role).toBe("assistant");
     expect(result.finalOutput).toBe("hello world");
     expect(result.usage.turns).toBe(1);
     expect(result.usage.input).toBe(100);
@@ -288,9 +296,13 @@ describe("parseJsonlStream", () => {
     const result = await parseJsonlStream(stream, undefined);
 
     expect(result.messages).toHaveLength(3);
-    expect(result.messages[0].role).toBe("assistant");
-    expect(result.messages[1].role).toBe("toolResult");
-    expect(result.messages[2].role).toBe("assistant");
+    const [msg0, msg1, msg2] = result.messages;
+    if (!msg0 || !msg1 || !msg2) {
+      throw new Error("expected messages");
+    }
+    expect(msg0.role).toBe("assistant");
+    expect(msg1.role).toBe("toolResult");
+    expect(msg2.role).toBe("assistant");
     expect(result.finalOutput).toBe("done");
     expect(result.usage.turns).toBe(2);
   });
@@ -607,5 +619,55 @@ describe("launchChild", () => {
     );
     expect(stuckWarnings).toHaveLength(0);
     expect(result.output).toBe("done");
+  });
+});
+
+// =============================================================================
+// createSubagentTool
+// =============================================================================
+
+describe("createSubagentTool", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("registers as tool named 'subagent'", () => {
+    const tool = createSubagentTool();
+    expect(tool.name).toBe("subagent");
+    expect(tool.label).toBe("Subagent");
+    expect(typeof tool.description).toBe("string");
+    expect(tool.description.length).toBeGreaterThan(0);
+  });
+
+  it("has agent, task, and optional cwd parameters", () => {
+    const tool = createSubagentTool();
+    const props = (tool.parameters as any).properties;
+    expect(props).toHaveProperty("agent");
+    expect(props).toHaveProperty("task");
+    expect(props).toHaveProperty("cwd");
+  });
+
+  it("returns error for unknown agent", async () => {
+    const tool = createSubagentTool();
+    const result = await tool.execute(
+      "tc-1",
+      { agent: "nonexistent-agent", task: "do something" },
+      undefined,
+      undefined,
+      { cwd: tmpDir },
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("Unknown agent");
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("nonexistent-agent");
   });
 });

@@ -31,6 +31,7 @@ export interface SubagentResult {
     cacheRead: number;
     cacheWrite: number;
     total: number;
+    turns: number;
   };
   model?: string;
   error?: string;
