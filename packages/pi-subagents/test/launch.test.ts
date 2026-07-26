@@ -88,11 +88,10 @@ describe("buildCliArgs", () => {
     expect(args).not.toContain("--model");
   });
 
-  it("places task string as the last argument after -- separator", () => {
+  it("places task string as the last argument", () => {
     const task = "fix the bug in src/auth.ts";
     const args = buildCliArgs(baseAgent, task);
     expect(args[args.length - 1]).toBe(task);
-    expect(args[args.length - 2]).toBe("--");
   });
 
   it("starts with -p and --mode json", () => {
@@ -142,11 +141,10 @@ describe("buildCliArgs", () => {
     expect(args).not.toContain("--no-session");
   });
 
-  it("-- <task> remains last argument regardless of sessionFile", () => {
+  it("<task> remains last argument regardless of sessionFile", () => {
     const task = "fix the bug";
     const args = buildCliArgs(baseAgent, task, "/tmp/s.jsonl");
     expect(args[args.length - 1]).toBe(task);
-    expect(args[args.length - 2]).toBe("--");
   });
 });
 

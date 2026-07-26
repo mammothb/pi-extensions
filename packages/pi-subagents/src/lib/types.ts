@@ -1,3 +1,5 @@
+import type { Message } from "@earendil-works/pi-ai";
+
 export interface AgentConfig {
   name: string;
   description: string;
@@ -35,6 +37,8 @@ export interface SubagentResult {
   };
   model?: string;
   error?: string;
+  /** Raw child process messages (agent + tool results). Used by TUI for tool call rendering. */
+  messages?: Message[];
   /** Individual results when executing in parallel mode. Omitted for single mode. */
   results?: SubagentResult[];
 }

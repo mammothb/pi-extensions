@@ -5,6 +5,12 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "./types.js";
 
 // =============================================================================
+// Session format version (matches pi's current session JSONL format)
+// =============================================================================
+
+const CURRENT_SESSION_VERSION = 1;
+
+// =============================================================================
 // Persisted launch metadata (stored in child session for resume)
 // =============================================================================
 

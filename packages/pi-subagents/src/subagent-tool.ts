@@ -2,12 +2,19 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
   ExtensionContext,
+  ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import { Text } from "@earendil-works/pi-tui";
+import { type Static, Type } from "typebox";
 import { discoverAgents } from "./lib/agents.js";
 import { mapWithConcurrencyLimit } from "./lib/concurrency.js";
 import { loadSubagentConfig } from "./lib/config.js";
 import { launchSubagent } from "./lib/launch.js";
+import {
+  previewTask,
+  renderSubagentToolResult,
+  stripMessagesForPersistence,
+} from "./lib/rendering.js";
 import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { SubagentResult } from "./lib/types.js";
 
@@ -83,6 +90,8 @@ async function executeSingle(
     stuckTimeoutMs,
     parentSessionFile,
   });
+
+  result.messages = stripMessagesForPersistence(result.messages);
 
   if (result.exitCode !== 0) {
     return {
@@ -189,6 +198,10 @@ async function executeParallel(
     }
   }
 
+  for (const r of results) {
+    r.messages = stripMessagesForPersistence(r.messages);
+  }
+
   const summary = summaryText(results);
   return {
     content: [{ type: "text", text: summary }],
@@ -211,34 +224,39 @@ async function executeParallel(
   };
 }
 
-export function createSubagentTool() {
+const SubagentParamsSchema = Type.Object({
+  agent: Type.Optional(
+    Type.String({
+      description: "Name of the agent to invoke (single mode)",
+    }),
+  ),
+  task: Type.Optional(
+    Type.String({ description: "Task to delegate (single mode)" }),
+  ),
+  tasks: Type.Optional(
+    Type.Array(
+      Type.Object({
+        agent: Type.String({ description: "Agent name" }),
+        task: Type.String({ description: "Task description" }),
+      }),
+      { maxItems: MAX_PARALLEL_TASKS },
+    ),
+  ),
+  cwd: Type.Optional(
+    Type.String({ description: "Working directory for the agent process" }),
+  ),
+});
+
+export function createSubagentTool(): ToolDefinition<
+  typeof SubagentParamsSchema,
+  SubagentResult
+> {
   return {
     name: "subagent",
     label: "Subagent",
     description:
       "Delegate a task to a specialized subagent with isolated context.",
-    parameters: Type.Object({
-      agent: Type.Optional(
-        Type.String({
-          description: "Name of the agent to invoke (single mode)",
-        }),
-      ),
-      task: Type.Optional(
-        Type.String({ description: "Task to delegate (single mode)" }),
-      ),
-      tasks: Type.Optional(
-        Type.Array(
-          Type.Object({
-            agent: Type.String({ description: "Agent name" }),
-            task: Type.String({ description: "Task description" }),
-          }),
-          { maxItems: MAX_PARALLEL_TASKS },
-        ),
-      ),
-      cwd: Type.Optional(
-        Type.String({ description: "Working directory for the agent process" }),
-      ),
-    }),
+    parameters: SubagentParamsSchema,
 
     async execute(
       _toolCallId: string,
@@ -313,6 +331,41 @@ export function createSubagentTool() {
         config.stuckTimeoutMs,
         parentSessionFile,
       );
+    },
+
+    // ── TUI Rendering ──────────────────────────────────────────────────
+
+    renderCall(args, theme, _context) {
+      const argsRecord = args as Static<typeof SubagentParamsSchema>;
+
+      let body: string;
+      if (argsRecord.tasks && argsRecord.tasks.length > 0) {
+        const names = argsRecord.tasks
+          .map((t) => t.agent)
+          .filter((a, i, arr) => arr.indexOf(a) === i); // unique
+        const nameList = names.slice(0, 3).join(", ");
+        const more = names.length > 3 ? ` +${names.length - 3}` : "";
+        body = `${argsRecord.tasks.length} tasks  ${nameList}${more}`;
+      } else if (argsRecord.agent) {
+        const taskPreview = argsRecord.task
+          ? `"${previewTask(argsRecord.task)}"`
+          : "(no task)";
+        body = `${argsRecord.agent}  ${taskPreview}`;
+      } else {
+        body = "(no agent specified)";
+      }
+
+      return new Text(
+        theme.fg("toolTitle", theme.bold("subagent")) +
+          theme.fg("muted", " · ") +
+          theme.fg("text", body),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, options, theme, context) {
+      return renderSubagentToolResult(result, options, theme, context);
     },
   };
 }
