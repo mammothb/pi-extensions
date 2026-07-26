@@ -792,3 +792,133 @@ describe("renderResult — subagent tool", () => {
     expect(text).toContain("running...");
   });
 });
+
+// ── renderResult — resume tool ─────────────────────────────────────────────
+
+describe("renderResult — resume tool", () => {
+  const tool = createResumeTool();
+
+  it("renders running state when isPartial", () => {
+    const result = {
+      content: [{ type: "text" as const, text: "running..." }],
+      details: makeResult({
+        agent: "implementer",
+        exitCode: -1,
+        output: "running...",
+      }),
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: false, isPartial: true },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("implementer");
+    expect(text).toContain("running...");
+  });
+
+  it("renders collapsed success with first line and stats", () => {
+    const output = "Applied fix to src/auth/validate.ts. Tests pass.";
+    const result = {
+      content: [{ type: "text" as const, text: output }],
+      details: makeResult({
+        agent: "implementer",
+        output,
+        elapsed: 5400,
+        tokens: { ...makeResult().tokens, total: 8200 },
+      }),
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: false, isPartial: false },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("implementer");
+    expect(text).toContain("Applied fix to src/auth/validate.ts");
+    expect(text).toContain("5.4s");
+    expect(text).toContain("8k tok");
+  });
+
+  it("renders collapsed failure with error output", () => {
+    const result = {
+      content: [{ type: "text" as const, text: "Session not found" }],
+      details: makeResult({
+        agent: "implementer",
+        exitCode: 1,
+        error: "Session file not found",
+        output: "Session not found",
+      }),
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: false, isPartial: false },
+      mockTheme,
+      { isError: true } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("implementer");
+    expect(text).toContain("Session not found");
+  });
+
+  it("renders expanded view with full output and stats", () => {
+    const result = {
+      content: [
+        {
+          type: "text" as const,
+          text: "Applied fix to src/auth/validate.ts. All 12 tests pass.",
+        },
+      ],
+      details: makeResult({
+        agent: "implementer",
+        output: "Applied fix to src/auth/validate.ts. All 12 tests pass.",
+      }),
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: true, isPartial: false },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("implementer");
+    expect(text).toContain(
+      "Applied fix to src/auth/validate.ts. All 12 tests pass.",
+    );
+    expect(text).toContain("claude-sonnet-4-5");
+    expect(text).toContain("3 turns");
+    expect(text).toContain("3.2s");
+  });
+
+  it("renders without details fallback", () => {
+    const result: any = {
+      content: [{ type: "text" as const, text: "Resumed session completed." }],
+      details: undefined,
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: false, isPartial: false },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("Resumed session completed.");
+  });
+
+  it("renders running state without details", () => {
+    const result: any = {
+      content: [{ type: "text" as const, text: "" }],
+      details: undefined,
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: false, isPartial: true },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("running...");
+  });
+});

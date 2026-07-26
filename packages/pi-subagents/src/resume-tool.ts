@@ -7,13 +7,12 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import { loadSubagentConfig } from "./lib/config.js";
 import { buildCliArgs, launchPiChild } from "./lib/launch.js";
 import {
-  renderCollapsedResult,
-  renderExpandedResult,
-  renderRunningState,
+  renderSubagentToolResult,
+  stripMessagesForPersistence,
 } from "./lib/rendering.js";
 import { generateChildSessionFile, readLaunchMetadata } from "./lib/session.js";
 import { failedResult, validateCwd } from "./lib/tool-helpers.js";
@@ -178,6 +177,7 @@ export function createResumeTool(): ToolDefinition<
 
       // Result always has the existing session file
       result.sessionFile = sessionFile;
+      result.messages = stripMessagesForPersistence(result.messages);
 
       if (result.exitCode !== 0) {
         return {
@@ -205,7 +205,7 @@ export function createResumeTool(): ToolDefinition<
     // ── TUI Rendering ──────────────────────────────────────────────────
 
     renderCall(args, theme, _context) {
-      const argsRecord = args as { session: string; task: string };
+      const argsRecord = args as Static<typeof ResumeParamsSchema>;
       const sessionBasename =
         argsRecord.session?.split("/").pop()?.split("\\").pop() ??
         argsRecord.session ??
@@ -220,29 +220,7 @@ export function createResumeTool(): ToolDefinition<
     },
 
     renderResult(result, options, theme, context) {
-      const details = result.details as SubagentResult | undefined;
-
-      // Running state
-      if (options.isPartial && !context.isError) {
-        return renderRunningState(details, theme);
-      }
-
-      if (!details) {
-        const text = result.content[0];
-        return new Text(
-          text?.type === "text" ? text.text : "(no output)",
-          0,
-          0,
-        );
-      }
-
-      // Expanded view
-      if (options.expanded) {
-        return renderExpandedResult(details, theme);
-      }
-
-      // Collapsed view
-      return renderCollapsedResult(details, theme);
+      return renderSubagentToolResult(result, options, theme, context);
     },
   };
 }

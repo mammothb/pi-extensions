@@ -5,16 +5,15 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 import { discoverAgents } from "./lib/agents.js";
 import { mapWithConcurrencyLimit } from "./lib/concurrency.js";
 import { loadSubagentConfig } from "./lib/config.js";
 import { launchSubagent } from "./lib/launch.js";
 import {
   previewTask,
-  renderCollapsedResult,
-  renderExpandedResult,
-  renderRunningState,
+  renderSubagentToolResult,
+  stripMessagesForPersistence,
 } from "./lib/rendering.js";
 import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { SubagentResult } from "./lib/types.js";
@@ -91,6 +90,8 @@ async function executeSingle(
     stuckTimeoutMs,
     parentSessionFile,
   });
+
+  result.messages = stripMessagesForPersistence(result.messages);
 
   if (result.exitCode !== 0) {
     return {
@@ -195,6 +196,10 @@ async function executeParallel(
         (t, i) => settled.get(i) ?? failedResult(t.agent, t.task, errorMessage),
       );
     }
+  }
+
+  for (const r of results) {
+    r.messages = stripMessagesForPersistence(r.messages);
   }
 
   const summary = summaryText(results);
@@ -331,11 +336,7 @@ export function createSubagentTool(): ToolDefinition<
     // ── TUI Rendering ──────────────────────────────────────────────────
 
     renderCall(args, theme, _context) {
-      const argsRecord = args as {
-        agent?: string;
-        task?: string;
-        tasks?: Array<{ agent: string; task: string }>;
-      };
+      const argsRecord = args as Static<typeof SubagentParamsSchema>;
 
       let body: string;
       if (argsRecord.tasks && argsRecord.tasks.length > 0) {
@@ -364,29 +365,7 @@ export function createSubagentTool(): ToolDefinition<
     },
 
     renderResult(result, options, theme, context) {
-      const details = result.details as SubagentResult | undefined;
-
-      // Running state
-      if (options.isPartial && !context.isError) {
-        return renderRunningState(details, theme);
-      }
-
-      if (!details) {
-        const text = result.content[0];
-        return new Text(
-          text?.type === "text" ? text.text : "(no output)",
-          0,
-          0,
-        );
-      }
-
-      // Expanded view
-      if (options.expanded) {
-        return renderExpandedResult(details, theme);
-      }
-
-      // Collapsed view
-      return renderCollapsedResult(details, theme);
+      return renderSubagentToolResult(result, options, theme, context);
     },
   };
 }

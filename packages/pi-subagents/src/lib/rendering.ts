@@ -107,123 +107,146 @@ function shortenPath(p: string): string {
   return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
 }
 
+function truncate(s: string, maxLen: number): string {
+  return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
+}
+
+// =============================================================================
+// Tool call formatters (dispatch table to keep cognitive complexity low)
+// =============================================================================
+
+type ToolFormatter = (args: Record<string, unknown>, theme: Theme) => string;
+
+function fmtBash(args: Record<string, unknown>, theme: Theme): string {
+  const command = (args.command as string) || "...";
+  const preview = truncate(command, 60);
+  return theme.fg("muted", "$ ") + theme.fg("toolOutput", preview);
+}
+
+function fmtRead(args: Record<string, unknown>, theme: Theme): string {
+  const rawPath = (args.file_path || args.path || "...") as string;
+  const filePath = shortenPath(rawPath);
+  const offset = args.offset as number | undefined;
+  const limit = args.limit as number | undefined;
+  let text = theme.fg("accent", filePath);
+  if (offset !== undefined || limit !== undefined) {
+    const startLine = offset ?? 1;
+    const endSuffix = limit !== undefined ? `-${startLine + limit - 1}` : "";
+    text += theme.fg("warning", `:${startLine}${endSuffix}`);
+  }
+  return theme.fg("muted", "read ") + text;
+}
+
+function fmtWrite(args: Record<string, unknown>, theme: Theme): string {
+  const rawPath = (args.file_path || args.path || "...") as string;
+  const filePath = shortenPath(rawPath);
+  const content = (args.content || "") as string;
+  const lines = content.split("\n").length;
+  let text = theme.fg("muted", "write ") + theme.fg("accent", filePath);
+  if (lines > 1) {
+    text += theme.fg("dim", ` (${lines} lines)`);
+  }
+  return text;
+}
+
+function fmtEdit(args: Record<string, unknown>, theme: Theme): string {
+  const rawPath = (args.file_path || args.path || "...") as string;
+  return theme.fg("muted", "edit ") + theme.fg("accent", shortenPath(rawPath));
+}
+
+function fmtLs(args: Record<string, unknown>, theme: Theme): string {
+  const rawPath = (args.path || ".") as string;
+  return theme.fg("muted", "ls ") + theme.fg("accent", shortenPath(rawPath));
+}
+
+function fmtFind(args: Record<string, unknown>, theme: Theme): string {
+  const pattern = (args.pattern || "*") as string;
+  const rawPath = (args.path || ".") as string;
+  return (
+    theme.fg("muted", "find ") +
+    theme.fg("accent", pattern) +
+    theme.fg("dim", ` in ${shortenPath(rawPath)}`)
+  );
+}
+
+function fmtGrep(args: Record<string, unknown>, theme: Theme): string {
+  const pattern = (args.pattern || "") as string;
+  const rawPath = (args.path || ".") as string;
+  return (
+    theme.fg("muted", "grep ") +
+    theme.fg("accent", `/${pattern}/`) +
+    theme.fg("dim", ` in ${shortenPath(rawPath)}`)
+  );
+}
+
+function fmtEval(args: Record<string, unknown>, theme: Theme): string {
+  const lang = (args.language || "js") as string;
+  const code = (args.code || "") as string;
+  const firstLine = code.split("\n")[0] ?? "";
+  const preview = truncate(firstLine, 50);
+  return (
+    theme.fg("muted", "eval ") +
+    theme.fg("accent", lang) +
+    (preview ? theme.fg("dim", ` "${preview}"`) : "")
+  );
+}
+
+function fmtGhSearch(args: Record<string, unknown>, theme: Theme): string {
+  const scope = (args.scope || "") as string;
+  const query = (args.query || "") as string;
+  const preview = truncate(query, 50);
+  return (
+    theme.fg("muted", "gh_search ") +
+    theme.fg("accent", scope) +
+    (preview ? theme.fg("dim", ` "${preview}"`) : "")
+  );
+}
+
+function fmtGhFetch(args: Record<string, unknown>, theme: Theme): string {
+  const url = (args.url || "") as string;
+  return theme.fg("muted", "gh_fetch ") + theme.fg("accent", shortenPath(url));
+}
+
+function fmtWebFetch(args: Record<string, unknown>, theme: Theme): string {
+  const url = (args.url || "") as string;
+  const preview = truncate(url, 60);
+  return theme.fg("muted", "WebFetch ") + theme.fg("accent", preview);
+}
+
+function fmtWebSearch(args: Record<string, unknown>, theme: Theme): string {
+  const query = (args.query || "") as string;
+  const preview = truncate(query, 50);
+  return theme.fg("muted", "WebSearch ") + theme.fg("accent", `"${preview}"`);
+}
+
+const TOOL_FORMATTERS: Record<string, ToolFormatter> = {
+  bash: fmtBash,
+  read: fmtRead,
+  write: fmtWrite,
+  edit: fmtEdit,
+  ls: fmtLs,
+  find: fmtFind,
+  grep: fmtGrep,
+  eval: fmtEval,
+  gh_search: fmtGhSearch,
+  gh_fetch: fmtGhFetch,
+  WebFetch: fmtWebFetch,
+  WebSearch: fmtWebSearch,
+};
+
 /** Format a single tool call for TUI display in expanded results. */
 export function formatToolCall(
   name: string,
   args: Record<string, unknown>,
   theme: Theme,
 ): string {
-  switch (name) {
-    case "bash": {
-      const command = (args.command as string) || "...";
-      const preview =
-        command.length > 60 ? `${command.slice(0, 60)}...` : command;
-      return theme.fg("muted", "$ ") + theme.fg("toolOutput", preview);
-    }
-    case "read": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      const filePath = shortenPath(rawPath);
-      const offset = args.offset as number | undefined;
-      const limit = args.limit as number | undefined;
-      let text = theme.fg("accent", filePath);
-      if (offset !== undefined || limit !== undefined) {
-        const startLine = offset ?? 1;
-        const endLine = limit !== undefined ? startLine + limit - 1 : "";
-        text += theme.fg(
-          "warning",
-          `:${startLine}${endLine ? `-${endLine}` : ""}`,
-        );
-      }
-      return theme.fg("muted", "read ") + text;
-    }
-    case "write": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      const filePath = shortenPath(rawPath);
-      const content = (args.content || "") as string;
-      const lines = content.split("\n").length;
-      let text = theme.fg("muted", "write ") + theme.fg("accent", filePath);
-      if (lines > 1) {
-        text += theme.fg("dim", ` (${lines} lines)`);
-      }
-      return text;
-    }
-    case "edit": {
-      const rawPath = (args.file_path || args.path || "...") as string;
-      return (
-        theme.fg("muted", "edit ") + theme.fg("accent", shortenPath(rawPath))
-      );
-    }
-    case "ls": {
-      const rawPath = (args.path || ".") as string;
-      return (
-        theme.fg("muted", "ls ") + theme.fg("accent", shortenPath(rawPath))
-      );
-    }
-    case "find": {
-      const pattern = (args.pattern || "*") as string;
-      const rawPath = (args.path || ".") as string;
-      return (
-        theme.fg("muted", "find ") +
-        theme.fg("accent", pattern) +
-        theme.fg("dim", ` in ${shortenPath(rawPath)}`)
-      );
-    }
-    case "grep": {
-      const pattern = (args.pattern || "") as string;
-      const rawPath = (args.path || ".") as string;
-      return (
-        theme.fg("muted", "grep ") +
-        theme.fg("accent", `/${pattern}/`) +
-        theme.fg("dim", ` in ${shortenPath(rawPath)}`)
-      );
-    }
-    case "eval": {
-      const lang = (args.language || "js") as string;
-      const code = (args.code || "") as string;
-      const firstLine = code.split("\n")[0] ?? "";
-      const preview =
-        firstLine.length > 50 ? `${firstLine.slice(0, 50)}...` : firstLine;
-      return (
-        theme.fg("muted", "eval ") +
-        theme.fg("accent", lang) +
-        (preview ? theme.fg("dim", ` "${preview}"`) : "")
-      );
-    }
-    case "gh_search": {
-      const scope = (args.scope || "") as string;
-      const query = (args.query || "") as string;
-      const preview = query.length > 50 ? `${query.slice(0, 50)}...` : query;
-      return (
-        theme.fg("muted", "gh_search ") +
-        theme.fg("accent", scope) +
-        (preview ? theme.fg("dim", ` "${preview}"`) : "")
-      );
-    }
-    case "gh_fetch": {
-      const url = (args.url || "") as string;
-      return (
-        theme.fg("muted", "gh_fetch ") + theme.fg("accent", shortenPath(url))
-      );
-    }
-    case "WebFetch": {
-      const url = (args.url || "") as string;
-      const preview = url.length > 60 ? `${url.slice(0, 60)}...` : url;
-      return theme.fg("muted", "WebFetch ") + theme.fg("accent", preview);
-    }
-    case "WebSearch": {
-      const query = (args.query || "") as string;
-      const preview = query.length > 50 ? `${query.slice(0, 50)}...` : query;
-      return (
-        theme.fg("muted", "WebSearch ") + theme.fg("accent", `"${preview}"`)
-      );
-    }
-    default: {
-      const argsStr = JSON.stringify(args);
-      const preview =
-        argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
-      return theme.fg("accent", name) + theme.fg("dim", ` ${preview}`);
-    }
+  const fmt = TOOL_FORMATTERS[name];
+  if (fmt) {
+    return fmt(args, theme);
   }
+  const argsStr = JSON.stringify(args);
+  const preview = truncate(argsStr, 50);
+  return theme.fg("accent", name) + theme.fg("dim", ` ${preview}`);
 }
 
 /** Extract tool call display items from child process messages. */
@@ -253,6 +276,36 @@ export function getDisplayItemsFromMessages(
     }
   }
   return items;
+}
+
+function isToolCallPart(part: unknown): boolean {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    (part as { type: string }).type === "toolCall"
+  );
+}
+
+/**
+ * Strip child process messages to only tool call metadata needed for TUI
+ * rendering. Drops user messages, assistant text content, and all tool
+ * result content — preventing writable-tool contents and command output
+ * from being duplicated in the parent session JSONL.
+ */
+export function stripMessagesForPersistence(
+  messages: Message[] | undefined,
+): Message[] | undefined {
+  if (!messages || messages.length === 0) {
+    return messages;
+  }
+  return messages
+    .filter((msg) => msg.role === "assistant")
+    .map((msg) => ({
+      ...msg,
+      content: msg.content.filter(isToolCallPart),
+    }))
+    .filter((msg) => msg.content.length > 0);
 }
 
 // ── Shared renderers ────────────────────────────────────────────────────────
@@ -450,4 +503,39 @@ export function renderRunningState(
   }
 
   return box;
+}
+
+// =============================================================================
+// Shared renderResult for subagent + resume tools
+// =============================================================================
+
+/**
+ * Shared {@link ToolDefinition.renderResult} for subagent tools.
+ * Both `subagent` and `subagent_resume` delegate here to avoid duplication.
+ */
+export function renderSubagentToolResult(
+  result: {
+    content: Array<{ type: string; text?: string }>;
+    details: SubagentResult | undefined;
+  },
+  options: { expanded: boolean; isPartial: boolean },
+  theme: Theme,
+  context: { isError: boolean },
+): Component {
+  const details = result.details as SubagentResult | undefined;
+
+  if (options.isPartial && !context.isError) {
+    return renderRunningState(details, theme);
+  }
+
+  if (!details) {
+    const text = result.content[0];
+    return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+  }
+
+  if (options.expanded) {
+    return renderExpandedResult(details, theme);
+  }
+
+  return renderCollapsedResult(details, theme);
 }
