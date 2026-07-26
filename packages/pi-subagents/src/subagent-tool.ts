@@ -1,4 +1,3 @@
-import { resolve, sep } from "node:path";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
@@ -9,64 +8,16 @@ import { discoverAgents } from "./lib/agents.js";
 import { mapWithConcurrencyLimit } from "./lib/concurrency.js";
 import { loadSubagentConfig } from "./lib/config.js";
 import { launchSubagent } from "./lib/launch.js";
+import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { SubagentResult } from "./lib/types.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENT = 4;
 
-function failedResult(
-  agent: string,
-  task: string,
-  output: string,
-): SubagentResult {
-  return {
-    agent,
-    task,
-    output,
-    exitCode: 1,
-    elapsed: 0,
-    tokens: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      total: 0,
-      turns: 0,
-    },
-    error: output,
-  };
-}
-
 function summaryText(results: SubagentResult[]): string {
   const succeeded = results.filter((r) => r.exitCode === 0 && !r.error).length;
   const total = results.length;
   return `Parallel: ${succeeded}/${total} succeeded.`;
-}
-
-/**
- * Validate that the requested cwd (if any) is within the project directory.
- * Returns the resolved cwd if valid, or undefined with an error message.
- */
-function validateCwd(
-  cwdParam: string | undefined,
-  ctxCwd: string,
-): { cwd: string } | { error: string } {
-  const resolvedCwd = cwdParam ? resolve(cwdParam) : ctxCwd;
-  if (!cwdParam) {
-    return { cwd: resolvedCwd };
-  }
-
-  const resolvedCtxCwd = resolve(ctxCwd);
-  if (
-    resolvedCwd !== resolvedCtxCwd &&
-    !resolvedCwd.startsWith(resolvedCtxCwd + sep)
-  ) {
-    return {
-      error: `cwd "${cwdParam}" is outside the project directory "${ctxCwd}"`,
-    };
-  }
-
-  return { cwd: resolvedCwd };
 }
 
 async function executeSingle(
@@ -310,7 +261,7 @@ export function createSubagentTool() {
       const agents = discoverAgents(ctx.cwd);
       const config = loadSubagentConfig();
       const parentSessionFile =
-        ctx.sessionManager.getSessionFile() ?? undefined;
+        ctx.sessionManager?.getSessionFile() ?? undefined;
 
       const hasSingle = params.agent !== undefined || params.task !== undefined;
       const hasParallel = params.tasks !== undefined;

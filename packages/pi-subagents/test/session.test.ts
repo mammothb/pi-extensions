@@ -238,19 +238,6 @@ describe("seedForkSession", () => {
     expect(lines.length).toBeGreaterThanOrEqual(1);
     const header = JSON.parse(lines[0]!);
     expect(header.type).toBe("session");
-  });
-
-  it("handles parent session with only header (no leaf)", () => {
-    // Parent file with just a header, no entries
-    const parent = makeParentSession(tmpDir, []);
-    const child = join(tmpDir, "child.jsonl");
-
-    seedForkSession(parent, child, baseAgent, "/tmp/test-project");
-
-    expect(existsSync(child)).toBe(true);
-    const content = readFileSync(child, "utf8");
-    const header = JSON.parse(content.split("\n")[0]!);
-    expect(header.type).toBe("session");
     expect(header.parentSession).toBe(parent);
   });
 });
@@ -428,5 +415,80 @@ describe("launch metadata round-trip", () => {
 
     const metadata = readLaunchMetadata(path);
     expect(metadata).toBeUndefined();
+  });
+
+  it("rejects metadata entry with version not equal to 1", () => {
+    const path = join(tmpDir, "session.jsonl");
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        cwd: "/tmp",
+      })}\n`,
+      "utf8",
+    );
+
+    // Append entry with version 99
+    const parentId = (() => {
+      const content = readFileSync(path, "utf8");
+      const entries = content.trim().split("\n").filter(Boolean);
+      return JSON.parse(entries[0]!).id;
+    })();
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        type: "custom",
+        customType: "pi-subagents_launch_metadata",
+        data: { version: 99, name: "old" },
+        id: randomUUID().replace(/-/g, "").slice(0, 8),
+        parentId,
+        timestamp: new Date().toISOString(),
+      })}\n`,
+      "utf8",
+    );
+
+    const metadata = readLaunchMetadata(path);
+    expect(metadata).toBeUndefined();
+  });
+
+  it("returns most recent metadata when multiple entries exist", () => {
+    const path = join(tmpDir, "session.jsonl");
+    // Create header
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        cwd: "/tmp",
+      })}\n`,
+      "utf8",
+    );
+
+    // Append first metadata entry (older config)
+    const oldAgent: AgentConfig = {
+      ...baseAgent,
+      thinking: "low",
+      tools: ["read"],
+    };
+    appendLaunchMetadataEntry(path, oldAgent, "/tmp");
+
+    // Append second metadata entry (newer config)
+    const newAgent: AgentConfig = {
+      ...baseAgent,
+      thinking: "high",
+      tools: ["read", "edit", "bash"],
+    };
+    appendLaunchMetadataEntry(path, newAgent, "/tmp");
+
+    const metadata = readLaunchMetadata(path);
+    expect(metadata).toBeDefined();
+    // Should return the most recent (last written)
+    expect(metadata!.thinking).toBe("high");
+    expect(metadata!.tools).toEqual(["read", "edit", "bash"]);
   });
 });

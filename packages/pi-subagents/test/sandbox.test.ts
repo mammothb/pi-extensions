@@ -1,22 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { wrapWithBubblewrap } from "../src/lib/sandbox.js";
-
-function hasBw(): boolean {
-  try {
-    // Test actual sandbox capability, not just binary presence.
-    // bw --help may succeed even when bwrap is not installed.
-    const result = spawnSync("bw", ["--", "true"], {
-      stdio: "ignore",
-      timeout: 5000,
-    });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
-}
-
-const bwAvailable = hasBw();
+import { bwAvailable } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
 // Pure-function tests (always run)

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -21,6 +20,7 @@ import {
 import type { AgentConfig, SubagentResult } from "../src/lib/types.js";
 import { createResumeTool } from "../src/resume-tool.js";
 import { createSubagentTool } from "../src/subagent-tool.js";
+import { bwAvailable, makeCtx } from "./helpers.js";
 
 const nodeBin = process.execPath;
 
@@ -682,21 +682,6 @@ describe("launchChild", () => {
   // Sandbox tests
   // -------------------------------------------------------------------------
 
-  function hasBw(): boolean {
-    try {
-      // Test actual sandbox capability, not just binary presence.
-      // bw --help may succeed even when bwrap is not installed.
-      const result = spawnSync("bw", ["--", "true"], {
-        stdio: "ignore",
-        timeout: 5000,
-      });
-      return result.status === 0;
-    } catch {
-      return false;
-    }
-  }
-  const bwAvailable = hasBw();
-
   it.runIf(bwAvailable)("sandbox: true wraps child in bubblewrap", async () => {
     const script = jsonlScript(makeAssistantMessage("sandboxed hello"));
     const sandboxedAgent: AgentConfig = {
@@ -1027,15 +1012,6 @@ describe("launchChild", () => {
 describe("createSubagentTool", () => {
   let tmpDir: string;
 
-  function makeCtx(cwd: string) {
-    return {
-      cwd,
-      sessionManager: { getSessionFile: () => undefined },
-    } as unknown as Parameters<
-      ReturnType<typeof createSubagentTool>["execute"]
-    >[4];
-  }
-
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
   });
@@ -1191,15 +1167,6 @@ describe("createSubagentTool", () => {
 describe("createResumeTool", () => {
   let tmpDir: string;
 
-  function makeCtx(cwd: string) {
-    return {
-      cwd,
-      sessionManager: { getSessionFile: () => undefined },
-    } as unknown as Parameters<
-      ReturnType<typeof createResumeTool>["execute"]
-    >[4];
-  }
-
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
   });
@@ -1209,7 +1176,7 @@ describe("createResumeTool", () => {
   });
 
   it("registers as tool named 'subagent_resume'", () => {
-    const tool = createResumeTool(60_000);
+    const tool = createResumeTool();
     expect(tool.name).toBe("subagent_resume");
     expect(tool.label).toBe("Subagent Resume");
     expect(typeof tool.description).toBe("string");
@@ -1217,7 +1184,7 @@ describe("createResumeTool", () => {
   });
 
   it("schema has session (required), task (required), cwd (optional)", () => {
-    const tool = createResumeTool(60_000);
+    const tool = createResumeTool();
     const props = (tool.parameters as { properties: Record<string, unknown> })
       .properties;
     expect(props.session).toBeDefined();
@@ -1226,7 +1193,7 @@ describe("createResumeTool", () => {
   });
 
   it("returns error when session file does not exist", async () => {
-    const tool = createResumeTool(60_000);
+    const tool = createResumeTool();
     const result = await tool.execute(
       "tc-1",
       {
@@ -1258,7 +1225,7 @@ describe("createResumeTool", () => {
       "utf8",
     );
 
-    const tool = createResumeTool(60_000);
+    const tool = createResumeTool();
     const result = await tool.execute(
       "tc-1",
       { session: sessionFile, task: "continue work" },
@@ -1300,7 +1267,7 @@ describe("createResumeTool", () => {
     const sessionFile = gen(tmpDir);
     seed(parentFile, sessionFile, baseAgent, tmpDir);
 
-    const tool = createResumeTool(60_000);
+    const tool = createResumeTool();
     const result = await tool.execute(
       "tc-1",
       {

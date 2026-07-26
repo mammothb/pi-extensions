@@ -6,54 +6,38 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { loadSubagentConfig } from "./lib/config.js";
 import { buildCliArgs, launchPiChild } from "./lib/launch.js";
-import { readLaunchMetadata } from "./lib/session.js";
+import { generateChildSessionFile, readLaunchMetadata } from "./lib/session.js";
+import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { AgentConfig, SubagentResult } from "./lib/types.js";
 
-function failedResult(
-  agent: string,
-  task: string,
-  output: string,
-): SubagentResult {
-  return {
-    agent,
-    task,
-    output,
-    exitCode: 1,
-    elapsed: 0,
-    tokens: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      total: 0,
-      turns: 0,
-    },
-    error: output,
-  };
-}
-
-function validateCwd(
-  cwdParam: string | undefined,
+/**
+ * Validate that params.session is within an approved session directory.
+ * Accepts paths under the default pi-subagents session root or ctx.cwd.
+ */
+function validateSession(
+  sessionParam: string,
   ctxCwd: string,
-): { cwd: string } | { error: string } {
-  const resolvedCwd = cwdParam ? resolve(cwdParam) : ctxCwd;
-  if (!cwdParam) {
-    return { cwd: resolvedCwd };
-  }
-  const resolvedCtxCwd = resolve(ctxCwd);
-  if (
-    resolvedCwd !== resolvedCtxCwd &&
-    !resolvedCwd.startsWith(resolvedCtxCwd + sep)
-  ) {
+): { session: string } | { error: string } {
+  const resolved = resolve(sessionParam);
+  const resolvedCtx = resolve(ctxCwd);
+  const defaultRoot = resolve(generateChildSessionFile(), "..");
+
+  const withinCtx =
+    resolved === resolvedCtx || resolved.startsWith(resolvedCtx + sep);
+  const withinDefault =
+    resolved === defaultRoot || resolved.startsWith(defaultRoot + sep);
+
+  if (!withinCtx && !withinDefault) {
     return {
-      error: `cwd "${cwdParam}" is outside the project directory "${ctxCwd}"`,
+      error: `Session path "${sessionParam}" is outside approved directories`,
     };
   }
-  return { cwd: resolvedCwd };
+  return { session: resolved };
 }
 
-export function createResumeTool(stuckTimeoutMs: number) {
+export function createResumeTool() {
   return {
     name: "subagent_resume",
     label: "Subagent Resume",
@@ -87,7 +71,24 @@ export function createResumeTool(stuckTimeoutMs: number) {
       onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<SubagentResult>> {
-      const sessionFile = params.session;
+      // Validate cwd before file I/O
+      const cwdResult = validateCwd(params.cwd, ctx.cwd);
+      if ("error" in cwdResult) {
+        return {
+          content: [{ type: "text", text: cwdResult.error }],
+          details: failedResult("resume", params.task, cwdResult.error),
+        };
+      }
+
+      // Validate session path is within approved directories
+      const sessionResult = validateSession(params.session, ctx.cwd);
+      if ("error" in sessionResult) {
+        return {
+          content: [{ type: "text", text: sessionResult.error }],
+          details: failedResult("resume", params.task, sessionResult.error),
+        };
+      }
+      const sessionFile = sessionResult.session;
 
       if (!existsSync(sessionFile)) {
         return {
@@ -113,8 +114,8 @@ export function createResumeTool(stuckTimeoutMs: number) {
             {
               type: "text",
               text:
-                `Cannot resume: session was created before launch metadata persistence was added. ` +
-                `This session file was produced by an older version of pi-subagents. ` +
+                `Cannot resume: session has no valid launch metadata (missing or unreadable). ` +
+                `This may be a corrupt session file or one created by an older version of pi-subagents. ` +
                 `Create a new subagent with the same task instead.`,
             },
           ],
@@ -123,14 +124,6 @@ export function createResumeTool(stuckTimeoutMs: number) {
             params.task,
             "Session file has no launch metadata — cannot restore agent config",
           ),
-        };
-      }
-
-      const cwdResult = validateCwd(params.cwd, ctx.cwd);
-      if ("error" in cwdResult) {
-        return {
-          content: [{ type: "text", text: cwdResult.error }],
-          details: failedResult("resume", params.task, cwdResult.error),
         };
       }
 
@@ -147,6 +140,7 @@ export function createResumeTool(stuckTimeoutMs: number) {
         body: "",
       };
 
+      const config = loadSubagentConfig();
       const args = buildCliArgs(agent, params.task, sessionFile);
 
       const result = await launchPiChild(
@@ -167,7 +161,7 @@ export function createResumeTool(stuckTimeoutMs: number) {
                 details: r,
               })
           : undefined,
-        stuckTimeoutMs,
+        config.stuckTimeoutMs,
       );
 
       // Result always has the existing session file

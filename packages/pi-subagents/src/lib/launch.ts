@@ -229,7 +229,19 @@ export async function launchSubagent(
 
   if (agent.mode === "fork" && parentSessionFile) {
     forkFile = generateChildSessionFile();
-    seedForkSession(parentSessionFile, forkFile, agent, cwd);
+    try {
+      seedForkSession(parentSessionFile, forkFile, agent, cwd);
+    } catch (err) {
+      console.warn(
+        `[pi-subagents] agent "${agent.name}" failed to seed fork session, falling back to clean: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      try {
+        rmSync(forkFile, { force: true });
+      } catch {
+        // Best-effort cleanup
+      }
+      forkFile = undefined;
+    }
   } else if (agent.mode === "fork" && !parentSessionFile) {
     console.warn(
       `[pi-subagents] agent "${agent.name}" has mode=fork but parent has no session file. Falling back to clean.`,
@@ -247,7 +259,7 @@ export async function launchSubagent(
       onUpdate,
       stuckTimeoutMs,
     );
-    if (forkFile) {
+    if (forkFile && !agent.noSession) {
       result.sessionFile = forkFile;
     }
     return result;

@@ -56,10 +56,7 @@ export function generateChildSessionFile(sessionDir?: string): string {
   const dir = sessionDir ?? join(agentSessionRoot(), "pi-subagents");
   mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
-  const id = [
-    Math.random().toString(16).slice(2, 10),
-    Math.random().toString(16).slice(2, 6),
-  ].join("-");
+  const id = randomUUID();
   return join(dir, `${ts}_${id}.jsonl`);
 }
 
@@ -143,15 +140,11 @@ export function appendModelStateEntries(
     return;
   }
 
-  const slash = agent.model.indexOf("/");
-  if (slash === -1) {
-    return;
-  }
-
   let parentId = getLastEntryId(path);
 
-  // model_change
-  {
+  const slash = agent.model.indexOf("/");
+  if (slash !== -1) {
+    // model_change
     const entry = {
       type: "model_change",
       id: randomUUID().replace(/-/g, "").slice(0, 8),
@@ -253,7 +246,7 @@ export function readLaunchMetadata(
         continue;
       }
       const data = entry.data as Partial<PersistedLaunchMetadata> | undefined;
-      if (!data || data.version !== 1) {
+      if (!data || data.version !== 1 || !Array.isArray(data.tools)) {
         continue;
       }
       return data as PersistedLaunchMetadata;

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSubagentTool } from "../src/subagent-tool.js";
+import { makeCtx } from "./helpers.js";
 
 // ===========================================================================
 // createSubagentTool — extended tests (non-duplicate of launch.test.ts)
@@ -10,15 +11,6 @@ import { createSubagentTool } from "../src/subagent-tool.js";
 
 describe("createSubagentTool — extended", () => {
   let tmpDir: string;
-
-  function makeCtx(cwd: string) {
-    return {
-      cwd,
-      sessionManager: { getSessionFile: () => undefined },
-    } as unknown as Parameters<
-      ReturnType<typeof createSubagentTool>["execute"]
-    >[4];
-  }
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
