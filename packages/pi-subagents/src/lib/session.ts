@@ -91,23 +91,35 @@ export function seedForkSession(
   // Open parent session via Pi SDK
   const parentManager = SessionManager.open(parentSessionFile, undefined, cwd);
   const leafId = parentManager.getLeafId();
+  const parentVersion =
+    parentManager.getHeader()?.version ?? CURRENT_SESSION_VERSION;
 
   if (!leafId) {
     // Empty parent session — write header-only child file
-    writeHeaderOnlySessionFile(childSessionFile, cwd, parentSessionFile);
+    writeHeaderOnlySessionFile(
+      childSessionFile,
+      cwd,
+      parentSessionFile,
+      parentVersion,
+    );
     return;
   }
 
   const branch = parentManager.getBranch(leafId);
   if (branch.length === 0) {
-    writeHeaderOnlySessionFile(childSessionFile, cwd, parentSessionFile);
+    writeHeaderOnlySessionFile(
+      childSessionFile,
+      cwd,
+      parentSessionFile,
+      parentVersion,
+    );
     return;
   }
 
   // Write session file: new header + parent branch entries
   const header: Record<string, unknown> = {
     type: "session",
-    version: 3,
+    version: parentVersion,
     id: randomUUID(),
     timestamp: new Date().toISOString(),
     cwd,
@@ -117,10 +129,12 @@ export function seedForkSession(
   const lines = [header, ...branch].map((entry) => JSON.stringify(entry));
   writeFileSync(childSessionFile, `${lines.join("\n")}\n`, "utf8");
 
-  // Append state + metadata entries
-  appendModelStateEntries(childSessionFile, agent);
-  appendLaunchMetadataEntry(childSessionFile, agent, cwd);
-  appendBoundaryEntry(childSessionFile, agent.name);
+  // Append state + metadata entries, threading parentId so each helper
+  // avoids re-parsing the session file via getLastEntryId.
+  let lastId = getLastEntryId(childSessionFile);
+  lastId = appendModelStateEntries(childSessionFile, agent, lastId);
+  lastId = appendLaunchMetadataEntry(childSessionFile, agent, cwd, lastId);
+  appendBoundaryEntry(childSessionFile, agent.name, lastId);
 }
 
 // =============================================================================
@@ -178,33 +192,39 @@ export function appendLaunchMetadataEntry(
   path: string,
   agent: AgentConfig,
   cwd: string,
-): void {
+  parentId?: string | null,
+): string | null {
   if (!existsSync(path)) {
-    return;
+    return parentId ?? null;
   }
 
-  const parentId = getLastEntryId(path);
+  const resolvedId = parentId ?? getLastEntryId(path);
   const entry = {
     type: "custom",
     customType: LAUNCH_METADATA_CUSTOM_TYPE,
     data: agentToMetadata(agent, cwd),
     id: randomUUID().replace(/-/g, "").slice(0, 8),
-    parentId,
+    parentId: resolvedId,
     timestamp: new Date().toISOString(),
   };
   appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+  return entry.id;
 }
 
 /**
  * Append a boundary marker (custom_message) that tells the child LLM
  * where parent context ends and the child's task begins.
  */
-export function appendBoundaryEntry(path: string, name: string): void {
+export function appendBoundaryEntry(
+  path: string,
+  name: string,
+  parentId?: string | null,
+): string | null {
   if (!existsSync(path)) {
-    return;
+    return parentId ?? null;
   }
 
-  const parentId = getLastEntryId(path);
+  const resolvedId = parentId ?? getLastEntryId(path);
   const entry = {
     type: "custom_message",
     customType: "subagent_boundary",
@@ -214,10 +234,11 @@ export function appendBoundaryEntry(path: string, name: string): void {
     display: false,
     details: { name },
     id: randomUUID().replace(/-/g, "").slice(0, 8),
-    parentId,
+    parentId: resolvedId,
     timestamp: new Date().toISOString(),
   };
   appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+  return entry.id;
 }
 
 // =============================================================================
@@ -265,11 +286,12 @@ function writeHeaderOnlySessionFile(
   path: string,
   cwd: string,
   parentSessionFile?: string,
+  version = CURRENT_SESSION_VERSION,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   const header: Record<string, unknown> = {
     type: "session",
-    version: 3,
+    version,
     id: randomUUID(),
     timestamp: new Date().toISOString(),
     cwd,

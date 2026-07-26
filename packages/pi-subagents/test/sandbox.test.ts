@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { unlinkSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { wrapWithBubblewrap } from "../src/lib/sandbox.js";
 import { bwAvailable } from "./helpers.js";
@@ -35,11 +36,28 @@ describe("wrapWithBubblewrap", () => {
 // ---------------------------------------------------------------------------
 
 describe("sandbox integration", () => {
-  it.runIf(bwAvailable)("'bw -- true' exits 0", () => {
-    const result = spawnSync("bw", ["--", "true"], {
-      stdio: "pipe",
-      timeout: 5000,
-    });
-    expect(result.status).toBe(0);
-  });
+  it.runIf(bwAvailable)(
+    "/tmp inside sandbox is isolated from host /tmp",
+    () => {
+      // Create a sentinel file on the host's /tmp
+      const sentinel = `bw-sandbox-test-${Date.now()}`;
+      const hostPath = `/tmp/${sentinel}`;
+      writeFileSync(hostPath, "sentinel");
+
+      try {
+        // Inside the sandbox /tmp is a fresh tmpfs — sentinel must not exist
+        const result = spawnSync("bw", ["--", "cat", hostPath], {
+          stdio: "pipe",
+          timeout: 5000,
+        });
+        expect(result.status).not.toBe(0);
+      } finally {
+        try {
+          unlinkSync(hostPath);
+        } catch {
+          /* best-effort */
+        }
+      }
+    },
+  );
 });
