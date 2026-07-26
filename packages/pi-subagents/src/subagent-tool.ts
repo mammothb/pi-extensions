@@ -71,12 +71,9 @@ async function executeSingle(
     };
   }
 
-  const result = await launchSubagent(
-    agent,
-    taskDesc,
-    cwdResult.cwd,
+  const result = await launchSubagent(agent, taskDesc, cwdResult.cwd, {
     signal,
-    onUpdate
+    onUpdate: onUpdate
       ? (r) =>
           onUpdate({
             content: [{ type: "text", text: r.output || "(running...)" }],
@@ -85,7 +82,7 @@ async function executeSingle(
       : undefined,
     stuckTimeoutMs,
     parentSessionFile,
-  );
+  });
 
   if (result.exitCode !== 0) {
     return {
@@ -150,12 +147,9 @@ async function executeParallel(
           return r;
         }
 
-        const r = await launchSubagent(
-          agent,
-          taskDesc,
-          resolvedCwd,
-          childSignal,
-          onUpdate
+        const r = await launchSubagent(agent, taskDesc, resolvedCwd, {
+          signal: childSignal,
+          onUpdate: onUpdate
             ? (sr) =>
                 onUpdate({
                   content: [
@@ -169,7 +163,7 @@ async function executeParallel(
             : undefined,
           stuckTimeoutMs,
           parentSessionFile,
-        );
+        });
         settled.set(index, r);
         return r;
       },

@@ -872,11 +872,7 @@ describe("launchChild", () => {
         forkAgent,
         "fork task",
         process.cwd(),
-        undefined,
-        undefined,
-        0,
-        parentFile,
-        stubLaunch,
+        { parentSessionFile: parentFile, launchFn: stubLaunch },
       );
 
       // Fork file was created and seeded
@@ -960,11 +956,7 @@ describe("launchChild", () => {
         ephemeralAgent,
         "ephemeral task",
         process.cwd(),
-        undefined,
-        undefined,
-        0,
-        parentFile,
-        stubLaunch,
+        { parentSessionFile: parentFile, launchFn: stubLaunch },
       );
 
       // Fork file was seeded before launch
@@ -1020,11 +1012,7 @@ describe("launchChild", () => {
       forkAgent,
       "clean task",
       process.cwd(),
-      undefined,
-      undefined,
-      0,
-      undefined, // no parent session file
-      stubLaunch,
+      { launchFn: stubLaunch },
     );
 
     // Launch still proceeds, no --session in args
@@ -1077,11 +1065,7 @@ describe("launchChild", () => {
         forkAgent,
         "fallback task",
         process.cwd(),
-        undefined,
-        undefined,
-        0,
-        nonexistentParent, // no parent file → seed fails
-        stubLaunch,
+        { parentSessionFile: nonexistentParent, launchFn: stubLaunch },
       );
 
       // Seed creates header-only child from empty parent → forkFile set, launch proceeds
@@ -1134,16 +1118,10 @@ describe("launchChild", () => {
 
     try {
       await expect(
-        launchSubagent(
-          ephemeralAgent,
-          "ephemeral task",
-          process.cwd(),
-          undefined,
-          undefined,
-          0,
-          parentFile,
-          stubLaunch,
-        ),
+        launchSubagent(ephemeralAgent, "ephemeral task", process.cwd(), {
+          parentSessionFile: parentFile,
+          launchFn: stubLaunch,
+        }),
       ).rejects.toThrow("simulated launch failure");
 
       // finally block in launchSubagent cleaned up fork file despite error

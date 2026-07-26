@@ -174,9 +174,15 @@ function addRepeated(
   }
 }
 
-/** Convert unknown to string, using fallback for null/undefined. */
+/** Convert unknown to string, using fallback for null/undefined and objects. */
 function str(val: unknown, fallback: string): string {
-  return val != null ? String(val) : fallback;
+  if (val == null) {
+    return fallback;
+  }
+  if (typeof val === "object") {
+    return fallback;
+  }
+  return String(val);
 }
 
 /** Build a one-line preview of the first search result for collapsed display. */

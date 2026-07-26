@@ -29,8 +29,16 @@ function normalizeYamlValues(
       console.warn(
         `parseFrontmatter: skipping key "${key}" in ${filename} — nested values not supported`,
       );
-    } else {
+    } else if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
       frontmatter[key] = String(value);
+    } else {
+      console.warn(
+        `parseFrontmatter: skipping key "${key}" in ${filename} — unsupported type ${typeof value}`,
+      );
     }
   }
   return frontmatter;

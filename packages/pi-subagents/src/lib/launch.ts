@@ -206,6 +206,67 @@ export function parseJsonlStream(
 // Launch integration
 // =============================================================================
 
+/** Options for {@link launchSubagent}. */
+export interface LaunchSubagentOptions {
+  signal?: AbortSignal;
+  onUpdate?: (result: SubagentResult) => void;
+  stuckTimeoutMs?: number;
+  parentSessionFile?: string;
+  launchFn?: LaunchChildFn;
+}
+
+/**
+ * Prepare a fork session file if agent.mode is "fork" and a parent session
+ * is available. Returns the fork file path or undefined if fork could not
+ * be set up (missing parent, seed failure, or mode != fork).
+ */
+function setupForkSession(
+  agent: AgentConfig,
+  cwd: string,
+  parentSessionFile: string | undefined,
+): string | undefined {
+  if (agent.mode !== "fork") {
+    return undefined;
+  }
+
+  if (!parentSessionFile) {
+    console.warn(
+      `[pi-subagents] agent "${agent.name}" has mode=fork but parent has no session file. Falling back to clean.`,
+    );
+    return undefined;
+  }
+
+  const forkFile = generateChildSessionFile();
+  try {
+    seedForkSession(parentSessionFile, forkFile, agent, cwd);
+    return forkFile;
+  } catch (err) {
+    console.warn(
+      `[pi-subagents] agent "${agent.name}" failed to seed fork session, falling back to clean: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    try {
+      rmSync(forkFile, { force: true });
+    } catch {
+      // Best-effort cleanup
+    }
+    return undefined;
+  }
+}
+
+/** Clean up fork file when noSession is true (file not preserved for resume). */
+function cleanupForkFile(
+  forkFile: string | undefined,
+  noSession: boolean,
+): void {
+  if (forkFile && noSession) {
+    try {
+      rmSync(forkFile, { force: true });
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+}
+
 /**
  * Launch a child pi subagent, parse its JSONL output, and return the result.
  *
@@ -220,35 +281,17 @@ export async function launchSubagent(
   agent: AgentConfig,
   task: string,
   cwd: string,
-  signal: AbortSignal | undefined,
-  onUpdate: ((result: SubagentResult) => void) | undefined,
-  stuckTimeoutMs: number,
-  parentSessionFile?: string,
-  launchFn: LaunchChildFn = launchPiChild,
+  opts: LaunchSubagentOptions = {},
 ): Promise<SubagentResult> {
-  let forkFile: string | undefined;
+  const {
+    signal,
+    onUpdate,
+    stuckTimeoutMs = 0,
+    parentSessionFile,
+    launchFn = launchPiChild,
+  } = opts;
 
-  if (agent.mode === "fork" && parentSessionFile) {
-    forkFile = generateChildSessionFile();
-    try {
-      seedForkSession(parentSessionFile, forkFile, agent, cwd);
-    } catch (err) {
-      console.warn(
-        `[pi-subagents] agent "${agent.name}" failed to seed fork session, falling back to clean: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      try {
-        rmSync(forkFile, { force: true });
-      } catch {
-        // Best-effort cleanup
-      }
-      forkFile = undefined;
-    }
-  } else if (agent.mode === "fork" && !parentSessionFile) {
-    console.warn(
-      `[pi-subagents] agent "${agent.name}" has mode=fork but parent has no session file. Falling back to clean.`,
-    );
-  }
-
+  const forkFile = setupForkSession(agent, cwd, parentSessionFile);
   const args = buildCliArgs(agent, task, forkFile);
   try {
     const result = await launchFn(
@@ -265,13 +308,7 @@ export async function launchSubagent(
     }
     return result;
   } finally {
-    if (forkFile && agent.noSession) {
-      try {
-        rmSync(forkFile, { force: true });
-      } catch {
-        // Best-effort cleanup
-      }
-    }
+    cleanupForkFile(forkFile, agent.noSession);
   }
 }
 

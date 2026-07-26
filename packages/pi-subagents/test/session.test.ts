@@ -139,12 +139,18 @@ describe("seedForkSession", () => {
     const lines = content.trim().split("\n").filter(Boolean);
 
     // First line is header with new UUID
-    const header = JSON.parse(lines[0]!);
+    const firstLine = lines[0];
+    if (!firstLine) {
+      throw new Error("expected first line");
+    }
+    const header = JSON.parse(firstLine);
     expect(header.type).toBe("session");
     expect(header.version).toBe(3);
-    expect(header.id).not.toBe(
-      JSON.parse(readFileSync(parent, "utf8").split("\n")[0]!).id,
-    );
+    const parentFirstLine = readFileSync(parent, "utf8").split("\n")[0];
+    if (!parentFirstLine) {
+      throw new Error("expected parent first line");
+    }
+    expect(header.id).not.toBe(JSON.parse(parentFirstLine).id);
     expect(header.parentSession).toBe(parent);
     expect(header.cwd).toBe("/tmp/test-project");
   });
@@ -183,9 +189,10 @@ describe("seedForkSession", () => {
       const e = JSON.parse(l);
       return e.customType === "subagent_boundary";
     });
-    expect(boundaryLine).toBeDefined();
-
-    const boundary = JSON.parse(boundaryLine!);
+    if (!boundaryLine) {
+      throw new Error("expected boundary line");
+    }
+    const boundary = JSON.parse(boundaryLine);
     expect(boundary.type).toBe("custom_message");
     expect(boundary.display).toBe(false);
     expect(boundary.content).toContain("Background context");
@@ -237,7 +244,11 @@ describe("seedForkSession", () => {
     const lines = content.trim().split("\n").filter(Boolean);
     // Just header (no message entries)
     expect(lines.length).toBeGreaterThanOrEqual(1);
-    const header = JSON.parse(lines[0]!);
+    const firstLine = lines[0];
+    if (!firstLine) {
+      throw new Error("expected first line");
+    }
+    const header = JSON.parse(firstLine);
     expect(header.type).toBe("session");
     expect(header.parentSession).toBe(parent);
   });
@@ -278,7 +289,11 @@ describe("appendBoundaryEntry", () => {
     const lines = content.trim().split("\n");
     expect(lines.length).toBe(2);
 
-    const boundary = JSON.parse(lines[1]!);
+    const secondLine = lines[1];
+    if (!secondLine) {
+      throw new Error("expected second line");
+    }
+    const boundary = JSON.parse(secondLine);
     expect(boundary.type).toBe("custom_message");
     expect(boundary.customType).toBe("subagent_boundary");
     expect(boundary.display).toBe(false);
@@ -436,7 +451,11 @@ describe("launch metadata round-trip", () => {
     const parentId = (() => {
       const content = readFileSync(path, "utf8");
       const entries = content.trim().split("\n").filter(Boolean);
-      return JSON.parse(entries[0]!).id;
+      const firstEntry = entries[0];
+      if (!firstEntry) {
+        throw new Error("expected first entry");
+      }
+      return JSON.parse(firstEntry).id;
     })();
     appendFileSync(
       path,

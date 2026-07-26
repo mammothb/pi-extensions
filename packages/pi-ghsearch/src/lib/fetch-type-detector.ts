@@ -25,6 +25,16 @@ function tryFile(obj: Record<string, unknown>): Result | null {
   return null;
 }
 
+function safeStr(val: unknown, fallback = "?"): string {
+  if (typeof val === "string") {
+    return val;
+  }
+  if (val == null) {
+    return fallback;
+  }
+  return String(val);
+}
+
 function tryCommit(obj: Record<string, unknown>): Result | null {
   if (
     typeof obj.sha !== "string" ||
@@ -35,12 +45,12 @@ function tryCommit(obj: Record<string, unknown>): Result | null {
   }
   const commitObj = obj.commit as Record<string, unknown>;
   const shortSha = obj.sha.slice(0, 7);
-  const msg = String(commitObj.message ?? "").split("\n")[0] ?? "";
-  const author = String(
+  const msg = safeStr(commitObj.message, "").split("\n")[0] ?? "";
+  const authorRaw =
     (obj.author as Record<string, unknown> | undefined)?.login ??
-      (commitObj.author as Record<string, unknown> | undefined)?.name ??
-      "?",
-  );
+    (commitObj.author as Record<string, unknown> | undefined)?.name ??
+    "?";
+  const author = safeStr(authorRaw);
   return {
     type: "commit",
     summary: `[commit] ${shortSha} "${msg}" — by ${author}`,
@@ -62,7 +72,7 @@ function tryPR(obj: Record<string, unknown>): Result | null {
   } else if (obj.merged) {
     draft = "merged";
   } else {
-    draft = obj.state as string;
+    draft = obj.state;
   }
   return {
     type: "pr",
@@ -98,8 +108,8 @@ function tryRepo(obj: Record<string, unknown>): Result | null {
   const fullName = obj.full_name ?? obj.fullName;
   const stars = obj.stargazers_count ?? obj.stargazersCount ?? 0;
   const forks = obj.forks_count ?? obj.forksCount ?? 0;
-  const lang = String(obj.language ?? "none");
-  const desc = obj.description ? ` — ${String(obj.description)}` : "";
+  const lang = safeStr(obj.language, "none");
+  const desc = obj.description ? ` — ${safeStr(obj.description)}` : "";
   return {
     type: "repo",
     summary: `[repo] ${fullName}${desc} — stars: ${stars}, forks: ${forks}, lang: ${lang}`,

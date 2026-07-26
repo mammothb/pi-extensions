@@ -62,6 +62,7 @@ function handleSearchMode(
   sessionFile: string,
   lineageEntryIds: Set<string> | undefined,
   continuationPrompt: string | undefined,
+  scopePrefix: string,
 ): RecallPipelineOutput {
   const { rendered, rawMessages } = loadAllMessages(
     sessionFile,
@@ -125,5 +126,6 @@ export function runRecallPipeline(
     sessionFile,
     lineageEntryIds,
     continuationPrompt,
+    scopePrefix,
   );
 }

@@ -149,12 +149,13 @@ export function seedForkSession(
 export function appendModelStateEntries(
   path: string,
   agent: AgentConfig,
-): void {
+  parentId?: string | null,
+): string | null {
   if (!existsSync(path) || !agent.model) {
-    return;
+    return parentId ?? null;
   }
 
-  let parentId = getLastEntryId(path);
+  let resolvedId = parentId ?? getLastEntryId(path);
 
   const slash = agent.model.indexOf("/");
   if (slash !== -1) {
@@ -162,13 +163,13 @@ export function appendModelStateEntries(
     const entry = {
       type: "model_change",
       id: randomUUID().replace(/-/g, "").slice(0, 8),
-      parentId,
+      parentId: resolvedId,
       timestamp: new Date().toISOString(),
       provider: agent.model.slice(0, slash),
       modelId: agent.model.slice(slash + 1),
     };
     appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
-    parentId = entry.id;
+    resolvedId = entry.id;
   }
 
   // thinking_level_change
@@ -176,12 +177,15 @@ export function appendModelStateEntries(
     const entry = {
       type: "thinking_level_change",
       id: randomUUID().replace(/-/g, "").slice(0, 8),
-      parentId,
+      parentId: resolvedId,
       timestamp: new Date().toISOString(),
       thinkingLevel: agent.thinking,
     };
     appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+    resolvedId = entry.id;
   }
+
+  return resolvedId;
 }
 
 /**
