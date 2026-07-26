@@ -84,8 +84,8 @@ export function countLines(s: string): number {
     return 0;
   }
   let count = 1;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === "\n") {
+  for (const ch of s) {
+    if (ch === "\n") {
       count++;
     }
   }
@@ -363,17 +363,18 @@ export function renderCollapsedResult(
   const firstLine = output.split("\n")[0] ?? "";
   const totalLines = countLines(output);
 
+  const truncatedFirstLine =
+    firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+  const firstLineDisplay = isError
+    ? theme.fg("error", truncatedFirstLine)
+    : theme.fg("text", truncatedFirstLine);
+
   const collapsedLine =
     statusIcon +
     theme.fg("accent", `${agentLabel}`) +
     statsLine(details, theme) +
     theme.fg("muted", "  ") +
-    (isError
-      ? theme.fg(
-          "error",
-          firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine,
-        )
-      : theme.fg("text", firstLine));
+    firstLineDisplay;
 
   const needsHint = totalLines > PREVIEW_LINES || isError;
 
