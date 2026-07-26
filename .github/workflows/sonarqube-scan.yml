@@ -29,10 +29,9 @@ jobs:
         with:
           components: clippy
       - name: Scan - SonarQube
-        uses: mammothb/sonarqube-ce@39827150889a3745a10903710f29791c8c7f6ebb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: mammothb/sonarqube-ce@37c672334240bb99abd703293c4e7b239c959a76
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           sonar-source-path: "."
           sonar-project-name: "pi-extensions"
           generate-pr-comment: true
