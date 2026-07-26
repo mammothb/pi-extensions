@@ -43,3 +43,18 @@ export interface SubagentConfig {
   tiers: Record<string, string>;
   stuckTimeoutMs: number;
 }
+
+/**
+ * Signature of the child-launch callback used by {@link launchSubagent}.
+ * Tests inject a stub here to verify fork-seeding + cleanup logic without
+ * spawning a real pi process.
+ */
+export type LaunchChildFn = (
+  piArgs: string[],
+  agent: AgentConfig,
+  task: string,
+  cwd: string,
+  signal: AbortSignal | undefined,
+  onUpdate: ((result: SubagentResult) => void) | undefined,
+  stuckTimeoutMs: number,
+) => Promise<SubagentResult>;

@@ -5,7 +5,7 @@ import type { Readable } from "node:stream";
 import type { Message } from "@earendil-works/pi-ai";
 import { wrapWithBubblewrap } from "./sandbox.js";
 import { generateChildSessionFile, seedForkSession } from "./session.js";
-import type { AgentConfig, SubagentResult } from "./types.js";
+import type { AgentConfig, LaunchChildFn, SubagentResult } from "./types.js";
 
 /**
  * Determine how to invoke the `pi` binary.
@@ -224,6 +224,7 @@ export async function launchSubagent(
   onUpdate: ((result: SubagentResult) => void) | undefined,
   stuckTimeoutMs: number,
   parentSessionFile?: string,
+  launchFn: LaunchChildFn = launchPiChild,
 ): Promise<SubagentResult> {
   let forkFile: string | undefined;
 
@@ -250,7 +251,7 @@ export async function launchSubagent(
 
   const args = buildCliArgs(agent, task, forkFile);
   try {
-    const result = await launchPiChild(
+    const result = await launchFn(
       args,
       agent,
       task,
