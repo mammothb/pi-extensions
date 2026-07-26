@@ -1,4 +1,5 @@
 ---
+"@mammothb/pi-memory": patch
 "@mammothb/pi-subagents": minor
 ---
 

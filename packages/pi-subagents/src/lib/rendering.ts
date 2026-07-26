@@ -397,12 +397,13 @@ export function renderCollapsedResult(
 }
 
 /**
- * Build the "running" state line for a subagent result.
+ * Build the "running" state for a subagent result.
+ * Shows live tool calls from child process messages as they stream in.
  */
 export function renderRunningState(
   details: SubagentResult | undefined,
   theme: Theme,
-): Text {
+): Component {
   if (!details) {
     return new Text(theme.fg("muted", "running..."), 0, 0);
   }
@@ -410,12 +411,43 @@ export function renderRunningState(
     details.agent !== "parallel"
       ? details.agent
       : `${details.results?.length ?? 0} agents`;
-  return new Text(
-    theme.fg("muted", "⏳ ") +
-      theme.fg("accent", agentLabel) +
-      statsLine(details, theme) +
-      theme.fg("muted", " (running...)"),
-    0,
-    0,
+
+  const items = getDisplayItemsFromMessages(details.messages);
+  const box = new Box(0, 0);
+
+  // Header: agent + stats + running indicator
+  box.addChild(
+    new Text(
+      theme.fg("muted", "⏳ ") +
+        theme.fg("accent", agentLabel) +
+        statsLine(details, theme) +
+        theme.fg("muted", " (running...)"),
+      0,
+      0,
+    ),
   );
+
+  // Show recent tool calls (last 5)
+  const recentItems = items.slice(-5);
+  for (const item of recentItems) {
+    box.addChild(
+      new Text(
+        theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme),
+        0,
+        0,
+      ),
+    );
+  }
+
+  // If output is available, show first line
+  if (details.output) {
+    const firstLine = details.output.split("\n")[0] ?? "";
+    const preview =
+      firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
+    if (preview) {
+      box.addChild(new Text(theme.fg("text", preview), 0, 0));
+    }
+  }
+
+  return box;
 }

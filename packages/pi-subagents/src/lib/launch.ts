@@ -624,6 +624,6 @@ export function buildCliArgs(
     args.push("--tools", agent.tools.join(","));
   }
 
-  args.push("--", task);
+  args.push(task);
   return args;
 }
