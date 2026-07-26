@@ -308,6 +308,27 @@ export function stripMessagesForPersistence(
     .filter((msg) => msg.content.length > 0);
 }
 
+/** Add per-agent breakdown lines for parallel mode results. */
+function renderParallelBreakdown(
+  box: Box,
+  results: SubagentResult[],
+  theme: Theme,
+): void {
+  box.addChild(new Text("", 0, 0)); // spacer
+  for (const r of results) {
+    const rIcon =
+      r.exitCode !== 0 || r.error
+        ? theme.fg("error", "  ✗ ")
+        : theme.fg("success", "  ✓ ");
+    box.addChild(
+      new Text(rIcon + theme.fg("accent", r.agent) + statsLine(r, theme), 0, 0),
+    );
+    if (r.error) {
+      box.addChild(new Text(theme.fg("error", `    ${r.error}`), 0, 0));
+    }
+  }
+}
+
 // ── Shared renderers ────────────────────────────────────────────────────────
 
 /**
@@ -366,23 +387,7 @@ export function renderExpandedResult(
 
   // Per-agent breakdown for parallel mode
   if (details.results && details.results.length > 0) {
-    box.addChild(new Text("", 0, 0)); // spacer
-    for (const r of details.results) {
-      const rIcon =
-        r.exitCode !== 0 || r.error
-          ? theme.fg("error", "  ✗ ")
-          : theme.fg("success", "  ✓ ");
-      box.addChild(
-        new Text(
-          rIcon + theme.fg("accent", r.agent) + statsLine(r, theme),
-          0,
-          0,
-        ),
-      );
-      if (r.error) {
-        box.addChild(new Text(theme.fg("error", `    ${r.error}`), 0, 0));
-      }
-    }
+    renderParallelBreakdown(box, details.results, theme);
   }
 
   // Stats footer
