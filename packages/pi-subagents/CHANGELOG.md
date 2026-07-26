@@ -1,5 +1,11 @@
 # @mammothb/pi-subagents
 
+## 0.4.0
+
+### Minor Changes
+
+- 91a99a5: TUI: render individual tool calls in expanded subagent results. Child process messages are now preserved in SubagentResult.messages and formatted as styled tool call lines (read/edit/write/bash/eval/gh_search/gh_fetch/WebFetch/WebSearch + fallback for unknown tools) between the header and output body.
+
 ## 0.3.0
 
 ### Minor Changes
