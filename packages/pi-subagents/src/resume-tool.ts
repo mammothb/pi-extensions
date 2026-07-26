@@ -4,10 +4,17 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
   ExtensionContext,
+  ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { loadSubagentConfig } from "./lib/config.js";
 import { buildCliArgs, launchPiChild } from "./lib/launch.js";
+import {
+  renderCollapsedResult,
+  renderExpandedResult,
+  renderRunningState,
+} from "./lib/rendering.js";
 import { generateChildSessionFile, readLaunchMetadata } from "./lib/session.js";
 import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { AgentConfig, SubagentResult } from "./lib/types.js";
@@ -37,7 +44,25 @@ function validateSession(
   return { session: resolved };
 }
 
-export function createResumeTool() {
+const ResumeParamsSchema = Type.Object({
+  session: Type.String({
+    description:
+      "Path to the child's session file (from SubagentResult.sessionFile)",
+  }),
+  task: Type.String({
+    description: "Follow-up instruction for the resumed agent",
+  }),
+  cwd: Type.Optional(
+    Type.String({
+      description: "Working directory for the agent process",
+    }),
+  ),
+});
+
+export function createResumeTool(): ToolDefinition<
+  typeof ResumeParamsSchema,
+  SubagentResult
+> {
   return {
     name: "subagent_resume",
     label: "Subagent Resume",
@@ -45,20 +70,7 @@ export function createResumeTool() {
       "Resume a previously-launched subagent from its persistent session file. " +
       "Restores the original agent's model, tools, and thinking configuration. " +
       "Use after killing a stuck child or for follow-up work on the same context.",
-    parameters: Type.Object({
-      session: Type.String({
-        description:
-          "Path to the child's session file (from SubagentResult.sessionFile)",
-      }),
-      task: Type.String({
-        description: "Follow-up instruction for the resumed agent",
-      }),
-      cwd: Type.Optional(
-        Type.String({
-          description: "Working directory for the agent process",
-        }),
-      ),
-    }),
+    parameters: ResumeParamsSchema,
 
     async execute(
       _toolCallId: string,
@@ -188,6 +200,49 @@ export function createResumeTool() {
         ],
         details: result,
       };
+    },
+
+    // ── TUI Rendering ──────────────────────────────────────────────────
+
+    renderCall(args, theme, _context) {
+      const argsRecord = args as { session: string; task: string };
+      const sessionBasename =
+        argsRecord.session?.split("/").pop()?.split("\\").pop() ??
+        argsRecord.session ??
+        "?";
+      return new Text(
+        theme.fg("toolTitle", theme.bold("resume")) +
+          theme.fg("muted", " · ") +
+          theme.fg("text", sessionBasename),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, options, theme, context) {
+      const details = result.details as SubagentResult | undefined;
+
+      // Running state
+      if (options.isPartial && !context.isError) {
+        return renderRunningState(details, theme);
+      }
+
+      if (!details) {
+        const text = result.content[0];
+        return new Text(
+          text?.type === "text" ? text.text : "(no output)",
+          0,
+          0,
+        );
+      }
+
+      // Expanded view
+      if (options.expanded) {
+        return renderExpandedResult(details, theme);
+      }
+
+      // Collapsed view
+      return renderCollapsedResult(details, theme);
     },
   };
 }

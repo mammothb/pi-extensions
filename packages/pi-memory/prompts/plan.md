@@ -3,7 +3,7 @@ description: Break attached proposal into verifiable implementation phases
 argument-hint: "[feature-name]"
 ---
 Break the proposal into verifiable implementation phases so I can manually verify after each phase to ensure implementation correctness.
-Write to PLAN-${1:-<feature>}.md for me to review.
+Write to PLAN-${1:-<feature>}.md. Do NOT start implementing. Stop for me to review.
 
 Each phase must include:
 - **Title:** Phase <number>: <description>
