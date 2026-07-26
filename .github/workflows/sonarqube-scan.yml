@@ -39,4 +39,4 @@ jobs:
           reports-scopes: '["overall", "new"]'
           reports-retention-days: "7"
           pre-scan-script: cargo clippy --workspace --message-format=json > clippy-report.json
-          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json -Dsonar.issue.ignore.multicriteria=s6606 -Dsonar.issue.ignore.multicriteria.s6606.ruleKey=typescript:S6606 -Dsonar.issue.ignore.multicriteria.s6606.resourceKey=**/*"
+          sonar-options: "-Dsonar.exclusions=node_modules/**,target/**,coverage/**,**/*.lock,**/dist/** -Dsonar.rust.clippy.reportPaths=clippy-report.json -Dsonar.issue.ignore.multicriteria=s6606,testHotspots -Dsonar.issue.ignore.multicriteria.s6606.ruleKey=typescript:S6606 -Dsonar.issue.ignore.multicriteria.s6606.resourceKey=**/* -Dsonar.issue.ignore.multicriteria.testHotspots.ruleKey=typescript:S2245,typescript:S5443 -Dsonar.issue.ignore.multicriteria.testHotspots.resourceKey=**/test/**"
