@@ -29,11 +29,11 @@ jobs:
         with:
           components: clippy
       - name: Scan - SonarQube
-        uses: ./.github/actions/scanwise
+        uses: mammothb/sonarqube-ce@37c672334240bb99abd703293c4e7b239c959a76
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           sonar-source-path: "."
           sonar-project-name: "pi-extensions"
-          sonar-project-key: "pi-extensions"
           generate-pr-comment: true
           new-code-n-days: "3d"
           reports-scopes: '["overall", "new"]'
