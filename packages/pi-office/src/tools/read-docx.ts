@@ -27,14 +27,16 @@ function buildPreview(
   truncated: boolean,
   warningCount: number,
 ): string {
-  const preview = truncatePreview(markdown);
+  const preview = truncatePreview(markdown, maxChars);
   const lines = [
     `# Read DOCX: ${fileName}`,
     "",
     "## Metadata",
     `- Characters: ${chars}`,
     ...(warningCount > 0 ? [`- Warnings: ${warningCount}`] : []),
-    ...(truncated ? ["- Preview truncated to 2000 characters"] : []),
+    ...(truncated
+      ? [`- Preview truncated to ${maxChars ?? 2000} characters`]
+      : []),
     "",
     "## Preview",
     "",
