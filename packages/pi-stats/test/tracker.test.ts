@@ -143,7 +143,7 @@ describe("StatsTracker — error resilience", () => {
     cleanLog();
     const tracker = new StatsTracker(TEST_LOG);
     tracker.recordExtension("ext-a", "tool"); // no session arg
-    tracker.recordExtension("ext-a", "tool", undefined);
+    tracker.recordExtension("ext-a", "tool");
     expect(tracker.getStats().extensions).toEqual({ "ext-a": 2 });
   });
 });

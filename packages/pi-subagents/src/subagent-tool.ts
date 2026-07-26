@@ -1,40 +1,18 @@
-import { resolve, sep } from "node:path";
 import type {
   AgentToolResult,
   AgentToolUpdateCallback,
+  ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { discoverAgents } from "./lib/agents.js";
 import { mapWithConcurrencyLimit } from "./lib/concurrency.js";
 import { loadSubagentConfig } from "./lib/config.js";
 import { launchSubagent } from "./lib/launch.js";
+import { failedResult, validateCwd } from "./lib/tool-helpers.js";
 import type { SubagentResult } from "./lib/types.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENT = 4;
-
-function failedResult(
-  agent: string,
-  task: string,
-  output: string,
-): SubagentResult {
-  return {
-    agent,
-    task,
-    output,
-    exitCode: 1,
-    elapsed: 0,
-    tokens: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      total: 0,
-      turns: 0,
-    },
-    error: output,
-  };
-}
 
 function summaryText(results: SubagentResult[]): string {
   const succeeded = results.filter((r) => r.exitCode === 0 && !r.error).length;
@@ -42,39 +20,14 @@ function summaryText(results: SubagentResult[]): string {
   return `Parallel: ${succeeded}/${total} succeeded.`;
 }
 
-/**
- * Validate that the requested cwd (if any) is within the project directory.
- * Returns the resolved cwd if valid, or undefined with an error message.
- */
-function validateCwd(
-  cwdParam: string | undefined,
-  ctxCwd: string,
-): { cwd: string } | { error: string } {
-  const resolvedCwd = cwdParam ? resolve(cwdParam) : ctxCwd;
-  if (!cwdParam) {
-    return { cwd: resolvedCwd };
-  }
-
-  const resolvedCtxCwd = resolve(ctxCwd);
-  if (
-    resolvedCwd !== resolvedCtxCwd &&
-    !resolvedCwd.startsWith(resolvedCtxCwd + sep)
-  ) {
-    return {
-      error: `cwd "${cwdParam}" is outside the project directory "${ctxCwd}"`,
-    };
-  }
-
-  return { cwd: resolvedCwd };
-}
-
 async function executeSingle(
   params: { agent?: string; task?: string; cwd?: string },
   signal: AbortSignal | undefined,
   onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-  ctx: { cwd: string },
+  ctx: ExtensionContext,
   agents: ReturnType<typeof discoverAgents>,
   stuckTimeoutMs: number,
+  parentSessionFile: string | undefined,
 ): Promise<AgentToolResult<SubagentResult>> {
   const agentName = params.agent ?? "";
   const taskDesc = params.task ?? "";
@@ -118,12 +71,9 @@ async function executeSingle(
     };
   }
 
-  const result = await launchSubagent(
-    agent,
-    taskDesc,
-    cwdResult.cwd,
+  const result = await launchSubagent(agent, taskDesc, cwdResult.cwd, {
     signal,
-    onUpdate
+    onUpdate: onUpdate
       ? (r) =>
           onUpdate({
             content: [{ type: "text", text: r.output || "(running...)" }],
@@ -131,7 +81,8 @@ async function executeSingle(
           })
       : undefined,
     stuckTimeoutMs,
-  );
+    parentSessionFile,
+  });
 
   if (result.exitCode !== 0) {
     return {
@@ -155,9 +106,10 @@ async function executeParallel(
   params: { tasks?: Array<{ agent: string; task: string }>; cwd?: string },
   signal: AbortSignal | undefined,
   onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-  ctx: { cwd: string },
+  ctx: ExtensionContext,
   agents: ReturnType<typeof discoverAgents>,
   stuckTimeoutMs: number,
+  parentSessionFile: string | undefined,
 ): Promise<AgentToolResult<SubagentResult>> {
   const tasks = params.tasks;
   if (!tasks || tasks.length === 0) {
@@ -195,12 +147,9 @@ async function executeParallel(
           return r;
         }
 
-        const r = await launchSubagent(
-          agent,
-          taskDesc,
-          resolvedCwd,
-          childSignal,
-          onUpdate
+        const r = await launchSubagent(agent, taskDesc, resolvedCwd, {
+          signal: childSignal,
+          onUpdate: onUpdate
             ? (sr) =>
                 onUpdate({
                   content: [
@@ -213,7 +162,8 @@ async function executeParallel(
                 })
             : undefined,
           stuckTimeoutMs,
-        );
+          parentSessionFile,
+        });
         settled.set(index, r);
         return r;
       },
@@ -300,10 +250,12 @@ export function createSubagentTool() {
       },
       signal: AbortSignal | undefined,
       onUpdate: AgentToolUpdateCallback<SubagentResult> | undefined,
-      ctx: { cwd: string },
+      ctx: ExtensionContext,
     ): Promise<AgentToolResult<SubagentResult>> {
       const agents = discoverAgents(ctx.cwd);
       const config = loadSubagentConfig();
+      const parentSessionFile =
+        ctx.sessionManager?.getSessionFile() ?? undefined;
 
       const hasSingle = params.agent !== undefined || params.task !== undefined;
       const hasParallel = params.tasks !== undefined;
@@ -348,6 +300,7 @@ export function createSubagentTool() {
           ctx,
           agents,
           config.stuckTimeoutMs,
+          parentSessionFile,
         );
       }
 
@@ -358,6 +311,7 @@ export function createSubagentTool() {
         ctx,
         agents,
         config.stuckTimeoutMs,
+        parentSessionFile,
       );
     },
   };

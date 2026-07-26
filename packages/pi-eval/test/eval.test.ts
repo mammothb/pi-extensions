@@ -1,10 +1,18 @@
 // Direct test of pi-eval/src/eval.ts
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { createEvalTool } from "../src/eval.js";
 import {
   EvalBinaryNotFoundError,
@@ -18,6 +26,26 @@ import { hasPython3, mockContext, text } from "./_helpers.js";
 
 const tool = createEvalTool();
 const cwd = process.cwd();
+
+// ── file-level temp isolation ──────────────────────────────────────────────
+// Route TMPDIR to a private directory so no test in this file competes with
+// other processes (parallel CI jobs, vitest workspace projects) for /tmp.
+const _savedTmpdir = process.env.TMPDIR;
+let _isoTmpDir: string;
+
+beforeAll(() => {
+  _isoTmpDir = mkdtempSync(join(tmpdir(), "pi-eval-iso-"));
+  process.env.TMPDIR = _isoTmpDir;
+});
+
+afterAll(() => {
+  if (_savedTmpdir !== undefined) {
+    process.env.TMPDIR = _savedTmpdir;
+  } else {
+    delete process.env.TMPDIR;
+  }
+  rmSync(_isoTmpDir, { recursive: true, force: true });
+});
 
 function writeConfig(
   agentDir: string,
@@ -468,9 +496,9 @@ describe("eval — safety boundaries", () => {
   });
 
   it("temp file is cleaned up after call", async () => {
-    const before = (await readdir(tmpdir())).filter((f) =>
-      f.startsWith("pi-eval-"),
-    );
+    // File-level beforeAll sets TMPDIR to a private directory, so tmpdir()
+    // here is already isolated from system /tmp.
+    const before = (await readdir(tmpdir())).length;
     await tool.execute(
       "t13",
       { language: "javascript", code: 'console.log("cleanup");' },
@@ -478,16 +506,12 @@ describe("eval — safety boundaries", () => {
       undefined,
       mockContext(cwd),
     );
-    const after = (await readdir(tmpdir())).filter((f) =>
-      f.startsWith("pi-eval-"),
-    );
-    expect(after.length).toBeLessThanOrEqual(before.length);
+    const after = (await readdir(tmpdir())).length;
+    expect(after).toBeLessThanOrEqual(before);
   });
 
   it("temp file is cleaned up even on error", async () => {
-    const before = (await readdir(tmpdir())).filter((f) =>
-      f.startsWith("pi-eval-"),
-    ).length;
+    const before = (await readdir(tmpdir())).length;
 
     try {
       await tool.execute(
@@ -501,13 +525,7 @@ describe("eval — safety boundaries", () => {
       // expected
     }
 
-    // Small delay to let rm resolve
-    await new Promise((r) => setTimeout(r, 100));
-
-    const after = (await readdir(tmpdir())).filter((f) =>
-      f.startsWith("pi-eval-"),
-    ).length;
-
+    const after = (await readdir(tmpdir())).length;
     expect(after).toBeLessThanOrEqual(before);
   });
 });

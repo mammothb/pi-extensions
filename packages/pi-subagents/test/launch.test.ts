@@ -1,4 +1,11 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -7,11 +14,14 @@ import {
   buildCliArgs,
   getPiInvocation,
   launchChild,
+  launchSubagent,
   parseJsonlStream,
   spawnChild,
 } from "../src/lib/launch.js";
 import type { AgentConfig, SubagentResult } from "../src/lib/types.js";
+import { createResumeTool } from "../src/resume-tool.js";
 import { createSubagentTool } from "../src/subagent-tool.js";
+import { bwAvailable, makeCtx } from "./helpers.js";
 
 const nodeBin = process.execPath;
 
@@ -90,6 +100,53 @@ describe("buildCliArgs", () => {
     expect(args[0]).toBe("-p");
     expect(args[1]).toBe("--mode");
     expect(args[2]).toBe("json");
+  });
+
+  // -- Phase 1 (fork/resume): sessionFile parameter --
+
+  it("adds --session and omits --no-session when sessionFile is provided", () => {
+    const args = buildCliArgs(baseAgent, "do something", "/tmp/session.jsonl");
+    expect(args).toContain("--session");
+    const idx = args.indexOf("--session");
+    expect(args[idx + 1]).toBe("/tmp/session.jsonl");
+    expect(args).not.toContain("--no-session");
+  });
+
+  it("keeps --no-session when sessionFile is undefined and noSession is true", () => {
+    const args = buildCliArgs(baseAgent, "do something");
+    expect(args).toContain("--no-session");
+    expect(args).not.toContain("--session");
+  });
+
+  it("places --session before --model/--thinking/--tools", () => {
+    const agent = { ...baseAgent, tools: ["read"], thinking: "low" };
+    const args = buildCliArgs(agent, "task", "/tmp/s.jsonl");
+    const sessionIdx = args.indexOf("--session");
+    expect(sessionIdx).toBeGreaterThan(2); // after -p --mode json
+    expect(sessionIdx).toBeLessThan(args.indexOf("--model"));
+    expect(sessionIdx).toBeLessThan(args.indexOf("--thinking"));
+    expect(sessionIdx).toBeLessThan(args.indexOf("--tools"));
+  });
+
+  it("omits --no-session when noSession is false and no sessionFile", () => {
+    const agent = { ...baseAgent, noSession: false };
+    const args = buildCliArgs(agent, "task");
+    expect(args).not.toContain("--no-session");
+    expect(args).not.toContain("--session");
+  });
+
+  it("--session wins over noSession: false", () => {
+    const agent = { ...baseAgent, noSession: false };
+    const args = buildCliArgs(agent, "task", "/tmp/s.jsonl");
+    expect(args).toContain("--session");
+    expect(args).not.toContain("--no-session");
+  });
+
+  it("-- <task> remains last argument regardless of sessionFile", () => {
+    const task = "fix the bug";
+    const args = buildCliArgs(baseAgent, task, "/tmp/s.jsonl");
+    expect(args[args.length - 1]).toBe(task);
+    expect(args[args.length - 2]).toBe("--");
   });
 });
 
@@ -621,6 +678,459 @@ describe("launchChild", () => {
     expect(stuckWarnings).toHaveLength(0);
     expect(result.output).toBe("done");
   });
+
+  // -------------------------------------------------------------------------
+  // Sandbox tests
+  // -------------------------------------------------------------------------
+
+  it.runIf(bwAvailable)("sandbox: true wraps child in bubblewrap", async () => {
+    const script = jsonlScript(makeAssistantMessage("sandboxed hello"));
+    const sandboxedAgent: AgentConfig = {
+      ...agent,
+      sandbox: true,
+    };
+
+    const result = await launchChild({
+      command: nodeBin,
+      args: ["-e", script],
+      agent: sandboxedAgent,
+      task: "sandboxed task",
+      cwd: process.cwd(),
+      stuckTimeoutMs: 0,
+    });
+
+    expect(result.agent).toBe("test-agent");
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe("sandboxed hello");
+    expect(result.error).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Fork session lifecycle
+  // -------------------------------------------------------------------------
+
+  it("fork session: buildCliArgs includes --session when fork file provided", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+
+    // Create minimal parent session
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n`,
+      "utf8",
+    );
+
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const forkFile = gen(join(parentDir, "children"));
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+    seed(parentFile, forkFile, forkAgent, process.cwd());
+
+    expect(existsSync(forkFile)).toBe(true);
+
+    // buildCliArgs passes --session for fork file
+    const args = buildCliArgs(forkAgent, "fork task", forkFile);
+    expect(args).toContain("--session");
+    expect(args).toContain(forkFile);
+    expect(args).not.toContain("--no-session");
+
+    rmSync(parentDir, { recursive: true, force: true });
+  });
+
+  it("fork session: child can run with node and fork file exists", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const forkFile = gen(join(parentDir, "children"));
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: false,
+    };
+    seed(parentFile, forkFile, forkAgent, process.cwd());
+
+    // Fork file should exist and contain parent context + boundary
+    const content = readFileSync(forkFile, "utf8");
+    expect(content).toContain("parent context");
+    expect(content).toContain("subagent_boundary");
+    expect(content).toContain("pi-subagents_launch_metadata");
+
+    // The child can be launched separately — for this test we verify
+    // the fork file is valid (parseable JSONL) by reading it back
+    const lines = content.trim().split("\n").filter(Boolean);
+    for (const line of lines) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+
+    rmSync(parentDir, { recursive: true, force: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // launchSubagent — fork lifecycle integration
+  // -------------------------------------------------------------------------
+
+  it("fork + noSession=false → seeds fork session, assigns sessionFile to result", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: false,
+      thinking: "low",
+    };
+
+    let capturedSessionFile: string | undefined;
+
+    // Stub that records the sessionFile arg and returns a dummy result
+    const stubLaunch = async (
+      _args: string[],
+      _a: AgentConfig,
+      _task: string,
+      _cwd: string,
+      _signal: AbortSignal | undefined,
+      _onUpdate: any,
+      _timeout: number,
+    ): Promise<SubagentResult> => {
+      // Extract fork file path from the CLI args
+      const sessionIdx = _args.indexOf("--session");
+      if (sessionIdx !== -1) {
+        capturedSessionFile = _args[sessionIdx + 1];
+      }
+      return {
+        agent: forkAgent.name,
+        task: "fork task",
+        output: "stub output",
+        exitCode: 0,
+        elapsed: 10,
+        tokens: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+          turns: 0,
+        },
+      };
+    };
+
+    try {
+      const result = await launchSubagent(
+        forkAgent,
+        "fork task",
+        process.cwd(),
+        { parentSessionFile: parentFile, launchFn: stubLaunch },
+      );
+
+      // Fork file was created and seeded
+      expect(capturedSessionFile).toBeDefined();
+      expect(existsSync(capturedSessionFile!)).toBe(true);
+
+      // sessionFile assigned to result (noSession=false)
+      expect(result.sessionFile).toBe(capturedSessionFile);
+
+      // Fork file survived — ready for resume
+      expect(existsSync(result.sessionFile!)).toBe(true);
+    } finally {
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fork + noSession=true → cleans up fork file after launch", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "ephemeral context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const ephemeralAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+
+    let capturedSessionFile: string | undefined;
+
+    const stubLaunch = async (
+      _args: string[],
+      _a: AgentConfig,
+      _task: string,
+      _cwd: string,
+      _signal: AbortSignal | undefined,
+      _onUpdate: any,
+      _timeout: number,
+    ): Promise<SubagentResult> => {
+      const sessionIdx = _args.indexOf("--session");
+      if (sessionIdx !== -1) {
+        capturedSessionFile = _args[sessionIdx + 1];
+      }
+      return {
+        agent: ephemeralAgent.name,
+        task: "ephemeral task",
+        output: "stub output",
+        exitCode: 0,
+        elapsed: 10,
+        tokens: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+          turns: 0,
+        },
+      };
+    };
+
+    try {
+      const result = await launchSubagent(
+        ephemeralAgent,
+        "ephemeral task",
+        process.cwd(),
+        { parentSessionFile: parentFile, launchFn: stubLaunch },
+      );
+
+      // Fork file was seeded before launch
+      expect(capturedSessionFile).toBeDefined();
+
+      // sessionFile NOT assigned (noSession=true)
+      expect(result.sessionFile).toBeUndefined();
+
+      // Fork file cleaned up by finally block
+      expect(existsSync(capturedSessionFile!)).toBe(false);
+    } finally {
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fork without parentSessionFile → falls back to clean, no crash", async () => {
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+
+    let receivedArgs: string[] = [];
+
+    const stubLaunch = async (
+      args: string[],
+      _a: AgentConfig,
+      _task: string,
+      _cwd: string,
+      _signal: AbortSignal | undefined,
+      _onUpdate: any,
+      _timeout: number,
+    ): Promise<SubagentResult> => {
+      receivedArgs = args;
+      return {
+        agent: forkAgent.name,
+        task: "clean task",
+        output: "stub output",
+        exitCode: 0,
+        elapsed: 10,
+        tokens: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+          turns: 0,
+        },
+      };
+    };
+
+    const result = await launchSubagent(
+      forkAgent,
+      "clean task",
+      process.cwd(),
+      { launchFn: stubLaunch },
+    );
+
+    // Launch still proceeds, no --session in args
+    expect(receivedArgs).not.toContain("--session");
+    expect(result.sessionFile).toBeUndefined();
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("fork with nonexistent parent → creates header-only child, launches normally", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const nonexistentParent = join(parentDir, "does-not-exist.jsonl");
+
+    const forkAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+
+    let receivedArgs: string[] = [];
+
+    const stubLaunch = async (
+      args: string[],
+      _a: AgentConfig,
+      _task: string,
+      _cwd: string,
+      _signal: AbortSignal | undefined,
+      _onUpdate: any,
+      _timeout: number,
+    ): Promise<SubagentResult> => {
+      receivedArgs = args;
+      return {
+        agent: forkAgent.name,
+        task: "fallback task",
+        output: "stub output",
+        exitCode: 0,
+        elapsed: 10,
+        tokens: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+          turns: 0,
+        },
+      };
+    };
+
+    try {
+      const result = await launchSubagent(
+        forkAgent,
+        "fallback task",
+        process.cwd(),
+        { parentSessionFile: nonexistentParent, launchFn: stubLaunch },
+      );
+
+      // Seed creates header-only child from empty parent → forkFile set, launch proceeds
+      expect(receivedArgs).toContain("--session");
+      expect(result.sessionFile).toBeUndefined(); // noSession=true
+      expect(result.exitCode).toBe(0);
+    } finally {
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
+
+  it("launchSubagent throws when stub fails, still cleans up fork file (noSession)", async () => {
+    const parentDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+    const parentFile = join(parentDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: process.cwd(),
+      })}\n`,
+      "utf8",
+    );
+
+    const ephemeralAgent: AgentConfig = {
+      ...agent,
+      mode: "fork",
+      noSession: true,
+    };
+
+    let capturedSessionFile: string | undefined;
+
+    const stubLaunch = async (
+      args: string[],
+      _a: AgentConfig,
+      _task: string,
+      _cwd: string,
+      _signal: AbortSignal | undefined,
+      _onUpdate: any,
+      _timeout: number,
+    ): Promise<SubagentResult> => {
+      const sessionIdx = args.indexOf("--session");
+      if (sessionIdx !== -1) {
+        capturedSessionFile = args[sessionIdx + 1];
+      }
+      throw new Error("simulated launch failure");
+    };
+
+    try {
+      await expect(
+        launchSubagent(ephemeralAgent, "ephemeral task", process.cwd(), {
+          parentSessionFile: parentFile,
+          launchFn: stubLaunch,
+        }),
+      ).rejects.toThrow("simulated launch failure");
+
+      // finally block in launchSubagent cleaned up fork file despite error
+      expect(capturedSessionFile).toBeDefined();
+      expect(existsSync(capturedSessionFile!)).toBe(false);
+    } finally {
+      rmSync(parentDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // =============================================================================
@@ -662,7 +1172,7 @@ describe("createSubagentTool", () => {
       { agent: "nonexistent-agent", task: "do something" },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     expect(
@@ -680,7 +1190,7 @@ describe("createSubagentTool", () => {
       { agent: "foo", task: "bar", tasks: [] },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
@@ -689,9 +1199,13 @@ describe("createSubagentTool", () => {
 
   it("returns error when neither agent nor tasks are provided", async () => {
     const tool = createSubagentTool();
-    const result = await tool.execute("tc-1", {}, undefined, undefined, {
-      cwd: tmpDir,
-    });
+    const result = await tool.execute(
+      "tc-1",
+      {},
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
     ).toContain("Provide either");
@@ -709,7 +1223,7 @@ describe("createSubagentTool", () => {
       },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     const details = result.details;
@@ -733,7 +1247,7 @@ describe("createSubagentTool", () => {
       { tasks: [] },
       undefined,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
     expect(
       (result.content[0] as { type: "text"; text: string }).text,
@@ -755,7 +1269,7 @@ describe("createSubagentTool", () => {
       },
       controller.signal,
       undefined,
-      { cwd: tmpDir },
+      makeCtx(tmpDir),
     );
 
     const details = result.details;
@@ -772,4 +1286,132 @@ describe("createSubagentTool", () => {
       "Parallel: 0/2 succeeded.",
     );
   });
+});
+
+// =============================================================================
+// createResumeTool
+// =============================================================================
+
+describe("createResumeTool", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("registers as tool named 'subagent_resume'", () => {
+    const tool = createResumeTool();
+    expect(tool.name).toBe("subagent_resume");
+    expect(tool.label).toBe("Subagent Resume");
+    expect(typeof tool.description).toBe("string");
+    expect(tool.description.length).toBeGreaterThan(0);
+  });
+
+  it("schema has session (required), task (required), cwd (optional)", () => {
+    const tool = createResumeTool();
+    const props = (tool.parameters as { properties: Record<string, unknown> })
+      .properties;
+    expect(props.session).toBeDefined();
+    expect(props.task).toBeDefined();
+    // cwd is optional — TypeBox Optional marks it differently
+  });
+
+  it("returns error when session file does not exist", async () => {
+    const tool = createResumeTool();
+    const result = await tool.execute(
+      "tc-1",
+      {
+        session: join(tmpDir, "nonexistent.jsonl"),
+        task: "continue work",
+      },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("not found");
+  });
+
+  it("returns error when session has no launch metadata", async () => {
+    // Create a session file without launch metadata
+    const sessionFile = join(tmpDir, "old-session.jsonl");
+    writeFileSync(
+      sessionFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: tmpDir,
+      })}\n`,
+      "utf8",
+    );
+
+    const tool = createResumeTool();
+    const result = await tool.execute(
+      "tc-1",
+      { session: sessionFile, task: "continue work" },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("launch metadata");
+  });
+
+  it("returns error when cwd is outside project directory", async () => {
+    // Create a parent session with actual content so fork produces metadata
+    const { seedForkSession: seed, generateChildSessionFile: gen } =
+      await import("../src/lib/session.js");
+    const parentFile = join(tmpDir, "parent.jsonl");
+    writeFileSync(
+      parentFile,
+      `${JSON.stringify({
+        type: "session",
+        version: 3,
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        timestamp: new Date().toISOString(),
+        cwd: tmpDir,
+      })}\n${JSON.stringify({
+        type: "message",
+        id: "msg00001",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "parent context" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    const sessionFile = gen(tmpDir);
+    seed(parentFile, sessionFile, baseAgent, tmpDir);
+
+    const tool = createResumeTool();
+    const result = await tool.execute(
+      "tc-1",
+      {
+        session: sessionFile,
+        task: "continue work",
+        cwd: "/outside/project",
+      },
+      undefined,
+      undefined,
+      makeCtx(tmpDir),
+    );
+
+    expect(
+      (result.content[0] as { type: "text"; text: string }).text,
+    ).toContain("outside the project directory");
+  });
+
+  it.todo("session with metadata triggers launch (requires pi runtime)");
 });

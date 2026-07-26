@@ -1,9 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Readable } from "node:stream";
 import type { Message } from "@earendil-works/pi-ai";
-import type { AgentConfig, SubagentResult } from "./types.js";
+import { wrapWithBubblewrap } from "./sandbox.js";
+import { generateChildSessionFile, seedForkSession } from "./session.js";
+import type { AgentConfig, LaunchChildFn, SubagentResult } from "./types.js";
 
 /**
  * Determine how to invoke the `pi` binary.
@@ -204,30 +206,110 @@ export function parseJsonlStream(
 // Launch integration
 // =============================================================================
 
+/** Options for {@link launchSubagent}. */
+export interface LaunchSubagentOptions {
+  signal?: AbortSignal;
+  onUpdate?: (result: SubagentResult) => void;
+  stuckTimeoutMs?: number;
+  parentSessionFile?: string;
+  launchFn?: LaunchChildFn;
+}
+
+/**
+ * Prepare a fork session file if agent.mode is "fork" and a parent session
+ * is available. Returns the fork file path or undefined if fork could not
+ * be set up (missing parent, seed failure, or mode != fork).
+ */
+function setupForkSession(
+  agent: AgentConfig,
+  cwd: string,
+  parentSessionFile: string | undefined,
+): string | undefined {
+  if (agent.mode !== "fork") {
+    return undefined;
+  }
+
+  if (!parentSessionFile) {
+    console.warn(
+      `[pi-subagents] agent "${agent.name}" has mode=fork but parent has no session file. Falling back to clean.`,
+    );
+    return undefined;
+  }
+
+  const forkFile = generateChildSessionFile();
+  try {
+    seedForkSession(parentSessionFile, forkFile, agent, cwd);
+    return forkFile;
+  } catch (err) {
+    console.warn(
+      `[pi-subagents] agent "${agent.name}" failed to seed fork session, falling back to clean: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    try {
+      rmSync(forkFile, { force: true });
+    } catch {
+      // Best-effort cleanup
+    }
+    return undefined;
+  }
+}
+
+/** Clean up fork file when noSession is true (file not preserved for resume). */
+function cleanupForkFile(
+  forkFile: string | undefined,
+  noSession: boolean,
+): void {
+  if (forkFile && noSession) {
+    try {
+      rmSync(forkFile, { force: true });
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+}
+
 /**
  * Launch a child pi subagent, parse its JSONL output, and return the result.
  *
  * Builds CLI args from agent config, resolves pi invocation, then delegates
  * to launchChild for process management.
+ *
+ * When agent.mode is "fork" and parentSessionFile is provided, a child
+ * session file is seeded with the parent's transcript before launch.
+ * The child session is cleaned up after exit unless noSession is false.
  */
 export async function launchSubagent(
   agent: AgentConfig,
   task: string,
   cwd: string,
-  signal: AbortSignal | undefined,
-  onUpdate: ((result: SubagentResult) => void) | undefined,
-  stuckTimeoutMs: number,
+  opts: LaunchSubagentOptions = {},
 ): Promise<SubagentResult> {
-  const args = buildCliArgs(agent, task);
-  return launchPiChild(
-    args,
-    agent,
-    task,
-    cwd,
+  const {
     signal,
     onUpdate,
-    stuckTimeoutMs,
-  );
+    stuckTimeoutMs = 0,
+    parentSessionFile,
+    launchFn = launchPiChild,
+  } = opts;
+
+  const forkFile = setupForkSession(agent, cwd, parentSessionFile);
+  const args = buildCliArgs(agent, task, forkFile);
+  try {
+    const result = await launchFn(
+      args,
+      agent,
+      task,
+      cwd,
+      signal,
+      onUpdate,
+      stuckTimeoutMs,
+    );
+    if (forkFile && !agent.noSession) {
+      result.sessionFile = forkFile;
+    }
+    return result;
+  } finally {
+    cleanupForkFile(forkFile, agent.noSession);
+  }
 }
 
 /**
@@ -378,7 +460,17 @@ export async function launchChild(opts: {
   const { command, args, agent, task, cwd, signal, onUpdate, stuckTimeoutMs } =
     opts;
   const startedAt = Date.now();
-  const proc = spawnChild(command, args, cwd);
+
+  // Wrap in bubblewrap sandbox when agent requests isolation
+  let resolvedCmd = command;
+  let resolvedArgs = args;
+  if (opts.agent.sandbox) {
+    const wrapped = wrapWithBubblewrap(resolvedCmd, resolvedArgs);
+    resolvedCmd = wrapped.command;
+    resolvedArgs = wrapped.args;
+  }
+
+  const proc = spawnChild(resolvedCmd, resolvedArgs, cwd);
 
   let stderr = "";
   proc.stderr?.on("data", (data: Buffer) => {
@@ -499,11 +591,21 @@ export async function launchChild(opts: {
 /**
  * Build CLI arguments for a child `pi -p` invocation from an agent config.
  * Returns an array suitable for `spawn("pi", args)`.
+ *
+ * When `sessionFile` is provided (fork or resume), `--session <path>` is
+ * added and `--no-session` is omitted regardless of `agent.noSession`.
+ * The session file flag appears early so Pi's CLI parser sees it first.
  */
-export function buildCliArgs(agent: AgentConfig, task: string): string[] {
+export function buildCliArgs(
+  agent: AgentConfig,
+  task: string,
+  sessionFile?: string,
+): string[] {
   const args = ["-p", "--mode", "json"];
 
-  if (agent.noSession) {
+  if (sessionFile) {
+    args.push("--session", sessionFile);
+  } else if (agent.noSession) {
     args.push("--no-session");
   }
 
