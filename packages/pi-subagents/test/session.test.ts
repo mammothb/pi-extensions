@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  appendFileSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -437,7 +438,7 @@ describe("launch metadata round-trip", () => {
       const entries = content.trim().split("\n").filter(Boolean);
       return JSON.parse(entries[0]!).id;
     })();
-    writeFileSync(
+    appendFileSync(
       path,
       `${JSON.stringify({
         type: "custom",

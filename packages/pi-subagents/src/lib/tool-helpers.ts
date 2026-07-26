@@ -28,7 +28,7 @@ export function validateCwd(
   cwdParam: string | undefined,
   ctxCwd: string,
 ): { cwd: string } | { error: string } {
-  const resolvedCwd = cwdParam ? resolve(cwdParam) : ctxCwd;
+  const resolvedCwd = cwdParam ? resolve(ctxCwd, cwdParam) : ctxCwd;
   if (!cwdParam) {
     return { cwd: resolvedCwd };
   }
