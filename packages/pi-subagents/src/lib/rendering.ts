@@ -331,6 +331,24 @@ function renderParallelBreakdown(
 
 // ── Shared renderers ────────────────────────────────────────────────────────
 
+function resolveAgentLabel(details: SubagentResult): string {
+  if (details.agent !== "parallel") {
+    return details.agent;
+  }
+  return `${details.results?.length ?? 0} agents`;
+}
+
+function resolveStatus(
+  details: SubagentResult,
+  theme: Theme,
+): { isError: boolean; statusIcon: string } {
+  const isError = details.exitCode !== 0 || !!details.error;
+  const statusIcon = isError
+    ? theme.fg("error", "✗ ")
+    : theme.fg("success", "✓ ");
+  return { isError, statusIcon };
+}
+
 /**
  * Build the expanded result view for a subagent result.
  * Used by both `subagent` and `subagent_resume` tools.
@@ -339,14 +357,8 @@ export function renderExpandedResult(
   details: SubagentResult,
   theme: Theme,
 ): Box {
-  const isError = details.exitCode !== 0 || !!details.error;
-  const statusIcon = isError
-    ? theme.fg("error", "✗ ")
-    : theme.fg("success", "✓ ");
-  const agentLabel =
-    details.agent !== "parallel"
-      ? details.agent
-      : `${details.results?.length ?? 0} agents`;
+  const { isError, statusIcon } = resolveStatus(details, theme);
+  const agentLabel = resolveAgentLabel(details);
   const output = details.output || "(no output)";
 
   const box = new Box(0, 0);
