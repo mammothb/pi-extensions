@@ -373,6 +373,7 @@ function createOnUpdateWrapper(
       elapsed: Date.now() - startedAt,
       tokens: { ...cumulative.usage },
       model: cumulative.model,
+      messages: cumulative.messages,
     });
   };
 }
@@ -568,6 +569,7 @@ export async function launchChild(opts: {
       elapsed,
       tokens: cumulative.usage,
       model: cumulative.model,
+      messages: cumulative.messages,
       error: "Subagent was aborted",
     };
   }
@@ -580,6 +582,7 @@ export async function launchChild(opts: {
     elapsed,
     tokens: cumulative.usage,
     model: cumulative.model,
+    messages: cumulative.messages,
     error: buildSubagentError(exitCode, stderr, cumulative, spawnError),
   };
 }

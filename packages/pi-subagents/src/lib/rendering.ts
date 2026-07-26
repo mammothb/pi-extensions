@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import type { Message } from "@earendil-works/pi-ai";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { Box, Text } from "@earendil-works/pi-tui";
@@ -92,6 +94,169 @@ export function countLines(s: string): number {
 
 // ── Shared renderers ────────────────────────────────────────────────────────
 
+// ── Display item extraction ─────────────────────────────────────────────────
+
+interface DisplayItem {
+  type: "toolCall";
+  name: string;
+  args: Record<string, unknown>;
+}
+
+function shortenPath(p: string): string {
+  const home = homedir();
+  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+}
+
+/** Format a single tool call for TUI display in expanded results. */
+export function formatToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  theme: Theme,
+): string {
+  switch (name) {
+    case "bash": {
+      const command = (args.command as string) || "...";
+      const preview =
+        command.length > 60 ? `${command.slice(0, 60)}...` : command;
+      return theme.fg("muted", "$ ") + theme.fg("toolOutput", preview);
+    }
+    case "read": {
+      const rawPath = (args.file_path || args.path || "...") as string;
+      const filePath = shortenPath(rawPath);
+      const offset = args.offset as number | undefined;
+      const limit = args.limit as number | undefined;
+      let text = theme.fg("accent", filePath);
+      if (offset !== undefined || limit !== undefined) {
+        const startLine = offset ?? 1;
+        const endLine = limit !== undefined ? startLine + limit - 1 : "";
+        text += theme.fg(
+          "warning",
+          `:${startLine}${endLine ? `-${endLine}` : ""}`,
+        );
+      }
+      return theme.fg("muted", "read ") + text;
+    }
+    case "write": {
+      const rawPath = (args.file_path || args.path || "...") as string;
+      const filePath = shortenPath(rawPath);
+      const content = (args.content || "") as string;
+      const lines = content.split("\n").length;
+      let text = theme.fg("muted", "write ") + theme.fg("accent", filePath);
+      if (lines > 1) {
+        text += theme.fg("dim", ` (${lines} lines)`);
+      }
+      return text;
+    }
+    case "edit": {
+      const rawPath = (args.file_path || args.path || "...") as string;
+      return (
+        theme.fg("muted", "edit ") + theme.fg("accent", shortenPath(rawPath))
+      );
+    }
+    case "ls": {
+      const rawPath = (args.path || ".") as string;
+      return (
+        theme.fg("muted", "ls ") + theme.fg("accent", shortenPath(rawPath))
+      );
+    }
+    case "find": {
+      const pattern = (args.pattern || "*") as string;
+      const rawPath = (args.path || ".") as string;
+      return (
+        theme.fg("muted", "find ") +
+        theme.fg("accent", pattern) +
+        theme.fg("dim", ` in ${shortenPath(rawPath)}`)
+      );
+    }
+    case "grep": {
+      const pattern = (args.pattern || "") as string;
+      const rawPath = (args.path || ".") as string;
+      return (
+        theme.fg("muted", "grep ") +
+        theme.fg("accent", `/${pattern}/`) +
+        theme.fg("dim", ` in ${shortenPath(rawPath)}`)
+      );
+    }
+    case "eval": {
+      const lang = (args.language || "js") as string;
+      const code = (args.code || "") as string;
+      const firstLine = code.split("\n")[0] ?? "";
+      const preview =
+        firstLine.length > 50 ? `${firstLine.slice(0, 50)}...` : firstLine;
+      return (
+        theme.fg("muted", "eval ") +
+        theme.fg("accent", lang) +
+        (preview ? theme.fg("dim", ` "${preview}"`) : "")
+      );
+    }
+    case "gh_search": {
+      const scope = (args.scope || "") as string;
+      const query = (args.query || "") as string;
+      const preview = query.length > 50 ? `${query.slice(0, 50)}...` : query;
+      return (
+        theme.fg("muted", "gh_search ") +
+        theme.fg("accent", scope) +
+        (preview ? theme.fg("dim", ` "${preview}"`) : "")
+      );
+    }
+    case "gh_fetch": {
+      const url = (args.url || "") as string;
+      return (
+        theme.fg("muted", "gh_fetch ") + theme.fg("accent", shortenPath(url))
+      );
+    }
+    case "WebFetch": {
+      const url = (args.url || "") as string;
+      const preview = url.length > 60 ? `${url.slice(0, 60)}...` : url;
+      return theme.fg("muted", "WebFetch ") + theme.fg("accent", preview);
+    }
+    case "WebSearch": {
+      const query = (args.query || "") as string;
+      const preview = query.length > 50 ? `${query.slice(0, 50)}...` : query;
+      return (
+        theme.fg("muted", "WebSearch ") + theme.fg("accent", `"${preview}"`)
+      );
+    }
+    default: {
+      const argsStr = JSON.stringify(args);
+      const preview =
+        argsStr.length > 50 ? `${argsStr.slice(0, 50)}...` : argsStr;
+      return theme.fg("accent", name) + theme.fg("dim", ` ${preview}`);
+    }
+  }
+}
+
+/** Extract tool call display items from child process messages. */
+export function getDisplayItemsFromMessages(
+  messages: Message[] | undefined,
+): DisplayItem[] {
+  if (!messages) {
+    return [];
+  }
+  const items: DisplayItem[] = [];
+  for (const msg of messages) {
+    if (msg.role !== "assistant") {
+      continue;
+    }
+    for (const part of msg.content) {
+      if (
+        typeof part === "object" &&
+        "type" in part &&
+        part.type === "toolCall"
+      ) {
+        items.push({
+          type: "toolCall",
+          name: part.name,
+          args: part.arguments,
+        });
+      }
+    }
+  }
+  return items;
+}
+
+// ── Shared renderers ────────────────────────────────────────────────────────
+
 /**
  * Build the expanded result view for a subagent result.
  * Used by both `subagent` and `subagent_resume` tools.
@@ -120,6 +285,22 @@ export function renderExpandedResult(
       0,
     ),
   );
+
+  // Tool calls (from child process messages)
+  const displayItems = getDisplayItemsFromMessages(details.messages);
+  if (displayItems.length > 0) {
+    box.addChild(new Text(theme.fg("muted", "─── Tool calls ───"), 0, 0));
+    for (const item of displayItems) {
+      box.addChild(
+        new Text(
+          theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme),
+          0,
+          0,
+        ),
+      );
+    }
+    box.addChild(new Text("", 0, 0)); // spacer before output
+  }
 
   // Output body
   box.addChild(

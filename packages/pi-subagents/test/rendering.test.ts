@@ -1,9 +1,13 @@
+import { homedir } from "node:os";
+import type { Message } from "@earendil-works/pi-ai";
 import { Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import {
   countLines,
   formatDuration,
   formatTokens,
+  formatToolCall,
+  getDisplayItemsFromMessages,
   previewTask,
 } from "../src/lib/rendering.js";
 import type { SubagentResult } from "../src/lib/types.js";
@@ -14,9 +18,8 @@ import { createSubagentTool } from "../src/subagent-tool.js";
 
 /** Strip ANSI escape codes from a string. */
 function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
-  return s.replace(/\x1b\[[0-9;]*m/g, "");
+  return s.replace(/\x1b\[[0-9;]*m/g, ""); // NOSONAR
 }
 
 /** Render a component to plain text at given width, stripping ANSI. */
@@ -206,7 +209,251 @@ describe("countLines", () => {
   });
 });
 
-// ── renderCall ──────────────────────────────────────────────────────────────
+// ── formatToolCall ──────────────────────────────────────────────────────────
+
+describe("formatToolCall", () => {
+  it("formats bash with command preview", () => {
+    const result = formatToolCall(
+      "bash",
+      { command: "npm test -- --coverage" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("$");
+    expect(text).toContain("npm test -- --coverage");
+  });
+
+  it("formats bash with long command truncated", () => {
+    const result = formatToolCall(
+      "bash",
+      { command: "a".repeat(80) },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("...");
+    expect(text.length).toBeLessThan(80);
+  });
+
+  it("formats read with file path", () => {
+    const homeTestPath = `${homedir()}/src/auth.ts`;
+    const result = formatToolCall(
+      "read",
+      { file_path: homeTestPath },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("read");
+    expect(text).toContain("~/src/auth.ts");
+  });
+
+  it("formats read with offset and limit", () => {
+    const result = formatToolCall(
+      "read",
+      { file_path: "/tmp/foo.ts", offset: 42, limit: 10 },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain(":42-51");
+  });
+
+  it("formats write with line count", () => {
+    const result = formatToolCall(
+      "write",
+      { file_path: "/tmp/foo.ts", content: "a\nb\nc\nd" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("write");
+    expect(text).toContain("(4 lines)");
+  });
+
+  it("formats edit", () => {
+    const result = formatToolCall(
+      "edit",
+      { file_path: "/app/config.ts" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("edit");
+    expect(text).toContain("config.ts");
+  });
+
+  it("formats ls", () => {
+    const result = formatToolCall("ls", { path: "/app/src" }, mockTheme);
+    const text = stripAnsi(result);
+    expect(text).toContain("ls");
+    expect(text).toContain("/app/src");
+  });
+
+  it("formats find with pattern and path", () => {
+    const result = formatToolCall(
+      "find",
+      { pattern: "*.test.ts", path: "/app/src" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("find");
+    expect(text).toContain("*.test.ts");
+    expect(text).toContain("/app/src");
+  });
+
+  it("formats grep with pattern and path", () => {
+    const result = formatToolCall(
+      "grep",
+      { pattern: "TODO", path: "/app/src" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("grep");
+    expect(text).toContain("/TODO/");
+    expect(text).toContain("/app/src");
+  });
+
+  it("formats eval with language and code preview", () => {
+    const result = formatToolCall(
+      "eval",
+      { language: "python", code: "print('hello')" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("eval");
+    expect(text).toContain("python");
+    expect(text).toContain("print('hello')");
+  });
+
+  it("formats gh_search with scope and query", () => {
+    const result = formatToolCall(
+      "gh_search",
+      { scope: "code", query: "SubagentResult" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("gh_search");
+    expect(text).toContain("code");
+    expect(text).toContain("SubagentResult");
+  });
+
+  it("formats gh_fetch with url", () => {
+    const result = formatToolCall(
+      "gh_fetch",
+      { url: "https://github.com/foo/bar" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("gh_fetch");
+    expect(text).toContain("https://github.com/foo/bar");
+  });
+
+  it("formats WebFetch with url preview", () => {
+    const result = formatToolCall(
+      "WebFetch",
+      { url: "https://example.com/docs/api" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("WebFetch");
+    expect(text).toContain("https://example.com/docs/api");
+  });
+
+  it("formats WebSearch with query", () => {
+    const result = formatToolCall(
+      "WebSearch",
+      { query: "TypeScript type guards" },
+      mockTheme,
+    );
+    const text = stripAnsi(result);
+    expect(text).toContain("WebSearch");
+    expect(text).toContain("TypeScript type guards");
+  });
+
+  it("falls back to JSON for unknown tools", () => {
+    const result = formatToolCall("custom_tool", { key: "value" }, mockTheme);
+    const text = stripAnsi(result);
+    expect(text).toContain("custom_tool");
+    expect(text).toContain('"key":"value"');
+  });
+});
+
+// ── getDisplayItemsFromMessages ─────────────────────────────────────────────
+
+describe("getDisplayItemsFromMessages", () => {
+  it("returns empty array for undefined messages", () => {
+    expect(getDisplayItemsFromMessages(undefined)).toEqual([]);
+  });
+
+  it("returns empty array for empty messages", () => {
+    expect(getDisplayItemsFromMessages([])).toEqual([]);
+  });
+
+  it("extracts tool calls from assistant messages", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me check that file." },
+          {
+            type: "toolCall",
+            id: "call_1",
+            name: "read",
+            arguments: { file_path: "/tmp/foo.ts" },
+          },
+        ],
+      } as unknown as Message,
+      {
+        role: "toolResult",
+        toolCallId: "call_1",
+        toolName: "read",
+        content: [{ type: "text", text: "file contents..." }],
+        isError: false,
+      } as unknown as Message,
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call_2",
+            name: "edit",
+            arguments: { file_path: "/tmp/foo.ts" },
+          },
+        ],
+      } as unknown as Message,
+    ];
+    const items = getDisplayItemsFromMessages(messages);
+    expect(items).toHaveLength(2);
+    expect(items[0]?.name).toBe("read");
+    expect(items[0]?.args).toEqual({ file_path: "/tmp/foo.ts" });
+    expect(items[1]?.name).toBe("edit");
+  });
+
+  it("skips thinking content blocks", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "...", thinkingSignature: "sig" },
+        ],
+      } as unknown as Message,
+    ];
+    expect(getDisplayItemsFromMessages(messages)).toEqual([]);
+  });
+
+  it("skips non-assistant messages", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "do something",
+      } as unknown as Message,
+      {
+        role: "toolResult",
+        toolCallId: "call_1",
+        toolName: "bash",
+        content: [{ type: "text", text: "output" }],
+        isError: false,
+      } as unknown as Message,
+    ];
+    expect(getDisplayItemsFromMessages(messages)).toEqual([]);
+  });
+});
 
 describe("renderCall — subagent tool", () => {
   const tool = createSubagentTool();
@@ -467,8 +714,56 @@ describe("renderResult — subagent tool", () => {
     expect(text).toContain("to expand"); // expand hint present
   });
 
-  it("renders without details fallback", () => {
+  it("renders expanded view with tool calls from messages", () => {
     const result = {
+      content: [
+        {
+          type: "text" as const,
+          text: "Done.",
+        },
+      ],
+      details: makeResult({
+        output: "Done.",
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "call_1",
+                name: "read",
+                arguments: { file_path: "/tmp/foo.ts", offset: 10, limit: 5 },
+              },
+            ],
+          } as unknown as Message,
+          {
+            role: "toolResult",
+            toolCallId: "call_1",
+            toolName: "read",
+            content: [{ type: "text", text: "..." }],
+            isError: false,
+          } as unknown as Message,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Done." }],
+          } as unknown as Message,
+        ],
+      }),
+    };
+    const comp = tool.renderResult!(
+      result,
+      { expanded: true, isPartial: false },
+      mockTheme,
+      { isError: false } as any,
+    );
+    const text = renderPlain(comp);
+    expect(text).toContain("─── Tool calls ───");
+    expect(text).toContain("read");
+    expect(text).toContain("foo.ts");
+  });
+
+  it("renders without details fallback", () => {
+    const result: any = {
       content: [{ type: "text" as const, text: "Some raw output" }],
       details: undefined,
     };
@@ -483,7 +778,7 @@ describe("renderResult — subagent tool", () => {
   });
 
   it("renders running state without details", () => {
-    const result = {
+    const result: any = {
       content: [{ type: "text" as const, text: "" }],
       details: undefined,
     };
