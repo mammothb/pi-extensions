@@ -1,5 +1,11 @@
 # @mammothb/pi-subagents
 
+## 0.5.0
+
+### Minor Changes
+
+- 6f19e00: Fix pi-subagents to load subagent prompt. Update pi-subagents config path.
+
 ## 0.4.0
 
 ### Minor Changes
