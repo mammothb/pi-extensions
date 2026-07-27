@@ -1,6 +1,4 @@
-import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { readConfigFile } from "@mammothb/pi-shared";
+import { loadPiConfig } from "@mammothb/pi-shared";
 import type { SubagentConfig } from "./types.js";
 
 const DEFAULTS: SubagentConfig = {
@@ -29,36 +27,44 @@ function parseTiers(raw: unknown): Record<string, string> {
   return tiers;
 }
 
-function parseStuckTimeout(raw: unknown): number {
+function parseStuckTimeout(raw: unknown, fallback: number): number {
   if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
     return raw;
   }
   console.warn(
     `subagents: "stuckTimeoutMs" must be a non-negative finite number, got ${raw} — using default`,
   );
-  return DEFAULTS.stuckTimeoutMs;
+  return fallback;
+}
+
+function mergeConfig(
+  base: SubagentConfig,
+  override: Record<string, unknown>,
+): SubagentConfig {
+  const merged = { ...base };
+
+  if (override.tiers !== undefined) {
+    const parsed = parseTiers(override.tiers);
+    // Merge at key level: project tiers add/override individual keys
+    merged.tiers = { ...base.tiers, ...parsed };
+  }
+  if (override.stuckTimeoutMs !== undefined) {
+    merged.stuckTimeoutMs = parseStuckTimeout(
+      override.stuckTimeoutMs,
+      base.stuckTimeoutMs,
+    );
+  }
+
+  return merged;
 }
 
 /**
- * Load subagent configuration from <agentDir>/subagents.json.
- * Returns defaults when the file is missing or malformed.
+ * Load subagent configuration from JSON files.
+ * Project config (`.pi/pi-subagents.json`) overrides global config
+ * (`~/.pi/agent/pi-subagents.json`).
  *
- * @param agentDir Override the agent directory path (for testing).
- *                 Defaults to `getAgentDir()` from pi-coding-agent.
+ * Returns the default config if no config files exist.
  */
-export function loadSubagentConfig(agentDir?: string): SubagentConfig {
-  const dir = agentDir ?? getAgentDir();
-  const path = join(dir, "subagents.json");
-  const raw = readConfigFile(path, "subagents");
-  if (!raw) {
-    return { ...DEFAULTS };
-  }
-
-  const tiers = raw.tiers !== undefined ? parseTiers(raw.tiers) : {};
-  const stuckTimeoutMs =
-    raw.stuckTimeoutMs !== undefined
-      ? parseStuckTimeout(raw.stuckTimeoutMs)
-      : DEFAULTS.stuckTimeoutMs;
-
-  return { tiers, stuckTimeoutMs };
+export function loadSubagentConfig(cwd: string): SubagentConfig {
+  return loadPiConfig("pi-subagents.json", cwd, { ...DEFAULTS }, mergeConfig);
 }

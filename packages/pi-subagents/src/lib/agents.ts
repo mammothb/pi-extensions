@@ -229,12 +229,8 @@ function collectAgentFiles(dir: string, agents: Map<string, string>): void {
  * @param cwd     Working directory (project root)
  * @param userDir Override the user agent directory (for testing)
  */
-export function discoverAgents(
-  cwd: string,
-  userDir?: string,
-  agentDir?: string,
-): AgentConfig[] {
-  const config = loadSubagentConfig(agentDir);
+export function discoverAgents(cwd: string, userDir?: string): AgentConfig[] {
+  const config = loadSubagentConfig(cwd);
   const files = discoverAgentFiles(cwd, userDir);
 
   // Use Map keyed by resolved AgentConfig.name for deduplication.

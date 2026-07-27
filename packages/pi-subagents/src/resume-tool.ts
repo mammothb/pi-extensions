@@ -151,7 +151,7 @@ export function createResumeTool(): ToolDefinition<
         body: "",
       };
 
-      const config = loadSubagentConfig();
+      const config = loadSubagentConfig(ctx.cwd);
       const args = buildCliArgs(agent, params.task, sessionFile);
 
       const result = await launchPiChild(

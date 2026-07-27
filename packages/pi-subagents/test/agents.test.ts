@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   discoverAgentFiles,
   discoverAgents,
@@ -114,132 +114,161 @@ describe("parseFrontmatter", () => {
 });
 
 describe("loadSubagentConfig", () => {
-  function tempDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
-    return dir;
+  let tmpDir: string;
+  let agentDir: string;
+  let projectDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(
+      tmpdir(),
+      `pi-subagents-config-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    agentDir = join(tmpDir, "agent");
+    projectDir = join(tmpDir, "project");
+    mkdirSync(agentDir, { recursive: true });
+    mkdirSync(join(projectDir, ".pi"), { recursive: true });
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+  });
+
+  afterEach(() => {
+    delete process.env.PI_CODING_AGENT_DIR;
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function writeGlobal(json: unknown): void {
+    writeFileSync(
+      join(agentDir, "pi-subagents.json"),
+      JSON.stringify(json),
+      "utf-8",
+    );
   }
 
-  function writeConfig(dir: string, json: unknown): void {
-    writeFileSync(join(dir, "subagents.json"), JSON.stringify(json), "utf-8");
+  function writeProject(json: unknown): void {
+    writeFileSync(
+      join(projectDir, ".pi", "pi-subagents.json"),
+      JSON.stringify(json),
+      "utf-8",
+    );
   }
 
   it("returns defaults when config file is missing", () => {
-    const dir = tempDir();
-    try {
-      const config = loadSubagentConfig(dir);
-      expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    const config = loadSubagentConfig(projectDir);
+    expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
   });
 
-  it("loads tiers from config", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, {
-        tiers: {
-          cheap: "google/gemini-2.5-flash",
-          expensive: "bedrock/us.anthropic.claude-sonnet-4-5",
-        },
-      });
-      const config = loadSubagentConfig(dir);
-      expect(config.tiers).toEqual({
+  it("loads tiers from global config", () => {
+    writeGlobal({
+      tiers: {
         cheap: "google/gemini-2.5-flash",
         expensive: "bedrock/us.anthropic.claude-sonnet-4-5",
-      });
-      expect(config.stuckTimeoutMs).toBe(60_000); // default preserved
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+      },
+    });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({
+      cheap: "google/gemini-2.5-flash",
+      expensive: "bedrock/us.anthropic.claude-sonnet-4-5",
+    });
+    expect(config.stuckTimeoutMs).toBe(60_000); // default preserved
   });
 
-  it("loads stuckTimeoutMs from config", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, { stuckTimeoutMs: 120_000 });
-      const config = loadSubagentConfig(dir);
-      expect(config.stuckTimeoutMs).toBe(120_000);
-      expect(config.tiers).toEqual({}); // default preserved
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+  it("loads stuckTimeoutMs from global config", () => {
+    writeGlobal({ stuckTimeoutMs: 120_000 });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(120_000);
+    expect(config.tiers).toEqual({}); // default preserved
   });
 
   it("returns defaults for malformed JSON", () => {
-    const dir = tempDir();
-    try {
-      writeFileSync(join(dir, "subagents.json"), "not json", "utf-8");
-      const config = loadSubagentConfig(dir);
-      expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeFileSync(join(agentDir, "pi-subagents.json"), "not json", "utf-8");
+    const config = loadSubagentConfig(projectDir);
+    expect(config).toEqual({ tiers: {}, stuckTimeoutMs: 60_000 });
   });
 
   it("loads both tiers and stuckTimeoutMs together", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, {
-        tiers: { cheap: "google/gemini-2.5-flash" },
-        stuckTimeoutMs: 90_000,
-      });
-      const config = loadSubagentConfig(dir);
-      expect(config).toEqual({
-        tiers: { cheap: "google/gemini-2.5-flash" },
-        stuckTimeoutMs: 90_000,
-      });
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeGlobal({
+      tiers: { cheap: "google/gemini-2.5-flash" },
+      stuckTimeoutMs: 90_000,
+    });
+    const config = loadSubagentConfig(projectDir);
+    expect(config).toEqual({
+      tiers: { cheap: "google/gemini-2.5-flash" },
+      stuckTimeoutMs: 90_000,
+    });
   });
 
   it("rejects tiers when it is an array", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, { tiers: ["bad"] });
-      const config = loadSubagentConfig(dir);
-      expect(config.tiers).toEqual({});
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeGlobal({ tiers: ["bad"] });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({});
   });
 
   it("rejects tiers when it is a string", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, { tiers: "not-an-object" });
-      const config = loadSubagentConfig(dir);
-      expect(config.tiers).toEqual({});
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeGlobal({ tiers: "not-an-object" });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({});
   });
 
   it("rejects stuckTimeoutMs when it is a string", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, { stuckTimeoutMs: "120000" });
-      const config = loadSubagentConfig(dir);
-      expect(config.stuckTimeoutMs).toBe(60_000);
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeGlobal({ stuckTimeoutMs: "120000" });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(60_000);
   });
 
   it("filters non-string tier values", () => {
-    const dir = tempDir();
-    try {
-      writeConfig(dir, {
-        tiers: {
-          cheap: "google/gemini-2.5-flash",
-          bad: 123,
-        },
-      });
-      const config = loadSubagentConfig(dir);
-      expect(config.tiers).toEqual({ cheap: "google/gemini-2.5-flash" });
-    } finally {
-      rmSync(dir, { recursive: true });
-    }
+    writeGlobal({
+      tiers: {
+        cheap: "google/gemini-2.5-flash",
+        bad: 123,
+      },
+    });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({ cheap: "google/gemini-2.5-flash" });
+  });
+
+  it("project config overrides global config", () => {
+    writeGlobal({ stuckTimeoutMs: 60_000 });
+    writeProject({ stuckTimeoutMs: 120_000 });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(120_000);
+  });
+
+  it("project tiers merge into global tiers", () => {
+    writeGlobal({ tiers: { cheap: "global-model" } });
+    writeProject({ tiers: { expensive: "project-model" } });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({
+      cheap: "global-model",
+      expensive: "project-model",
+    });
+  });
+
+  it("project override replaces a tier key", () => {
+    writeGlobal({ tiers: { cheap: "old-cheap" } });
+    writeProject({ tiers: { cheap: "new-cheap" } });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.tiers).toEqual({ cheap: "new-cheap" });
+  });
+
+  it("handles malformed project JSON gracefully (falls back)", () => {
+    writeGlobal({ stuckTimeoutMs: 90_000, tiers: { cheap: "gpt" } });
+    writeFileSync(join(projectDir, ".pi", "pi-subagents.json"), "{ not json }");
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(90_000);
+    expect(config.tiers).toEqual({ cheap: "gpt" });
+  });
+
+  it("preserves global stuckTimeoutMs when project override has wrong type", () => {
+    writeGlobal({ stuckTimeoutMs: 90_000 });
+    writeProject({ stuckTimeoutMs: "120000" }); // string, not number
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(90_000);
+  });
+
+  it("preserves global stuckTimeoutMs when project override is negative", () => {
+    writeGlobal({ stuckTimeoutMs: 90_000 });
+    writeProject({ stuckTimeoutMs: -1 });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(90_000);
   });
 });
 
@@ -500,10 +529,27 @@ describe("discoverAgents", () => {
     writeFileSync(join(dir, name), content, "utf-8");
   }
 
+  function writeConfig(dir: string, json: unknown): void {
+    writeFileSync(
+      join(dir, "pi-subagents.json"),
+      JSON.stringify(json),
+      "utf-8",
+    );
+  }
+
+  function setAgentDir(dir: string): void {
+    process.env.PI_CODING_AGENT_DIR = dir;
+  }
+
+  function clearAgentDir(): void {
+    delete process.env.PI_CODING_AGENT_DIR;
+  }
+
   it("parses valid agent files end-to-end", () => {
     const userDir = makeDir();
     const cwd = makeDir();
     try {
+      setAgentDir(userDir);
       writeFile(
         userDir,
         "researcher.md",
@@ -514,18 +560,14 @@ describe("discoverAgents", () => {
         "implementer.md",
         "---\nname: implementer\nmodel: expensive\ntools: read,edit,bash\nmode: fork\nsandbox: true\n---\nYou are an implementer.",
       );
-      writeFile(
-        userDir,
-        "subagents.json",
-        JSON.stringify({
-          tiers: {
-            cheap: "google/gemini-2.5-flash",
-            expensive: "bedrock/us.anthropic.claude-opus-4-8",
-          },
-        }),
-      );
+      writeConfig(userDir, {
+        tiers: {
+          cheap: "google/gemini-2.5-flash",
+          expensive: "bedrock/us.anthropic.claude-opus-4-8",
+        },
+      });
 
-      const agents = discoverAgents(cwd, userDir, userDir);
+      const agents = discoverAgents(cwd, userDir);
 
       expect(agents).toHaveLength(2);
       // Sorted alphabetically by name
@@ -545,6 +587,7 @@ describe("discoverAgents", () => {
       expect(agents[1]!.mode).toBe("clean");
       expect(agents[1]!.body).toBe("You are a researcher.");
     } finally {
+      clearAgentDir();
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
     }
@@ -554,9 +597,11 @@ describe("discoverAgents", () => {
     const userDir = makeDir();
     const cwd = makeDir();
     try {
-      const agents = discoverAgents(cwd, userDir, userDir);
+      setAgentDir(userDir);
+      const agents = discoverAgents(cwd, userDir);
       expect(agents).toEqual([]);
     } finally {
+      clearAgentDir();
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
     }
@@ -566,6 +611,7 @@ describe("discoverAgents", () => {
     const userDir = makeDir();
     const cwd = makeDir();
     try {
+      setAgentDir(userDir);
       writeFile(userDir, "valid.md", "---\nname: valid\nmodel: cheap\n---\nok");
       writeFile(
         userDir,
@@ -573,17 +619,16 @@ describe("discoverAgents", () => {
         "---\nname: broken\n---\nno model field",
       );
       writeFile(userDir, "not-agent.md", "just markdown, no frontmatter");
-      writeFile(
-        userDir,
-        "subagents.json",
-        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
-      );
+      writeConfig(userDir, {
+        tiers: { cheap: "google/gemini-2.5-flash" },
+      });
 
-      const agents = discoverAgents(cwd, userDir, userDir);
+      const agents = discoverAgents(cwd, userDir);
 
       expect(agents).toHaveLength(1);
       expect(agents[0]!.name).toBe("valid");
     } finally {
+      clearAgentDir();
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
     }
@@ -593,16 +638,15 @@ describe("discoverAgents", () => {
     const userDir = makeDir();
     const cwd = makeDir();
     try {
+      setAgentDir(userDir);
       writeFile(
         userDir,
         "worker.md",
         "---\nname: user-worker\nmodel: cheap\n---\nuser version",
       );
-      writeFile(
-        userDir,
-        "subagents.json",
-        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
-      );
+      writeConfig(userDir, {
+        tiers: { cheap: "google/gemini-2.5-flash" },
+      });
 
       const projectAgentDir = join(cwd, ".pi", "agents");
       mkdirSync(projectAgentDir, { recursive: true });
@@ -612,12 +656,13 @@ describe("discoverAgents", () => {
         "---\nname: project-worker\nmodel: cheap\n---\nproject version",
       );
 
-      const agents = discoverAgents(cwd, userDir, userDir);
+      const agents = discoverAgents(cwd, userDir);
 
       expect(agents).toHaveLength(1);
       expect(agents[0]!.name).toBe("project-worker");
       expect(agents[0]!.body).toBe("project version");
     } finally {
+      clearAgentDir();
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
     }
@@ -627,6 +672,7 @@ describe("discoverAgents", () => {
     const userDir = makeDir();
     const cwd = makeDir();
     try {
+      setAgentDir(userDir);
       // Same name in frontmatter, different filenames
       writeFile(
         userDir,
@@ -638,19 +684,18 @@ describe("discoverAgents", () => {
         "beta.md",
         "---\nname: same\nmodel: cheap\n---\nbeta file",
       );
-      writeFile(
-        userDir,
-        "subagents.json",
-        JSON.stringify({ tiers: { cheap: "google/gemini-2.5-flash" } }),
-      );
+      writeConfig(userDir, {
+        tiers: { cheap: "google/gemini-2.5-flash" },
+      });
 
-      const agents = discoverAgents(cwd, userDir, userDir);
+      const agents = discoverAgents(cwd, userDir);
 
       expect(agents).toHaveLength(1);
       expect(agents[0]!.name).toBe("same");
       // beta.md loaded after alpha.md, so it wins
       expect(agents[0]!.body).toBe("beta file");
     } finally {
+      clearAgentDir();
       rmSync(userDir, { recursive: true });
       rmSync(cwd, { recursive: true });
     }

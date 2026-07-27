@@ -539,20 +539,18 @@ export function renderSubagentToolResult(
   theme: Theme,
   context: { isError: boolean },
 ): Component {
-  const details = result.details as SubagentResult | undefined;
-
   if (options.isPartial && !context.isError) {
-    return renderRunningState(details, theme);
+    return renderRunningState(result.details, theme);
   }
 
-  if (!details) {
+  if (!result.details) {
     const text = result.content[0];
     return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
   }
 
   if (options.expanded) {
-    return renderExpandedResult(details, theme);
+    return renderExpandedResult(result.details, theme);
   }
 
-  return renderCollapsedResult(details, theme);
+  return renderCollapsedResult(result.details, theme);
 }

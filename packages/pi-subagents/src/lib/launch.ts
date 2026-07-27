@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
-import { basename } from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import type { Readable } from "node:stream";
 import type { Message } from "@earendil-works/pi-ai";
 import { wrapWithBubblewrap } from "./sandbox.js";
@@ -267,6 +268,52 @@ function cleanupForkFile(
   }
 }
 
+interface PromptTempFile {
+  dir: string;
+  filePath: string;
+}
+
+/**
+ * Write the agent's body prompt to a temp file so it can be passed to pi
+ * via `--append-system-prompt`. Returns undefined when body is empty.
+ */
+function writePromptTempFile(agent: AgentConfig): PromptTempFile | undefined {
+  const body = agent.body?.trim();
+  if (!body) {
+    return undefined;
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), "pi-subagent-prompt-"));
+  const safeName = agent.name.replace(/[^\w.-]+/g, "_");
+  const filePath = join(dir, `prompt-${safeName}.md`);
+
+  try {
+    writeFileSync(filePath, body, { encoding: "utf-8", mode: 0o600 });
+    return { dir, filePath };
+  } catch {
+    // If we can't write the prompt file, proceed without it
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup
+    }
+    return undefined;
+  }
+}
+
+/** Clean up the prompt temp file and its parent directory. */
+function cleanupPromptFile(promptFile: PromptTempFile | undefined): void {
+  if (!promptFile) {
+    return;
+  }
+  try {
+    rmSync(promptFile.filePath, { force: true });
+    rmSync(promptFile.dir, { force: true, recursive: true });
+  } catch {
+    // Best-effort cleanup
+  }
+}
+
 /**
  * Launch a child pi subagent, parse its JSONL output, and return the result.
  *
@@ -292,7 +339,8 @@ export async function launchSubagent(
   } = opts;
 
   const forkFile = setupForkSession(agent, cwd, parentSessionFile);
-  const args = buildCliArgs(agent, task, forkFile);
+  const promptFile = writePromptTempFile(agent);
+  const args = buildCliArgs(agent, task, forkFile, promptFile?.filePath);
   try {
     const result = await launchFn(
       args,
@@ -309,6 +357,7 @@ export async function launchSubagent(
     return result;
   } finally {
     cleanupForkFile(forkFile, agent.noSession);
+    cleanupPromptFile(promptFile);
   }
 }
 
@@ -603,6 +652,7 @@ export function buildCliArgs(
   agent: AgentConfig,
   task: string,
   sessionFile?: string,
+  systemPromptFile?: string,
 ): string[] {
   const args = ["-p", "--mode", "json"];
 
@@ -610,6 +660,10 @@ export function buildCliArgs(
     args.push("--session", sessionFile);
   } else if (agent.noSession) {
     args.push("--no-session");
+  }
+
+  if (systemPromptFile) {
+    args.push("--append-system-prompt", systemPromptFile);
   }
 
   if (agent.model) {
