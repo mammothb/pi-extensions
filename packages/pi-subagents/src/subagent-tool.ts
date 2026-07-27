@@ -271,7 +271,7 @@ export function createSubagentTool(): ToolDefinition<
       ctx: ExtensionContext,
     ): Promise<AgentToolResult<SubagentResult>> {
       const agents = discoverAgents(ctx.cwd);
-      const config = loadSubagentConfig();
+      const config = loadSubagentConfig(ctx.cwd);
       const parentSessionFile =
         ctx.sessionManager?.getSessionFile() ?? undefined;
 

@@ -146,6 +146,47 @@ describe("buildCliArgs", () => {
     const args = buildCliArgs(baseAgent, task, "/tmp/s.jsonl");
     expect(args[args.length - 1]).toBe(task);
   });
+
+  // --append-system-prompt flag --
+
+  it("omits --append-system-prompt when systemPromptFile is undefined", () => {
+    const args = buildCliArgs(baseAgent, "task");
+    expect(args).not.toContain("--append-system-prompt");
+  });
+
+  it("adds --append-system-prompt when systemPromptFile is provided", () => {
+    const args = buildCliArgs(baseAgent, "task", undefined, "/tmp/prompt.md");
+    expect(args).toContain("--append-system-prompt");
+    const idx = args.indexOf("--append-system-prompt");
+    expect(args[idx + 1]).toBe("/tmp/prompt.md");
+  });
+
+  it("places --append-system-prompt before --model/--tools", () => {
+    const agent = { ...baseAgent, tools: ["read"] };
+    const args = buildCliArgs(agent, "task", undefined, "/tmp/prompt.md");
+    const promptIdx = args.indexOf("--append-system-prompt");
+    expect(promptIdx).toBeGreaterThan(2); // after -p --mode json
+    expect(promptIdx).toBeLessThan(args.indexOf("--model"));
+    expect(promptIdx).toBeLessThan(args.indexOf("--tools"));
+  });
+
+  it("supports both sessionFile and systemPromptFile together", () => {
+    const args = buildCliArgs(
+      baseAgent,
+      "task",
+      "/tmp/s.jsonl",
+      "/tmp/prompt.md",
+    );
+    expect(args).toContain("--session");
+    expect(args).toContain("--append-system-prompt");
+    expect(args).not.toContain("--no-session");
+  });
+
+  it("task remains last argument with systemPromptFile", () => {
+    const task = "fix the bug";
+    const args = buildCliArgs(baseAgent, task, undefined, "/tmp/prompt.md");
+    expect(args[args.length - 1]).toBe(task);
+  });
 });
 
 // =============================================================================
