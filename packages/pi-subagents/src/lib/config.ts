@@ -51,7 +51,7 @@ function mergeConfig(
   if (override.stuckTimeoutMs !== undefined) {
     merged.stuckTimeoutMs = parseStuckTimeout(
       override.stuckTimeoutMs,
-      DEFAULTS.stuckTimeoutMs,
+      base.stuckTimeoutMs,
     );
   }
 

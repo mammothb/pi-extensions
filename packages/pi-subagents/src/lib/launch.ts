@@ -340,7 +340,7 @@ export async function launchSubagent(
 
   const forkFile = setupForkSession(agent, cwd, parentSessionFile);
   const promptFile = writePromptTempFile(agent);
-  const args = buildCliArgs(agent, task, forkFile, promptFile);
+  const args = buildCliArgs(agent, task, forkFile, promptFile?.filePath);
   try {
     const result = await launchFn(
       args,

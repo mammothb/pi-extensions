@@ -256,6 +256,20 @@ describe("loadSubagentConfig", () => {
     expect(config.stuckTimeoutMs).toBe(90_000);
     expect(config.tiers).toEqual({ cheap: "gpt" });
   });
+
+  it("preserves global stuckTimeoutMs when project override has wrong type", () => {
+    writeGlobal({ stuckTimeoutMs: 90_000 });
+    writeProject({ stuckTimeoutMs: "120000" }); // string, not number
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(90_000);
+  });
+
+  it("preserves global stuckTimeoutMs when project override is negative", () => {
+    writeGlobal({ stuckTimeoutMs: 90_000 });
+    writeProject({ stuckTimeoutMs: -1 });
+    const config = loadSubagentConfig(projectDir);
+    expect(config.stuckTimeoutMs).toBe(90_000);
+  });
 });
 
 describe("validateConfig", () => {
