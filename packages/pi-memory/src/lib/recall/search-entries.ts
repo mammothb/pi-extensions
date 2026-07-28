@@ -41,24 +41,28 @@ const quantifierAt = (
 const hasNestedQuantifier = (pattern: string): boolean => {
   const groups: boolean[] = []; // per open group: contains an unbounded quantifier
   let inClass = false;
-  for (let i = 0; i < pattern.length; i++) {
+  let i = 0;
+  while (i < pattern.length) {
     const c = pattern[i];
     if (c === "\\") {
-      i++;
+      i += 2;
       continue;
     }
     if (inClass) {
       if (c === "]") {
         inClass = false;
       }
+      i++;
       continue;
     }
     if (c === "[") {
       inClass = true;
+      i++;
       continue;
     }
     if (c === "(") {
       groups.push(false);
+      i++;
       continue;
     }
     if (c === ")") {
@@ -70,13 +74,15 @@ const hasNestedQuantifier = (pattern: string): boolean => {
       if (groups.length) {
         groups[groups.length - 1] ||= inner || q.unbounded;
       }
-      i += q.len;
+      i += q.len + 1;
       continue;
     }
     const q = quantifierAt(pattern, i);
     if (q.unbounded && groups.length) {
       groups[groups.length - 1] = true;
-      i += q.len - 1;
+      i += q.len;
+    } else {
+      i++;
     }
   }
   return false;
