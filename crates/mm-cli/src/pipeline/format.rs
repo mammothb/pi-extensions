@@ -71,18 +71,18 @@ pub fn build_section_data(blocks: &[NormalizedBlock]) -> SectionData {
     let file_activity = files::extract_files(blocks);
 
     let mut files_and_changes: Vec<String> = Vec::new();
-    files_and_changes.extend(file_activity.read.iter().map(|p| format!("read: {p}")));
+    files_and_changes.extend(file_activity.read.iter().map(|p| format!("Read: {p}")));
     files_and_changes.extend(
         file_activity
             .modified
             .iter()
-            .map(|p| format!("modified: {p}")),
+            .map(|p| format!("Modified: {p}")),
     );
     files_and_changes.extend(
         file_activity
             .created
             .iter()
-            .map(|p| format!("created: {p}")),
+            .map(|p| format!("Created: {p}")),
     );
     files_and_changes.sort();
     files_and_changes.dedup();
@@ -263,7 +263,7 @@ mod tests {
     fn format_sections_multiple_separated_by_blank_lines() {
         let data = SectionData {
             session_goal: vec!["fix bug".into()],
-            files_and_changes: vec!["read: src/main.rs".into()],
+            files_and_changes: vec!["Read: src/main.rs".into()],
             ..SectionData::default()
         };
         let result = format_sections(&data);
@@ -287,7 +287,7 @@ mod tests {
     fn format_sections_all_sections_populated() {
         let data = SectionData {
             session_goal: vec!["implement auth".into()],
-            files_and_changes: vec!["modified: auth.ts".into()],
+            files_and_changes: vec!["Modified: auth.ts".into()],
             commits: vec!["abc123: add auth module".into()],
             user_preferences: vec!["prefer tabs".into()],
             brief_transcript: "[user]\nadd auth\n\n[assistant]\nworking...".into(),
@@ -411,7 +411,7 @@ mod tests {
     fn json_populated_data() {
         let data = SectionData {
             session_goal: vec!["fix bug".into()],
-            files_and_changes: vec!["read: src/main.rs".into()],
+            files_and_changes: vec!["Read: src/main.rs".into()],
             commits: vec!["abc123: fix login".into()],
             user_preferences: vec!["prefer tabs".into()],
             brief_transcript: "[user]\nhello".into(),
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(json["session_goal"], serde_json::json!(["fix bug"]));
         assert_eq!(
             json["files_and_changes"],
-            serde_json::json!(["read: src/main.rs"])
+            serde_json::json!(["Read: src/main.rs"])
         );
         assert_eq!(json["commits"], serde_json::json!(["abc123: fix login"]));
         assert_eq!(json["user_preferences"], serde_json::json!(["prefer tabs"]));
