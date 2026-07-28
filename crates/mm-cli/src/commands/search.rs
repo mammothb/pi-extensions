@@ -217,10 +217,17 @@ pub fn execute(
     let raw_query = query.trim();
 
     if looks_like_regex(raw_query) {
-        regex_search(&entries, raw_query, page_num, json)
-    } else {
-        bm25_search(&entries, raw_query, page_num, json)
+        let regex = safe_regex(raw_query);
+        if let Some(re) = regex {
+            let (hits, total) = collect_regex_hits(&entries, &re);
+            if total > 0 {
+                return render_regex_results(&hits, total, &re, page_num, json);
+            }
+        }
+        // Regex found nothing (or was invalid) — fall through to term search.
+        // Mode detection must never silently lose results.
     }
+    bm25_search(&entries, raw_query, page_num, json)
 }
 
 // ============
@@ -266,20 +273,12 @@ fn paginate_all(entries: &[SearchEntry], page: u32, json: bool) -> Result<ExitSt
     Ok(ExitStatus::Success)
 }
 
-fn regex_search(
-    entries: &[SearchEntry],
-    raw_query: &str,
-    page: u32,
-    json: bool,
-) -> Result<ExitStatus> {
-    let regex = match safe_regex(raw_query) {
-        Some(r) => r,
-        None => {
-            error!("invalid regex: {raw_query}");
-            return Ok(ExitStatus::Failure);
-        }
-    };
-
+/// Collect regex hits from entries. Returns the matched pairs and total count,
+/// or an empty vec if nothing matched.
+fn collect_regex_hits<'a>(
+    entries: &'a [SearchEntry],
+    regex: &Regex,
+) -> (Vec<(&'a SearchEntry, String)>, usize) {
     let hits: Vec<(&SearchEntry, String)> = entries
         .iter()
         .filter_map(|e| {
@@ -291,8 +290,18 @@ fn regex_search(
             }
         })
         .collect();
-
     let total = hits.len();
+    (hits, total)
+}
+
+/// Render already-collected regex hits as paginated results.
+fn render_regex_results(
+    hits: &[(&SearchEntry, String)],
+    total: usize,
+    regex: &Regex,
+    page: u32,
+    json: bool,
+) -> Result<ExitStatus> {
     let total_pages = total.div_ceil(RESULTS_PER_PAGE).max(1) as u32;
     let start = ((page as usize) - 1) * RESULTS_PER_PAGE;
     let page_hits = if start < total {
@@ -305,7 +314,7 @@ fn regex_search(
     let results: Vec<SearchResult> = page_hits
         .iter()
         .map(|(e, hay)| {
-            let snippet = line_snippet(&e.full_text, &regex, 2);
+            let snippet = line_snippet(&e.full_text, regex, 2);
             SearchResult {
                 index: e.index,
                 score: None,
