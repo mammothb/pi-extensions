@@ -1,5 +1,11 @@
 # @mammothb/pi-memory
 
+## 1.2.4
+
+### Patch Changes
+
+- 6a34899: memory fix
+
 ## 1.2.3
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # pi-eval
 
+## 2.2.2
+
+### Patch Changes
+
+- 6a34899: memory fix
+
 ## 2.2.1
 
 ### Patch Changes
