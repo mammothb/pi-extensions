@@ -414,4 +414,19 @@ mod tests {
         assert!(fa.modified.is_empty());
         assert!(fa.created.is_empty());
     }
+
+    #[rstest]
+    fn mixed_case_tool_names() {
+        // All-uppercase variants not present in the original case enumeration —
+        // guards the case-insensitive matches() contract.
+        let blocks = [
+            tool_call("READ", json!({"file_path": "a.rs"}), 0),
+            tool_call("EDIT", json!({"file_path": "b.rs"}), 1),
+            tool_call("WRITE", json!({"file_path": "c.rs"}), 2),
+        ];
+        let fa = extract_files(&blocks);
+        assert_eq!(fa.read, vec!["a.rs"]);
+        assert_eq!(fa.modified, vec!["b.rs", "c.rs"]);
+        assert_eq!(fa.created, vec!["c.rs"]);
+    }
 }

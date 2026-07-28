@@ -246,9 +246,16 @@ async function resolveCwd(
     if (err instanceof EvalCwdNotFoundError) {
       throw err;
     }
-    throw new EvalCwdNotFoundError(resolved);
+    throw new EvalCwdNotFoundError(resolved, errorReason(err));
   }
   return resolved;
+}
+
+function errorReason(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }
 
 export function createEvalTool(): ToolDefinition<

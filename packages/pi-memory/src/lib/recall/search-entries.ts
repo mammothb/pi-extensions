@@ -49,7 +49,10 @@ const hasNestedQuantifier = (pattern: string): boolean => {
   }
 };
 
-/** Walk the pattern string tracking group nesting and quantifiers. */
+/** Walk the pattern string tracking group nesting and quantifiers.
+ *  Returns false if no nested unbounded quantifier is found.
+ *  Detection is signaled by closeParen throwing NestedQuantifierError,
+ *  caught by hasNestedQuantifier above. */
 function walkPattern(pattern: string): boolean {
   const groups: boolean[] = [];
   let inClass = false;
@@ -92,14 +95,15 @@ function walkPattern(pattern: string): boolean {
   return false;
 }
 
-/** Process a closing paren: check for nested quantifier, propagate unbounded
- *  flag to parent group if any. Returns the new index. */
+/** Process a closing paren: pop the group's quantifier flag, check whether
+ *  it combines with an outer quantifier into a nested unbounded form.
+ *  If so, throws NestedQuantifierError to signal detection.
+ *  Otherwise propagates the flag to the parent group and returns the
+ *  index past the paren and any trailing quantifier. */
 function closeParen(pattern: string, i: number, groups: boolean[]): number {
   const inner = groups.pop() ?? false;
   const q = quantifierAt(pattern, i + 1);
-  // Nested unbounded quantifier detected — bail
   if (inner && q.unbounded) {
-    // Signal to caller by returning a sentinel
     throw new NestedQuantifierError();
   }
   if (groups.length) {

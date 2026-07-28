@@ -314,7 +314,7 @@ fn render_regex_results(
     let results: Vec<SearchResult> = page_hits
         .iter()
         .map(|(e, hay)| {
-            let snippet = line_snippet(&e.full_text, regex, 2);
+            let snippet = line_snippet(hay, regex, 2);
             SearchResult {
                 index: e.index,
                 score: None,
