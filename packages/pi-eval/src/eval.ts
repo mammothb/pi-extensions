@@ -226,6 +226,31 @@ function renderEvalEmpty(
   return new Text(header, 0, 0);
 }
 
+/** Resolve and validate the working directory for eval execution. */
+async function resolveCwd(
+  paramsCwd: string | undefined,
+  ctxCwd: string,
+): Promise<string> {
+  if (paramsCwd == null) {
+    return ctxCwd;
+  }
+  const resolved = isAbsolute(paramsCwd)
+    ? paramsCwd
+    : resolve(ctxCwd, paramsCwd);
+  try {
+    const s = await stat(resolved);
+    if (!s.isDirectory()) {
+      throw new EvalCwdNotFoundError(resolved, "not a directory");
+    }
+  } catch (err) {
+    if (err instanceof EvalCwdNotFoundError) {
+      throw err;
+    }
+    throw new EvalCwdNotFoundError(resolved);
+  }
+  return resolved;
+}
+
 export function createEvalTool(): ToolDefinition<
   typeof Parameters,
   EvalDetails
@@ -334,30 +359,11 @@ export function createEvalTool(): ToolDefinition<
         expandKey,
       );
     },
+
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const { language, code, cwd: paramsCwd } = params;
 
-      // Resolve and validate the working directory
-      let effectiveCwd: string;
-      if (paramsCwd != null) {
-        const resolved = isAbsolute(paramsCwd)
-          ? paramsCwd
-          : resolve(ctx.cwd, paramsCwd);
-        try {
-          const s = await stat(resolved);
-          if (!s.isDirectory()) {
-            throw new EvalCwdNotFoundError(resolved, "not a directory");
-          }
-        } catch (err) {
-          if (err instanceof EvalCwdNotFoundError) {
-            throw err;
-          }
-          throw new EvalCwdNotFoundError(resolved);
-        }
-        effectiveCwd = resolved;
-      } else {
-        effectiveCwd = ctx.cwd;
-      }
+      const effectiveCwd = await resolveCwd(paramsCwd, ctx.cwd);
 
       const config = loadConfig(effectiveCwd);
 
