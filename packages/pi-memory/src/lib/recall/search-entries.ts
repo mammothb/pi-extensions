@@ -39,7 +39,19 @@ const quantifierAt = (
  * covered here; the search budget in `searchEntries` is the backstop.
  */
 const hasNestedQuantifier = (pattern: string): boolean => {
-  const groups: boolean[] = []; // per open group: contains an unbounded quantifier
+  try {
+    return walkPattern(pattern);
+  } catch (err) {
+    if (err instanceof NestedQuantifierError) {
+      return true;
+    }
+    throw err;
+  }
+};
+
+/** Walk the pattern string tracking group nesting and quantifiers. */
+function walkPattern(pattern: string): boolean {
+  const groups: boolean[] = [];
   let inClass = false;
   let i = 0;
   while (i < pattern.length) {
@@ -66,15 +78,7 @@ const hasNestedQuantifier = (pattern: string): boolean => {
       continue;
     }
     if (c === ")") {
-      const inner = groups.pop() ?? false;
-      const q = quantifierAt(pattern, i + 1);
-      if (inner && q.unbounded) {
-        return true;
-      }
-      if (groups.length) {
-        groups[groups.length - 1] ||= inner || q.unbounded;
-      }
-      i += q.len + 1;
+      i = closeParen(pattern, i, groups);
       continue;
     }
     const q = quantifierAt(pattern, i);
@@ -86,7 +90,26 @@ const hasNestedQuantifier = (pattern: string): boolean => {
     }
   }
   return false;
-};
+}
+
+/** Process a closing paren: check for nested quantifier, propagate unbounded
+ *  flag to parent group if any. Returns the new index. */
+function closeParen(pattern: string, i: number, groups: boolean[]): number {
+  const inner = groups.pop() ?? false;
+  const q = quantifierAt(pattern, i + 1);
+  // Nested unbounded quantifier detected — bail
+  if (inner && q.unbounded) {
+    // Signal to caller by returning a sentinel
+    throw new NestedQuantifierError();
+  }
+  if (groups.length) {
+    groups[groups.length - 1] ||= inner || q.unbounded;
+  }
+  return i + q.len + 1;
+}
+
+/** Thrown internally when a nested unbounded quantifier is detected. */
+class NestedQuantifierError extends Error {}
 
 /** Try to compile as regex; fall back to escaped literal. Patterns with nested
  *  unbounded quantifiers are treated as literals rather than compiled. */
