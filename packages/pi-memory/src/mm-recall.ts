@@ -6,7 +6,7 @@ import { parseRecallScope } from "./lib/recall/recall-scope";
 export const registerMmRecallCommand = (pi: ExtensionAPI) => {
   pi.registerCommand("mm-recall", {
     description:
-      "Search session history. Defaults to active lineage; add scope:all for off-lineage branches.",
+      "Recall earlier parts of this session. Plain keywords work best; add scope:all to reach edited or retried turns.",
     handler: async (args: string, ctx) => {
       const sessionFile = ctx.sessionManager.getSessionFile();
       if (!sessionFile) {

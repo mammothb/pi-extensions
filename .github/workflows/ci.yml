@@ -34,8 +34,10 @@ jobs:
     needs: changes
     if: ${{ contains(needs.changes.outputs.packages, 'npm') }}
     uses: ./.github/workflows/reusable-ci-npm.yml
+    secrets: inherit
   cargo:
     name: cargo
     needs: changes
     if: ${{ contains(needs.changes.outputs.packages, 'cargo') }}
     uses: ./.github/workflows/reusable-ci-cargo.yml
+    secrets: inherit

@@ -9,15 +9,19 @@ export const registerRecallTool = (pi: ExtensionAPI) => {
     name: "mm_recall",
     label: "Memory Recall",
     description:
-      "Search session history. Defaults to active lineage; use scope:'all' to include off-lineage branches." +
-      " Supports regex queries, paging, and expand indices.",
+      "Recall earlier parts of the current session — decisions made, files touched, commands run, " +
+      "including anything dropped by compaction. Reach for this before telling the user you no longer " +
+      "have the context. Plain keywords work best; a regex pattern is also accepted. Results are paged " +
+      "(page); pass expand with entry indices to read full untruncated content. Only the current session " +
+      "is searchable — earlier sessions are not.",
     promptSnippet:
-      "mm_recall: Search history; default scope is active lineage. Use scope:'all' for off-lineage branches.",
+      "mm_recall: recall earlier parts of this session before saying the context is gone. " +
+      "Plain keywords work best; scope:'all' widens to other conversation branches.",
     parameters: Type.Object({
       query: Type.Optional(
         Type.String({
           description:
-            "Search terms or regex pattern (e.g. 'hook|inject', 'fail.*build'). Multi-word = OR ranked by relevance.",
+            "What to recall, in plain keywords (e.g. 'redis cache decision'). Multi-word queries are ranked by relevance. A regex pattern also works.",
         }),
       ),
       expand: Type.Optional(
@@ -34,7 +38,7 @@ export const registerRecallTool = (pi: ExtensionAPI) => {
       scope: Type.Optional(
         Type.Union([Type.Literal("lineage"), Type.Literal("all")], {
           description:
-            "Search scope. Default: lineage; all includes off-lineage branches.",
+            "Default 'lineage' covers the active conversation path. Use 'all' to also reach messages from other branches, such as turns that were edited or retried.",
         }),
       ),
     }),

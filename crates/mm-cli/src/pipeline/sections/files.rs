@@ -18,21 +18,19 @@ pub struct FileActivity {
 // ===================
 // Tool classification
 // ===================
-// Tool names covering all supported formats:
-//   Pi:                Read, read, Edit, edit, Write, write
-//   Claude Code:       Read, Edit, Write, MultiEdit
+// Tool names covering all supported formats. Matching is case-insensitive —
+// entries must be lowercase.
+//
+//   Pi:                read, edit, write
+//   Claude Code:       Read, Edit, Write, MultiEdit, multiedit
 //   Anthropic API:     read_file, edit_file, write_file, View
-const FILE_READ_TOOLS: &[&str] = &["Read", "read", "read_file", "View"];
-const FILE_WRITE_TOOLS: &[&str] = &[
-    "Edit",
-    "edit",
-    "Write",
-    "write",
-    "MultiEdit",
-    "edit_file",
-    "write_file",
-];
-const FILE_CREATE_TOOLS: &[&str] = &["Write", "write", "write_file"];
+const FILE_READ_TOOLS: &[&str] = &["read", "read_file", "view"];
+const FILE_WRITE_TOOLS: &[&str] = &["edit", "write", "edit_file", "write_file", "multiedit"];
+const FILE_CREATE_TOOLS: &[&str] = &["write", "write_file"];
+
+fn matches(tools: &[&str], name: &str) -> bool {
+    tools.iter().any(|t| t.eq_ignore_ascii_case(name))
+}
 
 // ==========
 // Public API
@@ -61,13 +59,13 @@ pub fn extract_files(blocks: &[NormalizedBlock]) -> FileActivity {
             None => continue,
         };
 
-        if FILE_READ_TOOLS.contains(&name) {
+        if matches(FILE_READ_TOOLS, name) {
             read.insert(path.clone());
         }
-        if FILE_WRITE_TOOLS.contains(&name) {
+        if matches(FILE_WRITE_TOOLS, name) {
             modified.insert(path.clone());
         }
-        if FILE_CREATE_TOOLS.contains(&name) {
+        if matches(FILE_CREATE_TOOLS, name) {
             created.insert(path);
         }
     }
@@ -415,5 +413,20 @@ mod tests {
         assert!(fa.read.is_empty());
         assert!(fa.modified.is_empty());
         assert!(fa.created.is_empty());
+    }
+
+    #[rstest]
+    fn mixed_case_tool_names() {
+        // All-uppercase variants not present in the original case enumeration —
+        // guards the case-insensitive matches() contract.
+        let blocks = [
+            tool_call("READ", json!({"file_path": "a.rs"}), 0),
+            tool_call("EDIT", json!({"file_path": "b.rs"}), 1),
+            tool_call("WRITE", json!({"file_path": "c.rs"}), 2),
+        ];
+        let fa = extract_files(&blocks);
+        assert_eq!(fa.read, vec!["a.rs"]);
+        assert_eq!(fa.modified, vec!["b.rs", "c.rs"]);
+        assert_eq!(fa.created, vec!["c.rs"]);
     }
 }

@@ -63,5 +63,6 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/lcov.info
+          flags: npm
           fail_ci_if_error: false
           slug: mammothb/pi-extensions
