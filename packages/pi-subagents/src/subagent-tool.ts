@@ -231,7 +231,12 @@ const SubagentParamsSchema = Type.Object({
     }),
   ),
   task: Type.Optional(
-    Type.String({ description: "Task to delegate (single mode)" }),
+    Type.String({
+      description:
+        "Self-contained task with clear success criteria. " +
+        "Not for exploration or comparative analysis — use the /research " +
+        "slash command for open-ended investigation where you need to steer.",
+    }),
   ),
   tasks: Type.Optional(
     Type.Array(
@@ -255,7 +260,14 @@ export function createSubagentTool(): ToolDefinition<
     name: "subagent",
     label: "Subagent",
     description:
-      "Delegate a task to a specialized subagent with isolated context.",
+      "Delegate a well-defined, mechanical task to a specialized subagent " +
+      "with isolated context. The subagent runs autonomously and returns a " +
+      "report when finished.\n\n" +
+      "USE FOR: PR review, test runs, codebase scanning, lint checks, " +
+      "routine verification — tasks with clear inputs and clear outputs.\n" +
+      "DO NOT USE FOR: open-ended research, exploration, design work, " +
+      "comparative analysis, or anything where the question might evolve " +
+      "as you learn. Use the /research slash command for those instead.",
     parameters: SubagentParamsSchema,
 
     async execute(
