@@ -5,9 +5,11 @@ import {
   EMPTY_ROSTER_MESSAGE,
   formatAgentRoster,
 } from "./src/lib/ambient.js";
+import { createIPC } from "./src/lib/research-ipc.js";
 import {
   createResearchCloseHandler,
   createResearchHandler,
+  createRshReportHandler,
 } from "./src/research-commands.js";
 import { createResumeTool } from "./src/resume-tool.js";
 import { createSubagentTool } from "./src/subagent-tool.js";
@@ -15,6 +17,8 @@ import { createSubagentTool } from "./src/subagent-tool.js";
 export default function subagentsExtension(pi: ExtensionAPI) {
   pi.registerTool(createSubagentTool());
   pi.registerTool(createResumeTool());
+
+  const ipc = createIPC();
 
   // Interactive research commands
   pi.registerCommand("rsh", {
@@ -28,6 +32,28 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       "Close a research session pane and clean up its state. " +
       "Specify a session id, or omit to see active sessions.",
     handler: createResearchCloseHandler(pi),
+  });
+  pi.registerCommand("rsh-report", {
+    description:
+      "Send research findings back to the parent session. " +
+      "Run this in the research child pane after completing your investigation.",
+    handler: createRshReportHandler(pi, ipc),
+  });
+
+  // Poll for completed research reports before each agent turn
+  pi.on("before_agent_start", async (_event, _ctx) => {
+    const reports = await ipc.poll();
+    const report = reports.at(-1);
+    if (report === undefined) {
+      return;
+    }
+    return {
+      message: {
+        customType: "research_complete",
+        content: `**Research completed:** ${report.task}\n\n${report.output}`,
+        display: true,
+      },
+    };
   });
 
   // Ambient awareness: inject available agents + task classification

@@ -4,7 +4,9 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { getPiInvocation } from "./lib/launch.js";
+import type { ResearchIPC } from "./lib/research-ipc.js";
 import {
   createResearchSession,
   getResearchSession,
@@ -43,14 +45,16 @@ function shq(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-/** Collect PI_* env vars to pass to the child pane. */
-function collectPiEnv(): Record<string, string> {
+/** Collect PI_* env vars + research session identity to pass to the child pane. */
+function collectPiEnv(sessionId: string, task: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (k.startsWith("PI_") && v) {
       env[k] = v;
     }
   }
+  env.PI_RSH_SESSION_ID = sessionId;
+  env.PI_RSH_TASK = task;
   return env;
 }
 
@@ -93,11 +97,11 @@ export function createResearchHandler(pi: ExtensionAPI) {
       piArgs.push("--model", modelId);
     }
 
+    const sessionId = randomUUID();
+
     const { command, args: cmdArgs } = getPiInvocation(piArgs);
     const shellCmd = [command, ...cmdArgs].map(shq).join(" ");
-    const piEnv = collectPiEnv();
-
-    const sessionId = randomUUID();
+    const piEnv = collectPiEnv(sessionId, task);
 
     if (tmuxActive()) {
       const tmuxSession = tmuxGetSessionName();
@@ -189,9 +193,82 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
         .map((s) => `  ${s.id.slice(0, 8)}  ${s.task}`)
         .join("\n");
       ctx.ui.notify(
-        `Active research sessions:\n${list}\n\nUse /research-close <id> to close one.`,
+        `Active research sessions:\n${list}\n\nUse /rsh-close <id> to close one.`,
         "info",
       );
     }
+  };
+}
+
+// ── /rsh-report ─────────────────────────────────────────────────────────────
+
+export function createRshReportHandler(_pi: ExtensionAPI, ipc: ResearchIPC) {
+  return async (_args: string, ctx: ExtensionCommandContext) => {
+    const sessionId = process.env.PI_RSH_SESSION_ID;
+    const task = process.env.PI_RSH_TASK;
+
+    if (!sessionId) {
+      ctx.ui.notify(
+        "/rsh-report: Not in a research session (PI_RSH_SESSION_ID not set).",
+        "error",
+      );
+      return;
+    }
+
+    const sessionFile = ctx.sessionManager.getSessionFile();
+    if (!sessionFile) {
+      ctx.ui.notify("/rsh-report: No session file.", "error");
+      return;
+    }
+
+    // Extract the last assistant message from the child's session
+    let output: string;
+    try {
+      const manager = SessionManager.open(sessionFile, undefined, ctx.cwd);
+      const entries = manager.getEntries();
+
+      let lastAssistant = "";
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i] as unknown as
+          | Record<string, unknown>
+          | undefined;
+        if (!entry) {
+          continue;
+        }
+        if (entry.role === "assistant") {
+          const content = entry.content;
+          if (typeof content === "string") {
+            lastAssistant = content;
+          } else if (Array.isArray(content)) {
+            lastAssistant = content
+              .filter((p: Record<string, unknown>) => p.type === "text")
+              .map((p: Record<string, unknown>) => String(p.text ?? ""))
+              .join("");
+          }
+          if (lastAssistant) {
+            break;
+          }
+        }
+      }
+      output = lastAssistant || "(no assistant output found)";
+    } catch (err) {
+      ctx.ui.notify(
+        `Failed to extract report: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+      return;
+    }
+
+    await ipc.reportBack({
+      sessionId,
+      task: task || "(unknown task)",
+      output,
+      completedAt: new Date().toISOString(),
+    });
+
+    ctx.ui.notify(
+      "Report sent to parent session. You can close this pane with /rsh-close.",
+      "info",
+    );
   };
 }
