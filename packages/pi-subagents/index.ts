@@ -5,12 +5,30 @@ import {
   EMPTY_ROSTER_MESSAGE,
   formatAgentRoster,
 } from "./src/lib/ambient.js";
+import {
+  createResearchCloseHandler,
+  createResearchHandler,
+} from "./src/research-commands.js";
 import { createResumeTool } from "./src/resume-tool.js";
 import { createSubagentTool } from "./src/subagent-tool.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
   pi.registerTool(createSubagentTool());
   pi.registerTool(createResumeTool());
+
+  // Interactive research commands
+  pi.registerCommand("research", {
+    description:
+      "Fork the current session into an interactive tmux pane for open-ended research. " +
+      "You steer the child pi directly, then use /report-back to send findings here.",
+    handler: createResearchHandler(pi),
+  });
+  pi.registerCommand("research-close", {
+    description:
+      "Close a research session pane and clean up its state. " +
+      "Specify a session id, or omit to see active sessions.",
+    handler: createResearchCloseHandler(pi),
+  });
 
   // Ambient awareness: inject available agents + task classification
   // heuristic into parent LLM context each turn.
@@ -42,7 +60,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       "- MECHANICAL (clear inputs, clear outputs, routine) → use subagent tool\n" +
       "- EXPLORATORY (open-ended, needs steering, iterative) → use /research command\n";
 
-    const content = classificationHint + "\n" + agentList;
+    const content = `${classificationHint}\n${agentList}`;
 
     return {
       message: {
