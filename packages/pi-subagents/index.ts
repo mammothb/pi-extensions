@@ -17,13 +17,13 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   pi.registerTool(createResumeTool());
 
   // Interactive research commands
-  pi.registerCommand("research", {
+  pi.registerCommand("rsh", {
     description:
       "Fork the current session into an interactive tmux pane for open-ended research. " +
-      "You steer the child pi directly, then use /report-back to send findings here.",
+      "You steer the child pi directly, then use /rsh-report to send findings here.",
     handler: createResearchHandler(pi),
   });
-  pi.registerCommand("research-close", {
+  pi.registerCommand("rsh-close", {
     description:
       "Close a research session pane and clean up its state. " +
       "Specify a session id, or omit to see active sessions.",

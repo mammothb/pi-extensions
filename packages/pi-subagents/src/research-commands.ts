@@ -114,7 +114,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
       pi.sendMessage({
         customType: "research_start",
-        content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/report-back\` in the child pane to send findings back here.`,
+        content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/rsh-report\` in the child pane to send findings back here.`,
         display: true,
       });
     } else {
@@ -133,7 +133,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
       pi.sendMessage({
         customType: "research_start",
-        content: `**Research:** ${task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${shellCmd}\n\`\`\`\n\nUse \`/report-back\` when done.`,
+        content: `**Research:** ${task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${shellCmd}\n\`\`\`\n\nUse \`/rsh-report\` when done.`,
         display: true,
       });
     }
