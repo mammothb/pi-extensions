@@ -21,7 +21,6 @@ export function tmuxGetSessionName(): string | null {
   try {
     const name = execFileSync("tmux", ["display-message", "-p", "#S"], {
       encoding: "utf-8",
-      timeout: 3000,
       stdio: TMUX_STDIO,
     }).trim();
     return name || null;
