@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { researchReportPath, researchReportsDir } from "./paths.js";
 import { updateResearchSessionStatus } from "./research-state.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -32,20 +32,18 @@ export interface ResearchIPC {
 
 // ── File IPC implementation ─────────────────────────────────────────────────
 
-function reportsDir(): string {
-  const dir = join(getAgentDir(), "research-reports");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
 export class FileIPC implements ResearchIPC {
   private handlers = new Set<(report: ResearchReport) => void>();
   /** Track processed filenames to avoid re-delivery on repeated poll(). */
   private processed = new Set<string>();
 
   async reportBack(report: ResearchReport): Promise<void> {
-    const path = join(reportsDir(), `${report.sessionId}.json`);
-    writeFileSync(path, JSON.stringify(report, null, 2), "utf-8");
+    mkdirSync(researchReportsDir(), { recursive: true });
+    writeFileSync(
+      researchReportPath(report.sessionId),
+      JSON.stringify(report, null, 2),
+      "utf-8",
+    );
   }
 
   onReport(handler: (report: ResearchReport) => void): void {
@@ -57,7 +55,7 @@ export class FileIPC implements ResearchIPC {
   }
 
   async poll(): Promise<ResearchReport[]> {
-    const dir = reportsDir();
+    const dir = researchReportsDir();
     if (!existsSync(dir)) {
       return [];
     }

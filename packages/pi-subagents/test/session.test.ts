@@ -15,6 +15,7 @@ import {
   seedForkSession,
 } from "../src/lib/session.js";
 import type { AgentConfig } from "../src/lib/types.js";
+import { withAgentDir } from "./_helpers.js";
 
 const baseAgent: AgentConfig = {
   name: "test-agent",
@@ -64,37 +65,28 @@ function makeParentSession(
 // ---------------------------------------------------------------------------
 
 describe("generateChildSessionFile", () => {
-  it("returns a path under the given session dir", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
-    try {
-      const path = generateChildSessionFile(dir);
-      expect(path).toContain(dir);
+  it("returns a path under the agent sessions dir", () => {
+    withAgentDir((dir) => {
+      const path = generateChildSessionFile("abc-123");
+      expect(path).toContain(join(dir, "sessions", "pi-subagents"));
       expect(path).toMatch(/\.jsonl$/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+      expect(path).toContain("abc-123");
+    });
   });
 
   it("creates the directory if it does not exist", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
-    const subDir = join(dir, "nested");
-    try {
-      const path = generateChildSessionFile(subDir);
+    withAgentDir(() => {
+      const path = generateChildSessionFile("abc-123");
       expect(existsSync(dirname(path))).toBe(true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    });
   });
 
-  it("returns unique paths", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pi-subagents-test-"));
-    try {
-      const a = generateChildSessionFile(dir);
-      const b = generateChildSessionFile(dir);
+  it("returns unique paths for different session ids", () => {
+    withAgentDir(() => {
+      const a = generateChildSessionFile("abc-123");
+      const b = generateChildSessionFile("def-456");
       expect(a).not.toBe(b);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    });
   });
 });
 
@@ -113,20 +105,20 @@ describe("seedForkSession", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates child session with new UUID in header", () => {
+  it("creates child session with the given id in header", () => {
     const parent = makeParentSession(tmpDir, [
       { role: "user", text: "hello" },
       { role: "assistant", text: "hi there" },
     ]);
     const child = join(tmpDir, "child.jsonl");
 
-    seedForkSession(parent, child, baseAgent, "/tmp/test-project");
+    seedForkSession(parent, child, baseAgent, "/tmp/test-project", "abc-123");
 
     expect(existsSync(child)).toBe(true);
     const content = readFileSync(child, "utf8");
     const lines = content.trim().split("\n").filter(Boolean);
 
-    // First line is header with new UUID
+    // First line is header with the shared session id
     const firstLine = lines[0];
     if (!firstLine) {
       throw new Error("expected first line");
@@ -138,6 +130,7 @@ describe("seedForkSession", () => {
     if (!parentFirstLine) {
       throw new Error("expected parent first line");
     }
+    expect(header.id).toBe("abc-123");
     expect(header.id).not.toBe(JSON.parse(parentFirstLine).id);
     expect(header.parentSession).toBe(parent);
     expect(header.cwd).toBe("/tmp/test-project");
@@ -150,7 +143,7 @@ describe("seedForkSession", () => {
     ]);
     const child = join(tmpDir, "child.jsonl");
 
-    seedForkSession(parent, child, baseAgent, "/tmp/test-project");
+    seedForkSession(parent, child, baseAgent, "/tmp/test-project", "abc-123");
 
     const content = readFileSync(child, "utf8");
     const lines = content.trim().split("\n").filter(Boolean);
@@ -167,7 +160,7 @@ describe("seedForkSession", () => {
     const parent = makeParentSession(tmpDir, [{ role: "user", text: "hello" }]);
     const child = join(tmpDir, "child.jsonl");
 
-    seedForkSession(parent, child, baseAgent, "/tmp/test-project");
+    seedForkSession(parent, child, baseAgent, "/tmp/test-project", "abc-123");
 
     const content = readFileSync(child, "utf8");
     const lines = content.trim().split("\n");
@@ -191,7 +184,7 @@ describe("seedForkSession", () => {
     const parent = makeParentSession(tmpDir, []);
     const child = join(tmpDir, "child.jsonl");
 
-    seedForkSession(parent, child, baseAgent, "/tmp/test-project");
+    seedForkSession(parent, child, baseAgent, "/tmp/test-project", "abc-123");
 
     expect(existsSync(child)).toBe(true);
     const content = readFileSync(child, "utf8");

@@ -6,6 +6,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { getPiInvocation } from "./lib/launch.js";
+import { writeResearchScript } from "./lib/launch-script.js";
+import { researchScriptPath } from "./lib/paths.js";
 import type { ResearchIPC } from "./lib/research-ipc.js";
 import {
   createResearchSession,
@@ -21,6 +23,18 @@ import {
   tmuxSplitWindow,
 } from "./lib/tmux.js";
 import type { AgentConfig } from "./lib/types.js";
+
+// ── Command names ───────────────────────────────────────────────────────────
+
+/** Pi command names — single source of truth for the /rsh* command surface. */
+export const RSH_COMMANDS = {
+  /** Fork an interactive research session into a tmux pane. */
+  research: "rsh",
+  /** Close a research session pane and clean up its state. */
+  close: "rsh-close",
+  /** Send research findings back to the parent session. */
+  report: "rsh-report",
+} as const;
 
 // ── Research fork identity ──────────────────────────────────────────────────
 
@@ -56,7 +70,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
     const task = args.trim();
     if (!task) {
-      ctx.ui.notify("Usage: /rsh <task>", "error");
+      ctx.ui.notify(`Usage: /${RSH_COMMANDS.research} <task>`, "error");
       return;
     }
 
@@ -67,11 +81,18 @@ export function createResearchHandler(pi: ExtensionAPI) {
     }
 
     const cwd = ctx.cwd;
-    const childSessionFile = generateChildSessionFile();
+    const sessionId = randomUUID();
+    const childSessionFile = generateChildSessionFile(sessionId);
     const researchAgent = makeResearchAgent();
 
     try {
-      seedForkSession(parentSessionFile, childSessionFile, researchAgent, cwd);
+      seedForkSession(
+        parentSessionFile,
+        childSessionFile,
+        researchAgent,
+        cwd,
+        sessionId,
+      );
     } catch (err) {
       ctx.ui.notify(
         `Failed to fork session: ${err instanceof Error ? err.message : String(err)}`,
@@ -89,15 +110,26 @@ export function createResearchHandler(pi: ExtensionAPI) {
       piArgs.push("--model", modelId);
     }
 
-    const sessionId = randomUUID();
-
-    const { command, args: cmdArgs } = getPiInvocation(piArgs);
-    const shellCmd = [command, ...cmdArgs].map(shq).join(" ");
     const piEnv = collectPiEnv(sessionId, task);
+
+    // Full pi command goes into an executable launch script, so the pane
+    // only runs a short `bash <script>` and the exact invocation is kept
+    // as a debuggable artifact. Env identity is inlined in the script so
+    // the manual (no-tmux) fallback also carries PI_RSH_* vars.
+    const { command, args: cmdArgs } = getPiInvocation(piArgs);
+    const envPrefix = Object.entries(piEnv)
+      .map(([k, v]) => `${k}=${shq(v)}`)
+      .join(" ");
+    const launchScript = writeResearchScript(
+      sessionId,
+      task,
+      [envPrefix, command, ...cmdArgs].map(shq).join(" "),
+    );
+    const runCmd = `bash ${shq(launchScript)}`;
 
     if (tmuxActive()) {
       const tmuxSession = tmuxGetSessionName();
-      const paneId = tmuxSplitWindow(shellCmd, "h", piEnv);
+      const paneId = tmuxSplitWindow(runCmd, "h");
 
       createResearchSession({
         id: sessionId,
@@ -110,7 +142,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
       pi.sendMessage({
         customType: "research_start",
-        content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/rsh-report\` in the child pane to send findings back here.`,
+        content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/${RSH_COMMANDS.report}\` in the child pane to send findings back here.`,
         display: true,
       });
     } else {
@@ -125,11 +157,11 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
       ctx.ui.notify("No tmux session detected.", "warning");
       ctx.ui.notify(`Run this in another terminal to continue:`, "info");
-      ctx.ui.notify(`  ${shellCmd}`, "info");
+      ctx.ui.notify(`  ${runCmd}`, "info");
 
       pi.sendMessage({
         customType: "research_start",
-        content: `**Research:** ${task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${shellCmd}\n\`\`\`\n\nUse \`/rsh-report\` when done.`,
+        content: `**Research:** ${task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${runCmd}\n\`\`\`\n\nUse \`/${RSH_COMMANDS.report}\` when done.`,
         display: true,
       });
     }
@@ -163,6 +195,12 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
         unlinkSync(state.sessionFile);
       }
 
+      // Clean up the launch script
+      const scriptPath = researchScriptPath(id);
+      if (existsSync(scriptPath)) {
+        unlinkSync(scriptPath);
+      }
+
       removeResearchSession(id);
 
       pi.sendMessage({
@@ -185,7 +223,7 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
         .map((s) => `  ${s.id.slice(0, 8)}  ${s.task}`)
         .join("\n");
       ctx.ui.notify(
-        `Active research sessions:\n${list}\n\nUse /rsh-close <id> to close one.`,
+        `Active research sessions:\n${list}\n\nUse /${RSH_COMMANDS.close} <id> to close one.`,
         "info",
       );
     }
@@ -194,14 +232,17 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
 
 // ── /rsh-report ─────────────────────────────────────────────────────────────
 
-export function createRshReportHandler(_pi: ExtensionAPI, ipc: ResearchIPC) {
+export function createResearchReportHandler(
+  _pi: ExtensionAPI,
+  ipc: ResearchIPC,
+) {
   return async (_args: string, ctx: ExtensionCommandContext) => {
     const sessionId = process.env.PI_RSH_SESSION_ID;
     const task = process.env.PI_RSH_TASK;
 
     if (!sessionId) {
       ctx.ui.notify(
-        "/rsh-report: Not in a research session (PI_RSH_SESSION_ID not set).",
+        `/${RSH_COMMANDS.report}: Not in a research session (PI_RSH_SESSION_ID not set).`,
         "error",
       );
       return;
@@ -209,7 +250,7 @@ export function createRshReportHandler(_pi: ExtensionAPI, ipc: ResearchIPC) {
 
     const sessionFile = ctx.sessionManager.getSessionFile();
     if (!sessionFile) {
-      ctx.ui.notify("/rsh-report: No session file.", "error");
+      ctx.ui.notify(`/${RSH_COMMANDS.report}: No session file.`, "error");
       return;
     }
 
@@ -259,7 +300,7 @@ export function createRshReportHandler(_pi: ExtensionAPI, ipc: ResearchIPC) {
     });
 
     ctx.ui.notify(
-      "Report sent to parent session. You can close this pane with /rsh-close.",
+      `Report sent to parent session. You can close this pane with /${RSH_COMMANDS.close}.`,
       "info",
     );
   };

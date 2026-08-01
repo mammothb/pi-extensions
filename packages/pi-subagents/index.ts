@@ -3,34 +3,30 @@ import { createIPC } from "./src/lib/research-ipc.js";
 import {
   createResearchCloseHandler,
   createResearchHandler,
-  createRshReportHandler,
+  createResearchReportHandler,
+  RSH_COMMANDS,
 } from "./src/research-commands.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
   const ipc = createIPC();
 
   // Interactive research commands
-  pi.registerCommand("rsh", {
-    description:
-      "Fork the current session into an interactive tmux pane for open-ended research. " +
-      "You steer the child pi directly, then use /rsh-report to send findings here.",
+  pi.registerCommand(RSH_COMMANDS.research, {
+    description: `Fork an interactive session with tmux. Use /${RSH_COMMANDS.report} to send findings here.`,
     handler: createResearchHandler(pi),
   });
-  pi.registerCommand("rsh-close", {
+  pi.registerCommand(RSH_COMMANDS.close, {
     description:
-      "Close a research session pane and clean up its state. " +
-      "Specify a session id, or omit to see active sessions.",
+      "Close a research session and clean up its state. Specify a session id, or omit to see active sessions.",
     handler: createResearchCloseHandler(pi),
   });
-  pi.registerCommand("rsh-report", {
-    description:
-      "Send research findings back to the parent session. " +
-      "Run this in the research child pane after completing your investigation.",
-    handler: createRshReportHandler(pi, ipc),
+  pi.registerCommand(RSH_COMMANDS.report, {
+    description: "Report research findings back to the parent session.",
+    handler: createResearchReportHandler(pi, ipc),
   });
 
   // Poll for completed research reports before each agent turn
-  pi.on("before_agent_start", async (_event, _ctx) => {
+  pi.on("before_agent_start", async () => {
     const reports = await ipc.poll();
     const report = reports.at(-1);
     if (report === undefined) {

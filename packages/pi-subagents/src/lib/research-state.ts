@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { researchSessionStatePath, researchSessionsDir } from "./paths.js";
 
 export interface ResearchSessionState {
   id: string;
@@ -19,12 +19,6 @@ export interface ResearchSessionState {
   status: "running" | "completed" | "closed";
 }
 
-function stateDir(): string {
-  const dir = join(getAgentDir(), "research-sessions");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
 export function createResearchSession(
   state: Omit<ResearchSessionState, "startedAt">,
 ): void {
@@ -32,15 +26,16 @@ export function createResearchSession(
     ...state,
     startedAt: new Date().toISOString(),
   };
+  mkdirSync(researchSessionsDir(), { recursive: true });
   writeFileSync(
-    join(stateDir(), `${state.id}.json`),
+    researchSessionStatePath(state.id),
     JSON.stringify(full, null, 2),
     "utf-8",
   );
 }
 
 export function getResearchSession(id: string): ResearchSessionState | null {
-  const path = join(stateDir(), `${id}.json`);
+  const path = researchSessionStatePath(id);
   if (!existsSync(path)) {
     return null;
   }
@@ -52,7 +47,7 @@ export function getResearchSession(id: string): ResearchSessionState | null {
 }
 
 export function listResearchSessions(): ResearchSessionState[] {
-  const dir = stateDir();
+  const dir = researchSessionsDir();
   if (!existsSync(dir)) {
     return [];
   }
@@ -81,14 +76,14 @@ export function updateResearchSessionStatus(
   }
   state.status = status;
   writeFileSync(
-    join(stateDir(), `${id}.json`),
+    researchSessionStatePath(id),
     JSON.stringify(state, null, 2),
     "utf-8",
   );
 }
 
 export function removeResearchSession(id: string): void {
-  const path = join(stateDir(), `${id}.json`);
+  const path = researchSessionStatePath(id);
   if (existsSync(path)) {
     unlinkSync(path);
   }

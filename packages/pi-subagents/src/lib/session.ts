@@ -1,37 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  CURRENT_SESSION_VERSION,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import { childSessionsDir } from "./paths.js";
 import type { AgentConfig } from "./types.js";
-
-// =============================================================================
-// Session format version (matches pi's current session JSONL format)
-// =============================================================================
-
-const CURRENT_SESSION_VERSION = 1;
 
 // =============================================================================
 // Session file helpers
 // =============================================================================
 
 /**
- * Generate a unique child session file path under the pi session directory
- * (`~/.pi/agent/sessions/pi-subagents/`).
+ * Generate the child session file path for a research session under the pi
+ * session directory (`~/.pi/agent/sessions/pi-subagents/`). The session id
+ * is shared with the header and the extension's bookkeeping, matching pi's
+ * own session files (session-manager: `${ts}_${id}.jsonl`).
  */
-export function generateChildSessionFile(sessionDir?: string): string {
-  const dir = sessionDir ?? join(agentSessionRoot(), "pi-subagents");
+export function generateChildSessionFile(sessionId: string): string {
+  const dir = childSessionsDir();
   mkdirSync(dir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
-  const id = randomUUID();
-  return join(dir, `${ts}_${id}.jsonl`);
-}
-
-/** Resolve the agent session root from env or default. */
-function agentSessionRoot(): string {
-  const agentDir =
-    process.env.PI_CODING_AGENT_DIR ??
-    join(process.env.HOME ?? "/tmp", ".pi", "agent");
-  return join(agentDir, "sessions");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(dir, `${ts}_${sessionId}.jsonl`);
 }
 
 // =============================================================================
@@ -51,6 +42,7 @@ export function seedForkSession(
   childSessionFile: string,
   agent: AgentConfig,
   cwd: string,
+  sessionId: string,
 ): void {
   mkdirSync(dirname(childSessionFile), { recursive: true });
 
@@ -67,6 +59,7 @@ export function seedForkSession(
       cwd,
       parentSessionFile,
       parentVersion,
+      sessionId,
     );
     return;
   }
@@ -78,6 +71,7 @@ export function seedForkSession(
       cwd,
       parentSessionFile,
       parentVersion,
+      sessionId,
     );
     return;
   }
@@ -86,7 +80,7 @@ export function seedForkSession(
   const header: Record<string, unknown> = {
     type: "session",
     version: parentVersion,
-    id: randomUUID(),
+    id: sessionId,
     timestamp: new Date().toISOString(),
     cwd,
     parentSession: parentSessionFile,
@@ -127,7 +121,7 @@ export function appendBoundaryEntry(
     content: "--- Background context from parent session ends here. ---",
     display: false,
     details: { name },
-    id: randomUUID().replace(/-/g, "").slice(0, 8),
+    id: generateEntryId(path),
     parentId: resolvedId,
     timestamp: new Date().toISOString(),
   };
@@ -144,17 +138,44 @@ function writeHeaderOnlySessionFile(
   cwd: string,
   parentSessionFile?: string,
   version = CURRENT_SESSION_VERSION,
+  sessionId?: string,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   const header: Record<string, unknown> = {
     type: "session",
     version,
-    id: randomUUID(),
+    id: sessionId ?? randomUUID(),
     timestamp: new Date().toISOString(),
     cwd,
     ...(parentSessionFile ? { parentSession: parentSessionFile } : {}),
   };
   writeFileSync(path, `${JSON.stringify(header)}\n`, "utf8");
+}
+
+/**
+ * Generate a unique short entry id (8 hex chars), avoiding ids already
+ * present in the session file. Mirrors pi's SessionManager#generateId.
+ */
+function generateEntryId(path: string): string {
+  const existing = new Set<string>();
+  try {
+    const manager = SessionManager.open(path);
+    for (const entry of manager.getEntries()) {
+      const id = (entry as { id?: string }).id;
+      if (id) {
+        existing.add(id);
+      }
+    }
+  } catch {
+    // Unreadable file — skip collision check
+  }
+  for (let i = 0; i < 100; i++) {
+    const id = randomUUID().slice(0, 8);
+    if (!existing.has(id)) {
+      return id;
+    }
+  }
+  return randomUUID();
 }
 
 /**

@@ -29,12 +29,10 @@ export function tmuxGetSessionName(): string | null {
  *
  * @param command  Shell command to run in the new pane.
  * @param direction  Split direction — "h" (horizontal, default) or "v".
- * @param env  Optional env vars to set in the new pane via `-e` flags.
  */
 export function tmuxSplitWindow(
   command: string,
   direction: "h" | "v" = "h",
-  env?: Record<string, string>,
 ): string {
   const args = [
     "split-window",
@@ -44,14 +42,6 @@ export function tmuxSplitWindow(
     "-F",
     "#{pane_id}",
   ];
-
-  if (env) {
-    for (const [key, value] of Object.entries(env)) {
-      if (key && value !== undefined) {
-        args.push("-e", `${key}=${value}`);
-      }
-    }
-  }
 
   args.push("--", command);
 
