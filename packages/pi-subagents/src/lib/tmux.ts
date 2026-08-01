@@ -31,16 +31,14 @@ export function tmuxGetSessionName(): string | null {
 }
 
 /**
- * Split the current tmux window and run a command in the new pane.
- * Returns the pane ID (e.g. "%3").
+ * Split the current tmux window, creating an empty pane (the default shell
+ * starts in it). The child command is sent later via tmuxSendKeys, so the
+ * parent can finish bookkeeping before the child boots. Returns the pane
+ * ID (e.g. "%3").
  *
- * @param command  Shell command to run in the new pane.
  * @param direction  Split direction — "h" (horizontal, default) or "v".
  */
-export function tmuxSplitWindow(
-  command: string,
-  direction: "h" | "v" = "h",
-): string {
+export function tmuxSplitWindow(direction: "h" | "v" = "h"): string {
   const args = [
     "split-window",
     `-${direction}`,
@@ -50,8 +48,6 @@ export function tmuxSplitWindow(
     "#{pane_id}",
   ];
 
-  args.push("--", command);
-
   const pane = execFileSync("tmux", args, {
     encoding: "utf-8",
     stdio: TMUX_STDIO,
@@ -60,6 +56,21 @@ export function tmuxSplitWindow(
     throw new Error(`Unexpected tmux split-window output: ${pane}`);
   }
   return pane;
+}
+
+/**
+ * Type a command into a pane as literal text, then press Enter.
+ * Used to start a research child after the parent's bookkeeping is done.
+ */
+export function tmuxSendKeys(paneId: string, command: string): void {
+  execFileSync("tmux", ["send-keys", "-t", paneId, "-l", command], {
+    encoding: "utf-8",
+    stdio: TMUX_STDIO,
+  });
+  execFileSync("tmux", ["send-keys", "-t", paneId, "Enter"], {
+    encoding: "utf-8",
+    stdio: TMUX_STDIO,
+  });
 }
 
 /**

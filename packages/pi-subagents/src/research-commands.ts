@@ -29,6 +29,7 @@ import {
   tmuxGetSessionName,
   tmuxKillPane,
   tmuxPaneAlive,
+  tmuxSendKeys,
   tmuxSplitWindow,
 } from "./lib/tmux.js";
 import type { AgentConfig } from "./lib/types.js";
@@ -174,7 +175,10 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
     if (tmuxActive()) {
       const tmuxSession = tmuxGetSessionName();
-      const paneId = tmuxSplitWindow(runCmd, "h");
+      // Split first, register state, then start the child — the child must
+      // never boot before its state file exists, or its childPid
+      // self-registration would no-op (HazAT's split-then-send pattern).
+      const paneId = tmuxSplitWindow("h");
 
       createResearchSession({
         id: sessionId,
@@ -184,6 +188,8 @@ export function createResearchHandler(pi: ExtensionAPI) {
         tmuxSession,
         status: "running",
       });
+
+      tmuxSendKeys(paneId, runCmd);
 
       pi.sendMessage({
         customType: "research_start",
