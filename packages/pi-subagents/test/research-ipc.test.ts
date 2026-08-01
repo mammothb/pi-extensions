@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Override unlinkSync so tests can force unlink failures and assert the
 // poll() dedup semantics (deliver exactly once; never re-read a processed
@@ -47,9 +47,14 @@ function writeReport(): string {
 // synchronously — assertions below are safe without awaiting, and keeping
 // callbacks sync honors withAgentDir's env/cleanup guarantee.
 describe("FileIPC.poll", () => {
+  beforeEach(() => {
+    // Default: unlink really removes the file. Individual tests override
+    // (e.g. the unlink-failure test) to simulate errors.
+    unlinkMock.mockImplementation((p) => realFsHolder.realFs!.unlinkSync(p));
+  });
+
   it("delivers a report exactly once and removes the file", () => {
     withAgentDir(() => {
-      unlinkMock.mockImplementation((p) => realFsHolder.realFs!.unlinkSync(p));
       const ipc = createIPC();
       const handler = vi.fn();
       ipc.onReport(handler);
@@ -87,7 +92,6 @@ describe("FileIPC.poll", () => {
 
   it("retries a malformed file on the next poll once it becomes valid", () => {
     withAgentDir(() => {
-      unlinkMock.mockImplementation((p) => realFsHolder.realFs!.unlinkSync(p));
       const ipc = createIPC();
       const handler = vi.fn();
       ipc.onReport(handler);
@@ -147,7 +151,6 @@ describe("FileIPC.poll", () => {
 
   it("poll ignores non-.json files", () => {
     withAgentDir(() => {
-      unlinkMock.mockImplementation((p) => realFsHolder.realFs!.unlinkSync(p));
       const ipc = createIPC();
       const handler = vi.fn();
       ipc.onReport(handler);
