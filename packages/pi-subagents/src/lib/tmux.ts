@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 /**
  * tmux errors (e.g. "can't find pane") must not leak to the terminal —
@@ -19,7 +19,7 @@ export function tmuxActive(): boolean {
  */
 export function tmuxGetSessionName(): string | null {
   try {
-    const name = execSync("tmux display-message -p '#S'", {
+    const name = execFileSync("tmux", ["display-message", "-p", "#S"], {
       encoding: "utf-8",
       timeout: 3000,
       stdio: TMUX_STDIO,
