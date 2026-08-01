@@ -55,9 +55,9 @@ export interface ResearchReceiver {
 // ── File IPC implementation ─────────────────────────────────────────────────
 
 export class FileIPC implements ResearchReporter, ResearchReceiver {
-  private handlers = new Set<(report: ResearchReport) => void>();
+  private readonly handlers = new Set<(report: ResearchReport) => void>();
   /** Track processed filenames to avoid re-delivery on repeated poll(). */
-  private processed = new Set<string>();
+  private readonly processed = new Set<string>();
   private watcher: ReturnType<typeof watch> | null = null;
 
   // ── ResearchReporter ──────────────────────────────────────────────────

@@ -44,7 +44,7 @@ export function extractLastAssistantOutput(
             typeof p === "object" && p !== null,
         )
         .filter((p) => p.type === "text")
-        .map((p) => String(p.text ?? ""))
+        .map((p) => (typeof p.text === "string" ? p.text : ""))
         .join("");
       if (text) {
         return text;
