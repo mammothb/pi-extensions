@@ -1,8 +1,12 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getPiInvocation } from "../src/lib/launch.js";
-import { writeResearchScript } from "../src/lib/launch-script.js";
+import {
+  buildResearchCommandLine,
+  writeResearchScript,
+} from "../src/lib/launch-script.js";
 import { researchScriptPath } from "../src/lib/paths.js";
 import { withAgentDir } from "./_helpers.js";
 
@@ -35,6 +39,7 @@ describe("writeResearchScript", () => {
       expect(content).toContain(
         "PI_RSH_SESSION_ID='abc-123' pi --session '/tmp/x.jsonl'",
       );
+      expect(content).toContain(`echo "[research] exited with $?" >&2`);
     });
   });
 
@@ -53,6 +58,35 @@ describe("researchScriptPath", () => {
       expect(researchScriptPath("abc-123")).toBe(
         join(dir, "research-scripts", "abc-123.sh"),
       );
+    });
+  });
+});
+
+describe("buildResearchCommandLine", () => {
+  it("produces a bash line that executes with the right env and args", () => {
+    withAgentDir((dir) => {
+      const outFile = join(dir, "out.json");
+      const stub = join(dir, "stub.js");
+      writeFileSync(
+        stub,
+        `require("node:fs").writeFileSync(process.argv[2], JSON.stringify({ env: { SID: process.env.PI_RSH_SESSION_ID, TASK: process.env.PI_RSH_TASK }, args: process.argv.slice(3) }));`,
+        "utf8",
+      );
+
+      const line = buildResearchCommandLine(
+        { PI_RSH_SESSION_ID: "abc-123", PI_RSH_TASK: "testing" },
+        [process.execPath, stub, outFile, "--session", "path with space.jsonl"],
+      );
+
+      execFileSync("bash", ["-c", line], { encoding: "utf8" });
+
+      const recorded = JSON.parse(readFileSync(outFile, "utf8")) as {
+        env: { SID?: string; TASK?: string };
+        args: string[];
+      };
+      expect(recorded.env.SID).toBe("abc-123");
+      expect(recorded.env.TASK).toBe("testing");
+      expect(recorded.args).toEqual(["--session", "path with space.jsonl"]);
     });
   });
 });

@@ -9,6 +9,47 @@ import { childSessionsDir } from "./paths.js";
 import type { AgentConfig } from "./types.js";
 
 // =============================================================================
+// Report extraction
+// =============================================================================
+
+/**
+ * Extract the last non-empty assistant text output from session entries.
+ * Handles the v3 nested shape (`entry.message`) and falls back to flat
+ * shapes. Returns "" when no assistant text output is found.
+ */
+export function extractLastAssistantOutput(
+  entries: Array<Record<string, unknown>>,
+): string {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (!entry) {
+      continue;
+    }
+    const msg = (entry.message as Record<string, unknown> | undefined) ?? entry;
+    if (msg.role !== "assistant") {
+      continue;
+    }
+    const content = msg.content;
+    if (typeof content === "string") {
+      if (content) {
+        return content;
+      }
+      continue;
+    }
+    if (Array.isArray(content)) {
+      const text = content
+        .filter((p: Record<string, unknown>) => p.type === "text")
+        .map((p: Record<string, unknown>) => String(p.text ?? ""))
+        .join("");
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return "";
+}
+
+// =============================================================================
 // Session file helpers
 // =============================================================================
 

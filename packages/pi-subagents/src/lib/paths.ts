@@ -30,6 +30,11 @@ export function researchScriptPath(sessionId: string): string {
   return join(researchScriptsDir(), `${sessionId}.sh`);
 }
 
+/** Stderr log for a research launch (written by the script itself). */
+export function researchScriptLogPath(sessionId: string): string {
+  return join(researchScriptsDir(), `${sessionId}.log`);
+}
+
 export function researchSessionStatePath(sessionId: string): string {
   return join(researchSessionsDir(), `${sessionId}.json`);
 }

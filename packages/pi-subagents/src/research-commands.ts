@@ -6,8 +6,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { getPiInvocation } from "./lib/launch.js";
-import { writeResearchScript } from "./lib/launch-script.js";
-import { researchScriptPath } from "./lib/paths.js";
+import {
+  buildResearchCommandLine,
+  shq,
+  writeResearchScript,
+} from "./lib/launch-script.js";
+import { researchScriptLogPath, researchScriptPath } from "./lib/paths.js";
 import type { ResearchIPC } from "./lib/research-ipc.js";
 import {
   createResearchSession,
@@ -15,7 +19,11 @@ import {
   listResearchSessions,
   removeResearchSession,
 } from "./lib/research-state.js";
-import { generateChildSessionFile, seedForkSession } from "./lib/session.js";
+import {
+  extractLastAssistantOutput,
+  generateChildSessionFile,
+  seedForkSession,
+} from "./lib/session.js";
 import {
   tmuxActive,
   tmuxGetSessionName,
@@ -44,12 +52,7 @@ function makeResearchAgent(): AgentConfig {
   };
 }
 
-// ── Shell-escaping ──────────────────────────────────────────────────────────
-
-/** Single-quote a string for shell use, handling embedded quotes. */
-function shq(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
+// ── Command line construction ───────────────────────────────────────────────
 
 /** Collect PI_* env vars + research session identity to pass to the child pane. */
 function collectPiEnv(sessionId: string, task: string): Record<string, string> {
@@ -117,13 +120,10 @@ export function createResearchHandler(pi: ExtensionAPI) {
     // as a debuggable artifact. Env identity is inlined in the script so
     // the manual (no-tmux) fallback also carries PI_RSH_* vars.
     const { command, args: cmdArgs } = getPiInvocation(piArgs);
-    const envPrefix = Object.entries(piEnv)
-      .map(([k, v]) => `${k}=${shq(v)}`)
-      .join(" ");
     const launchScript = writeResearchScript(
       sessionId,
       task,
-      [envPrefix, command, ...cmdArgs].map(shq).join(" "),
+      buildResearchCommandLine(piEnv, [command, ...cmdArgs]),
     );
     const runCmd = `bash ${shq(launchScript)}`;
 
@@ -195,10 +195,14 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
         unlinkSync(state.sessionFile);
       }
 
-      // Clean up the launch script
+      // Clean up the launch script and its stderr log
       const scriptPath = researchScriptPath(id);
       if (existsSync(scriptPath)) {
         unlinkSync(scriptPath);
+      }
+      const logPath = researchScriptLogPath(id);
+      if (existsSync(logPath)) {
+        unlinkSync(logPath);
       }
 
       removeResearchSession(id);
@@ -258,32 +262,10 @@ export function createResearchReportHandler(
     let output: string;
     try {
       const manager = SessionManager.open(sessionFile, undefined, ctx.cwd);
-      const entries = manager.getEntries();
-
-      let lastAssistant = "";
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = entries[i] as unknown as
-          | Record<string, unknown>
-          | undefined;
-        if (!entry) {
-          continue;
-        }
-        if (entry.role === "assistant") {
-          const content = entry.content;
-          if (typeof content === "string") {
-            lastAssistant = content;
-          } else if (Array.isArray(content)) {
-            lastAssistant = content
-              .filter((p: Record<string, unknown>) => p.type === "text")
-              .map((p: Record<string, unknown>) => String(p.text ?? ""))
-              .join("");
-          }
-          if (lastAssistant) {
-            break;
-          }
-        }
-      }
-      output = lastAssistant || "(no assistant output found)";
+      output =
+        extractLastAssistantOutput(
+          manager.getEntries() as unknown as Array<Record<string, unknown>>,
+        ) || "(no assistant output found)";
     } catch (err) {
       ctx.ui.notify(
         `Failed to extract report: ${err instanceof Error ? err.message : String(err)}`,

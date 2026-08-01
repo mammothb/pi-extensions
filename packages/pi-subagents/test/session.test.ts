@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendBoundaryEntry,
+  extractLastAssistantOutput,
   generateChildSessionFile,
   seedForkSession,
 } from "../src/lib/session.js";
@@ -198,6 +199,79 @@ describe("seedForkSession", () => {
     const header = JSON.parse(firstLine);
     expect(header.type).toBe("session");
     expect(header.parentSession).toBe(parent);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractLastAssistantOutput
+// ---------------------------------------------------------------------------
+
+describe("extractLastAssistantOutput", () => {
+  it("extracts text from the last assistant message (v3 nested shape)", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "question" }],
+        },
+      },
+      {
+        type: "message",
+        id: "b",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "the answer" }],
+        },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("the answer");
+  });
+
+  it("skips assistant messages without text output", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: {
+          role: "assistant",
+          content: [{ type: "thinking", thinking: "thinking only" }],
+        },
+      },
+      {
+        type: "message",
+        id: "b",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "real answer" }],
+        },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("real answer");
+  });
+
+  it("handles flat (non-nested) assistant entries", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        role: "assistant",
+        content: [{ type: "text", text: "flat answer" }],
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("flat answer");
+  });
+
+  it("returns empty string when no assistant text exists", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: { role: "user", content: [{ type: "text", text: "hi" }] },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("");
   });
 });
 
