@@ -1,23 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { discoverAgents } from "./src/lib/agents.js";
-import {
-  computeRosterChange,
-  EMPTY_ROSTER_MESSAGE,
-  formatAgentRoster,
-} from "./src/lib/ambient.js";
 import { createIPC } from "./src/lib/research-ipc.js";
 import {
   createResearchCloseHandler,
   createResearchHandler,
   createRshReportHandler,
 } from "./src/research-commands.js";
-import { createResumeTool } from "./src/resume-tool.js";
-import { createSubagentTool } from "./src/subagent-tool.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
-  pi.registerTool(createSubagentTool());
-  pi.registerTool(createResumeTool());
-
   const ipc = createIPC();
 
   // Interactive research commands
@@ -52,47 +41,6 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         customType: "research_complete",
         content: `**Research completed:** ${report.task}\n\n${report.output}`,
         display: true,
-      },
-    };
-  });
-
-  // Ambient awareness: inject available agents + task classification
-  // heuristic into parent LLM context each turn.
-  // Uses content-based change detection: identical roster is not re-injected.
-  let lastRosterSignature: string | null = null;
-
-  pi.on("before_agent_start", (_event, ctx) => {
-    const agents = discoverAgents(ctx.cwd);
-    const roster = formatAgentRoster(agents);
-
-    const { shouldInject, newSignature } = computeRosterChange(
-      roster,
-      lastRosterSignature,
-    );
-    lastRosterSignature = newSignature;
-
-    if (!shouldInject) {
-      return;
-    }
-
-    // Use the empty-roster message when agents have been removed (roster
-    // is empty but computeRosterChange requested injection for revocation).
-    const agentList = roster || EMPTY_ROSTER_MESSAGE;
-
-    // Task classification heuristic: helps the model decide between
-    // autonomous subagent tool vs interactive /research command.
-    const classificationHint =
-      "\n\nBefore delegating, classify the task:\n" +
-      "- MECHANICAL (clear inputs, clear outputs, routine) → use subagent tool\n" +
-      "- EXPLORATORY (open-ended, needs steering, iterative) → use /research command\n";
-
-    const content = `${classificationHint}\n${agentList}`;
-
-    return {
-      message: {
-        customType: "subagent_roster",
-        content,
-        display: false,
       },
     };
   });

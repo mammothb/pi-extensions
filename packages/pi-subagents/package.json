@@ -8,8 +8,7 @@
   "license": "MIT",
   "files": [
     "index.ts",
-    "src",
-    "agents"
+    "src"
   ],
   "pi": {
     "extensions": [
