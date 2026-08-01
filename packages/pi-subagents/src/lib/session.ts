@@ -1,52 +1,57 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  CURRENT_SESSION_VERSION,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import { childSessionsDir } from "./paths.js";
 import type { AgentConfig } from "./types.js";
 
 // =============================================================================
-// Session format version (matches pi's current session JSONL format)
+// Report extraction
 // =============================================================================
 
-const CURRENT_SESSION_VERSION = 1;
-
-// =============================================================================
-// Persisted launch metadata (stored in child session for resume)
-// =============================================================================
-
-export const LAUNCH_METADATA_CUSTOM_TYPE = "pi-subagents_launch_metadata";
-
-export interface PersistedLaunchMetadata {
-  version: 1;
-  timestamp: string;
-  name: string;
-  agent?: string;
-  model: string;
-  thinking: string;
-  tools: string[];
-  mode: "clean" | "fork";
-  sandbox: boolean;
-  noSession: boolean;
-  cwd: string;
-}
-
-function agentToMetadata(
-  agent: AgentConfig,
-  cwd: string,
-): PersistedLaunchMetadata {
-  return {
-    version: 1,
-    timestamp: new Date().toISOString(),
-    name: agent.name,
-    agent: agent.name,
-    model: agent.model,
-    thinking: agent.thinking,
-    tools: agent.tools,
-    mode: agent.mode,
-    sandbox: agent.sandbox,
-    noSession: agent.noSession,
-    cwd,
-  };
+/**
+ * Extract the last non-empty assistant text output from session entries.
+ * Handles the v3 nested shape (`entry.message`) and falls back to flat
+ * shapes. Returns "" when no assistant text output is found.
+ */
+export function extractLastAssistantOutput(
+  entries: Array<Record<string, unknown>>,
+): string {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (!entry) {
+      continue;
+    }
+    const msg = (entry.message as Record<string, unknown> | undefined) ?? entry;
+    if (msg.role !== "assistant") {
+      continue;
+    }
+    const content = msg.content;
+    if (typeof content === "string") {
+      if (content) {
+        return content;
+      }
+      continue;
+    }
+    if (Array.isArray(content)) {
+      const text = content
+        // Guard against null/primitive entries before touching .type
+        .filter(
+          (p): p is Record<string, unknown> =>
+            typeof p === "object" && p !== null,
+        )
+        .filter((p) => p.type === "text")
+        .map((p) => (typeof p.text === "string" ? p.text : ""))
+        .join("");
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return "";
 }
 
 // =============================================================================
@@ -54,24 +59,16 @@ function agentToMetadata(
 // =============================================================================
 
 /**
- * Generate a unique child session file path.
- * Uses the default pi session directory under `~/.pi/agent/sessions/`
- * so sandboxed children (bubblewrap) can access it.
+ * Generate the child session file path for a research session under the pi
+ * session directory (`~/.pi/agent/sessions/pi-subagents/`). The session id
+ * is shared with the header and the extension's bookkeeping, matching pi's
+ * own session files (session-manager: `${ts}_${id}.jsonl`).
  */
-export function generateChildSessionFile(sessionDir?: string): string {
-  const dir = sessionDir ?? join(agentSessionRoot(), "pi-subagents");
+export function generateChildSessionFile(sessionId: string): string {
+  const dir = childSessionsDir();
   mkdirSync(dir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 23);
-  const id = randomUUID();
-  return join(dir, `${ts}_${id}.jsonl`);
-}
-
-/** Resolve the agent session root from env or default. */
-function agentSessionRoot(): string {
-  const agentDir =
-    process.env.PI_CODING_AGENT_DIR ??
-    join(process.env.HOME ?? "/tmp", ".pi", "agent");
-  return join(agentDir, "sessions");
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(dir, `${ts}_${sessionId}.jsonl`);
 }
 
 // =============================================================================
@@ -81,7 +78,7 @@ function agentSessionRoot(): string {
 /**
  * Seed a child session file that forks (inherits) the parent's conversation
  * context. The child gets the parent's current branch entries + a boundary
- * marker, model/thinking state, and launch metadata for resume.
+ * marker so it knows where parent context ends.
  *
  * Uses Pi SDK's SessionManager to read the parent session correctly —
  * handling compaction, branching, and format versioning.
@@ -91,6 +88,7 @@ export function seedForkSession(
   childSessionFile: string,
   agent: AgentConfig,
   cwd: string,
+  sessionId: string,
 ): void {
   mkdirSync(dirname(childSessionFile), { recursive: true });
 
@@ -107,6 +105,7 @@ export function seedForkSession(
       cwd,
       parentSessionFile,
       parentVersion,
+      sessionId,
     );
     return;
   }
@@ -118,6 +117,7 @@ export function seedForkSession(
       cwd,
       parentSessionFile,
       parentVersion,
+      sessionId,
     );
     return;
   }
@@ -126,7 +126,7 @@ export function seedForkSession(
   const header: Record<string, unknown> = {
     type: "session",
     version: parentVersion,
-    id: randomUUID(),
+    id: sessionId,
     timestamp: new Date().toISOString(),
     cwd,
     parentSession: parentSessionFile,
@@ -135,91 +135,17 @@ export function seedForkSession(
   const lines = [header, ...branch].map((entry) => JSON.stringify(entry));
   writeFileSync(childSessionFile, `${lines.join("\n")}\n`, "utf8");
 
-  // Append state + metadata entries, threading parentId so each helper
-  // avoids re-parsing the session file via getLastEntryId.
-  let lastId = getLastEntryId(childSessionFile);
-  lastId = appendModelStateEntries(childSessionFile, agent, lastId);
-  lastId = appendLaunchMetadataEntry(childSessionFile, agent, cwd, lastId);
-  appendBoundaryEntry(childSessionFile, agent.name, lastId);
+  // Append a boundary marker as the final entry
+  appendBoundaryEntry(
+    childSessionFile,
+    agent.name,
+    getLastEntryId(childSessionFile),
+  );
 }
 
 // =============================================================================
 // Entry appending helpers
 // =============================================================================
-
-/**
- * Append model_change and thinking_level_change entries to a session file.
- * These record the child's model configuration in the session so resume
- * can restore it.
- */
-export function appendModelStateEntries(
-  path: string,
-  agent: AgentConfig,
-  parentId?: string | null,
-): string | null {
-  if (!existsSync(path) || !agent.model) {
-    return parentId ?? null;
-  }
-
-  let resolvedId = parentId ?? getLastEntryId(path);
-
-  const slash = agent.model.indexOf("/");
-  if (slash !== -1) {
-    // model_change
-    const entry = {
-      type: "model_change",
-      id: randomUUID().replace(/-/g, "").slice(0, 8),
-      parentId: resolvedId,
-      timestamp: new Date().toISOString(),
-      provider: agent.model.slice(0, slash),
-      modelId: agent.model.slice(slash + 1),
-    };
-    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
-    resolvedId = entry.id;
-  }
-
-  // thinking_level_change
-  if (agent.thinking) {
-    const entry = {
-      type: "thinking_level_change",
-      id: randomUUID().replace(/-/g, "").slice(0, 8),
-      parentId: resolvedId,
-      timestamp: new Date().toISOString(),
-      thinkingLevel: agent.thinking,
-    };
-    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
-    resolvedId = entry.id;
-  }
-
-  return resolvedId;
-}
-
-/**
- * Append launch metadata as a custom entry so resume can restore
- * the original agent config (model, tools, thinking, sandbox, mode).
- */
-export function appendLaunchMetadataEntry(
-  path: string,
-  agent: AgentConfig,
-  cwd: string,
-  parentId?: string | null,
-): string | null {
-  if (!existsSync(path)) {
-    return parentId ?? null;
-  }
-
-  const resolvedId = parentId ?? getLastEntryId(path);
-  const entry = {
-    type: "custom",
-    customType: LAUNCH_METADATA_CUSTOM_TYPE,
-    data: agentToMetadata(agent, cwd),
-    id: randomUUID().replace(/-/g, "").slice(0, 8),
-    parentId: resolvedId,
-    timestamp: new Date().toISOString(),
-  };
-  appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
-  return entry.id;
-}
 
 /**
  * Append a boundary marker (custom_message) that tells the child LLM
@@ -237,55 +163,16 @@ export function appendBoundaryEntry(
   const resolvedId = parentId ?? getLastEntryId(path);
   const entry = {
     type: "custom_message",
-    customType: "subagent_boundary",
-    content:
-      "--- Background context from parent session ends here. " +
-      "The task below is your assignment. ---",
+    customType: "background_boundary",
+    content: "--- Background context from parent session ends here. ---",
     display: false,
     details: { name },
-    id: randomUUID().replace(/-/g, "").slice(0, 8),
+    id: generateEntryId(path),
     parentId: resolvedId,
     timestamp: new Date().toISOString(),
   };
   appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
   return entry.id;
-}
-
-// =============================================================================
-// Launch metadata read-back (for resume)
-// =============================================================================
-
-/**
- * Read persisted launch metadata from a child session file.
- * Returns undefined if the session was created before metadata persistence
- * was added, or if the file is unreadable.
- */
-export function readLaunchMetadata(
-  path: string,
-): PersistedLaunchMetadata | undefined {
-  try {
-    const manager = SessionManager.open(path);
-    const entries = manager.getEntries();
-
-    // Scan backward for the most recent launch metadata entry
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i] as unknown as Record<string, unknown>;
-      if (
-        entry.type !== "custom" ||
-        entry.customType !== LAUNCH_METADATA_CUSTOM_TYPE
-      ) {
-        continue;
-      }
-      const data = entry.data as Partial<PersistedLaunchMetadata> | undefined;
-      if (!data || data.version !== 1 || !Array.isArray(data.tools)) {
-        continue;
-      }
-      return data as PersistedLaunchMetadata;
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }
 
 // =============================================================================
@@ -297,17 +184,44 @@ function writeHeaderOnlySessionFile(
   cwd: string,
   parentSessionFile?: string,
   version = CURRENT_SESSION_VERSION,
+  sessionId?: string,
 ): void {
   mkdirSync(dirname(path), { recursive: true });
   const header: Record<string, unknown> = {
     type: "session",
     version,
-    id: randomUUID(),
+    id: sessionId ?? randomUUID(),
     timestamp: new Date().toISOString(),
     cwd,
     ...(parentSessionFile ? { parentSession: parentSessionFile } : {}),
   };
   writeFileSync(path, `${JSON.stringify(header)}\n`, "utf8");
+}
+
+/**
+ * Generate a unique short entry id (8 hex chars), avoiding ids already
+ * present in the session file. Mirrors pi's SessionManager#generateId.
+ */
+function generateEntryId(path: string): string {
+  const existing = new Set<string>();
+  try {
+    const manager = SessionManager.open(path);
+    for (const entry of manager.getEntries()) {
+      const id = (entry as { id?: string }).id;
+      if (id) {
+        existing.add(id);
+      }
+    }
+  } catch {
+    // Unreadable file — skip collision check
+  }
+  for (let i = 0; i < 100; i++) {
+    const id = randomUUID().slice(0, 8);
+    if (!existing.has(id)) {
+      return id;
+    }
+  }
+  return randomUUID();
 }
 
 /**

@@ -16,6 +16,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development, testing, and release i
 | `@mammothb/pi-permissions` | Permission enforcement — gates tool calls, bash commands (via arbiter executable), and file paths |
 | `@mammothb/pi-shared` | Shared utilities for pi extensions (text extraction, config loading, error rendering) |
 | `@mammothb/pi-stats` | Tracks tool, skill, and extension usage statistics per session |
+| `@mammothb/pi-subagents` | Interactive research mode — fork the current session into a tmux pane (`/rsh`, `/rsh-report`, `/rsh-close`) |
 | `@mammothb/pi-toast` | Desktop toast notifications on agent events (tmux-aware) |
 | `@mammothb/pi-tokyonight-storm` | Tokyo Night Storm theme — colors corrected to match folke/tokyonight.nvim |
 | `@mammothb/pi-web` | Fetch and search the web — `WebFetch` + `WebSearch` tools |

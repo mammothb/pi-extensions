@@ -1,3 +1,0 @@
----
-name: broken
-model: claude
