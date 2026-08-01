@@ -17,6 +17,8 @@ export interface ResearchSessionState {
   tmuxSession: string | null;
   startedAt: string;
   status: "running" | "completed" | "closed";
+  /** PID of the child pi process — recorded by the child on startup. */
+  childPid?: number;
 }
 
 export function createResearchSession(
@@ -64,6 +66,19 @@ export function listResearchSessions(): ResearchSessionState[] {
     })
     .filter((s): s is ResearchSessionState => s !== null);
   return sessions.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+}
+
+export function setResearchSessionChildPid(id: string, childPid: number): void {
+  const state = getResearchSession(id);
+  if (!state) {
+    return;
+  }
+  state.childPid = childPid;
+  writeFileSync(
+    researchSessionStatePath(id),
+    JSON.stringify(state, null, 2),
+    "utf-8",
+  );
 }
 
 export function updateResearchSessionStatus(

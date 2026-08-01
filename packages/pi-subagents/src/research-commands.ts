@@ -28,6 +28,7 @@ import {
   tmuxActive,
   tmuxGetSessionName,
   tmuxKillPane,
+  tmuxPaneAlive,
   tmuxSplitWindow,
 } from "./lib/tmux.js";
 import type { AgentConfig } from "./lib/types.js";
@@ -50,6 +51,50 @@ function makeResearchAgent(): AgentConfig {
   return {
     name: "research",
   };
+}
+
+// ── Stale session sweep ─────────────────────────────────────────────────────
+
+/** Probe whether a PID is alive by sending signal 0 (same as pi-web). */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sweep research sessions left behind by unclean child exits (crash,
+ * SIGKILL, power loss). A session is stale when its pane is gone — or, for
+ * the no-tmux fallback, when its child process is dead. Sessions with an
+ * unknown liveness (no paneId, no childPid — pre-childPid sessions) are
+ * left alone. Run at session start, mirroring pi-web's searxng unclean-
+ * shutdown audit. Returns the number of sessions cleaned.
+ */
+export function sweepStaleResearchSessions(): number {
+  let cleaned = 0;
+  for (const state of listResearchSessions()) {
+    if (state.status !== "running") {
+      continue;
+    }
+
+    let alive: boolean;
+    if (state.paneId) {
+      alive = tmuxPaneAlive(state.paneId);
+    } else if (state.childPid !== undefined) {
+      alive = isProcessAlive(state.childPid);
+    } else {
+      continue; // unknown liveness — leave it
+    }
+
+    if (!alive) {
+      closeResearchSessionById(state.id);
+      cleaned++;
+    }
+  }
+  return cleaned;
 }
 
 // ── Command line construction ───────────────────────────────────────────────
@@ -170,6 +215,43 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
 // ── /rsh-close ──────────────────────────────────────────────────────────────
 
+/**
+ * Tear down a research session and its file trail (pane, session file,
+ * launch script, stderr log, state). Idempotent — missing state is a no-op.
+ * Shared by /rsh-close and the child's self-cleanup on exit.
+ */
+export function closeResearchSessionById(sessionId: string): void {
+  const state = getResearchSession(sessionId);
+  if (!state) {
+    return;
+  }
+
+  if (state.paneId) {
+    try {
+      tmuxKillPane(state.paneId);
+    } catch {
+      // Pane may already be dead
+    }
+  }
+
+  // Clean up the forked child session file
+  if (existsSync(state.sessionFile)) {
+    unlinkSync(state.sessionFile);
+  }
+
+  // Clean up the launch script and its stderr log
+  const scriptPath = researchScriptPath(sessionId);
+  if (existsSync(scriptPath)) {
+    unlinkSync(scriptPath);
+  }
+  const logPath = researchScriptLogPath(sessionId);
+  if (existsSync(logPath)) {
+    unlinkSync(logPath);
+  }
+
+  removeResearchSession(sessionId);
+}
+
 export function createResearchCloseHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
     const id = args.trim();
@@ -182,30 +264,7 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
         return;
       }
 
-      if (state.paneId) {
-        try {
-          tmuxKillPane(state.paneId);
-        } catch {
-          // Pane may already be dead
-        }
-      }
-
-      // Clean up the forked child session file
-      if (existsSync(state.sessionFile)) {
-        unlinkSync(state.sessionFile);
-      }
-
-      // Clean up the launch script and its stderr log
-      const scriptPath = researchScriptPath(id);
-      if (existsSync(scriptPath)) {
-        unlinkSync(scriptPath);
-      }
-      const logPath = researchScriptLogPath(id);
-      if (existsSync(logPath)) {
-        unlinkSync(logPath);
-      }
-
-      removeResearchSession(id);
+      closeResearchSessionById(id);
 
       pi.sendMessage({
         customType: "research_close",

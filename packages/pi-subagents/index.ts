@@ -1,10 +1,17 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  SessionShutdownEvent,
+} from "@earendil-works/pi-coding-agent";
 import { createIPC } from "./src/lib/research-ipc.js";
+import { setResearchSessionChildPid } from "./src/lib/research-state.js";
 import {
+  closeResearchSessionById,
   createResearchCloseHandler,
   createResearchHandler,
   createResearchReportHandler,
   RSH_COMMANDS,
+  sweepStaleResearchSessions,
 } from "./src/research-commands.js";
 
 export default function subagentsExtension(pi: ExtensionAPI) {
@@ -24,6 +31,42 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     description: "Report research findings back to the parent session.",
     handler: createResearchReportHandler(pi, ipc),
   });
+
+  // Clean up research sessions left behind by unclean child exits (crash,
+  // SIGKILL, power loss) — mirroring pi-web's searxng unclean-shutdown
+  // audit at startup. Runs in every pi process, parent or child.
+  pi.on("session_start", (_event, ctx: ExtensionContext) => {
+    const cleaned = sweepStaleResearchSessions();
+    if (cleaned > 0) {
+      ctx.ui.notify(
+        `pi-subagents: cleaned up ${cleaned} stale research session(s) from previous runs.`,
+        "info",
+      );
+    }
+  });
+
+  // If this pi process IS a research child, clean up after itself when it
+  // exits: session_shutdown covers graceful quit, SIGHUP/SIGTERM cover
+  // pane death and kill. SIGKILL and crashes are caught by the sweep above
+  // on the next startup.
+  const childSessionId = process.env.PI_RSH_SESSION_ID;
+  if (childSessionId) {
+    setResearchSessionChildPid(childSessionId, process.pid);
+    pi.on("session_shutdown", (event: SessionShutdownEvent) => {
+      if (event.reason === "quit") {
+        closeResearchSessionById(childSessionId);
+      }
+    });
+    process.on("exit", () => {
+      closeResearchSessionById(childSessionId);
+    });
+    for (const signal of ["SIGHUP", "SIGTERM"] as const) {
+      process.on(signal, () => {
+        closeResearchSessionById(childSessionId);
+        process.exit(0);
+      });
+    }
+  }
 
   // Poll for completed research reports before each agent turn
   pi.on("before_agent_start", async () => {
