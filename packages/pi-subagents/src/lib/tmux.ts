@@ -66,7 +66,7 @@ export function tmuxSplitWindow(
  * Kill a tmux pane by its pane ID.
  */
 export function tmuxKillPane(paneId: string): void {
-  execFileSync("tmux", ["kill-pane", "-t", `"${paneId}"`], {
+  execFileSync("tmux", ["kill-pane", "-t", paneId], {
     encoding: "utf-8",
     stdio: TMUX_STDIO,
   });
@@ -77,7 +77,7 @@ export function tmuxKillPane(paneId: string): void {
  */
 export function tmuxPaneAlive(paneId: string): boolean {
   try {
-    execFileSync("tmux", ["list-panes", "-t", `"${paneId}"`], {
+    execFileSync("tmux", ["list-panes", "-t", paneId], {
       encoding: "utf-8",
       stdio: TMUX_STDIO,
     });
