@@ -29,7 +29,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   });
   pi.registerCommand(RSH_COMMANDS.report, {
     description: "Report research findings back to the parent session.",
-    handler: createResearchReportHandler(pi, ipc),
+    handler: createResearchReportHandler(ipc),
   });
 
   // Clean up research sessions left behind by unclean child exits (crash,
@@ -68,19 +68,24 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     }
   }
 
-  // Poll for completed research reports before each agent turn
-  pi.on("before_agent_start", async () => {
-    const reports = await ipc.poll();
-    const report = reports.at(-1);
-    if (report === undefined) {
-      return;
-    }
-    return {
-      message: {
+  // Push delivery — watch the reports dir and fire immediately when a
+  // child sends findings home. Only the parent (not a research child
+  // itself) needs to deliver reports. Uses the same onReport handler as
+  // the poll fallback below — only one path delivers per report.
+  if (!childSessionId) {
+    ipc.onReport((report) => {
+      pi.sendMessage({
         customType: "research_complete",
         content: `**Research completed:** ${report.task}\n\n${report.output}`,
         display: true,
-      },
-    };
+      });
+    });
+    ipc.start();
+  }
+
+  // Poll fallback — catches reports written before the watcher started
+  // (startup race) or dropped by the underlying fs.watch implementation.
+  pi.on("before_agent_start", async () => {
+    await ipc.poll();
   });
 }

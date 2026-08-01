@@ -13,7 +13,7 @@ import {
   writeResearchScript,
 } from "./lib/launch-script.js";
 import { researchScriptLogPath, researchScriptPath } from "./lib/paths.js";
-import type { ResearchIPC } from "./lib/research-ipc.js";
+import type { ResearchReporter } from "./lib/research-ipc.js";
 import {
   createResearchSession,
   getResearchSession,
@@ -310,10 +310,7 @@ export function createResearchCloseHandler(pi: ExtensionAPI) {
 
 // ── /rsh-report ─────────────────────────────────────────────────────────────
 
-export function createResearchReportHandler(
-  _pi: ExtensionAPI,
-  ipc: ResearchIPC,
-) {
+export function createResearchReportHandler(ipc: ResearchReporter) {
   return async (_args: string, ctx: ExtensionCommandContext) => {
     const sessionId = process.env.PI_RSH_SESSION_ID;
     const task = process.env.PI_RSH_TASK;
