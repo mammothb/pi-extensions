@@ -230,13 +230,15 @@ describe("extractLastAssistantOutput", () => {
   });
 
   it("skips assistant messages without text output", () => {
+    // The thinking-only entry comes LAST, so backward scanning must skip
+    // it before reaching the text-bearing entry.
     const entries = [
       {
         type: "message",
         id: "a",
         message: {
           role: "assistant",
-          content: [{ type: "thinking", thinking: "thinking only" }],
+          content: [{ type: "text", text: "real answer" }],
         },
       },
       {
@@ -244,11 +246,41 @@ describe("extractLastAssistantOutput", () => {
         id: "b",
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "real answer" }],
+          content: [{ type: "thinking", thinking: "thinking only" }],
         },
       },
     ];
     expect(extractLastAssistantOutput(entries)).toBe("real answer");
+  });
+
+  it("returns non-empty plain string content", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: { role: "assistant", content: "plain string answer" },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("plain string answer");
+  });
+
+  it("skips an empty string in favor of an earlier valid output", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "earlier answer" }],
+        },
+      },
+      {
+        type: "message",
+        id: "b",
+        message: { role: "assistant", content: "" },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("earlier answer");
   });
 
   it("handles flat (non-nested) assistant entries", () => {
@@ -261,6 +293,25 @@ describe("extractLastAssistantOutput", () => {
       },
     ];
     expect(extractLastAssistantOutput(entries)).toBe("flat answer");
+  });
+
+  it("extracts text even when content contains null or primitive entries", () => {
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: {
+          role: "assistant",
+          content: [
+            null,
+            "bare string",
+            42,
+            { type: "text", text: "survived" },
+          ],
+        },
+      },
+    ];
+    expect(extractLastAssistantOutput(entries)).toBe("survived");
   });
 
   it("returns empty string when no assistant text exists", () => {

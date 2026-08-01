@@ -38,8 +38,13 @@ export function extractLastAssistantOutput(
     }
     if (Array.isArray(content)) {
       const text = content
-        .filter((p: Record<string, unknown>) => p.type === "text")
-        .map((p: Record<string, unknown>) => String(p.text ?? ""))
+        // Guard against null/primitive entries before touching .type
+        .filter(
+          (p): p is Record<string, unknown> =>
+            typeof p === "object" && p !== null,
+        )
+        .filter((p) => p.type === "text")
+        .map((p) => String(p.text ?? ""))
         .join("");
       if (text) {
         return text;

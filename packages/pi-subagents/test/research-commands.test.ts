@@ -1,12 +1,13 @@
-import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createResearchSession,
   getResearchSession,
+  type ResearchSessionState,
 } from "../src/lib/research-state.js";
 import {
   closeResearchSessionById,
+  resolveResearchSession,
   sweepStaleResearchSessions,
 } from "../src/research-commands.js";
 import { withAgentDir } from "./_helpers.js";
@@ -16,6 +17,39 @@ describe("closeResearchSessionById", () => {
     withAgentDir(() => {
       expect(() => closeResearchSessionById("nope")).not.toThrow();
     });
+  });
+});
+
+describe("resolveResearchSession", () => {
+  const sessions = [
+    { id: "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+    { id: "11111111-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+    { id: "22222222-cccc-4ccc-8ccc-cccccccccccc" },
+  ] as unknown as ResearchSessionState[];
+
+  it("resolves an exact id", () => {
+    const id = "22222222-cccc-4ccc-8ccc-cccccccccccc";
+    const resolved = resolveResearchSession(sessions, id);
+    if (resolved === "ambiguous" || resolved === null) {
+      throw new Error("expected a session");
+    }
+    expect(resolved.id).toBe(id);
+  });
+
+  it("resolves a prefix that uniquely identifies one session", () => {
+    const resolved = resolveResearchSession(sessions, "22222222");
+    if (resolved === "ambiguous" || resolved === null) {
+      throw new Error("expected a session");
+    }
+    expect(resolved.id).toBe("22222222-cccc-4ccc-8ccc-cccccccccccc");
+  });
+
+  it("rejects an ambiguous prefix", () => {
+    expect(resolveResearchSession(sessions, "11111111")).toBe("ambiguous");
+  });
+
+  it("returns null for unknown ids and prefixes", () => {
+    expect(resolveResearchSession(sessions, "99999999")).toBeNull();
   });
 });
 
@@ -37,12 +71,15 @@ describe("sweepStaleResearchSessions", () => {
   });
 
   it("cleans no-tmux sessions whose child process is gone", () => {
-    withAgentDir(() => {
-      const deadPid = spawnSync("true").pid;
+    withAgentDir((dir) => {
+      // Far above any platform's pid_max (Linux ~4.2M, macOS/BSD 99999),
+      // so kill(pid, 0) always ESRCHs — never a live process.
+      const deadPid = 99_999_999;
+      expect(deadPid).toBeDefined();
       createResearchSession({
         id: "dead-pid",
         task: "t",
-        sessionFile: "/tmp/x.jsonl",
+        sessionFile: join(dir, "x.jsonl"),
         paneId: null,
         tmuxSession: null,
         status: "running",
@@ -55,11 +92,11 @@ describe("sweepStaleResearchSessions", () => {
   });
 
   it("keeps no-tmux sessions whose child process is alive", () => {
-    withAgentDir(() => {
+    withAgentDir((dir) => {
       createResearchSession({
         id: "live",
         task: "t",
-        sessionFile: "/tmp/x.jsonl",
+        sessionFile: join(dir, "x.jsonl"),
         paneId: null,
         tmuxSession: null,
         status: "running",
@@ -72,11 +109,11 @@ describe("sweepStaleResearchSessions", () => {
   });
 
   it("leaves sessions with unknown liveness alone", () => {
-    withAgentDir(() => {
+    withAgentDir((dir) => {
       createResearchSession({
         id: "unknown",
         task: "t",
-        sessionFile: "/tmp/x.jsonl",
+        sessionFile: join(dir, "x.jsonl"),
         paneId: null,
         tmuxSession: null,
         status: "running",
@@ -88,11 +125,11 @@ describe("sweepStaleResearchSessions", () => {
   });
 
   it("skips completed sessions", () => {
-    withAgentDir(() => {
+    withAgentDir((dir) => {
       createResearchSession({
         id: "completed",
         task: "t",
-        sessionFile: "/tmp/x.jsonl",
+        sessionFile: join(dir, "x.jsonl"),
         paneId: "%999",
         tmuxSession: "s",
         status: "completed",

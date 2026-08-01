@@ -6,6 +6,21 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
  * concern. Artifacts are keyed by the shared research session id.
  */
 
+/**
+ * Session ids are generated as UUIDs. Reject anything that could escape the
+ * artifact dirs (path traversal via `..`, `/`, `\`, or other unsafe chars)
+ * before it is joined onto a directory path.
+ */
+const SESSION_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function assertSafeSessionId(sessionId: string): void {
+  if (!SESSION_ID_RE.test(sessionId)) {
+    throw new Error(
+      `invalid research session id: ${JSON.stringify(sessionId)}`,
+    );
+  }
+}
+
 /** Executable launch scripts for research child panes. */
 export function researchScriptsDir(): string {
   return join(getAgentDir(), "research-scripts");
@@ -27,18 +42,22 @@ export function childSessionsDir(): string {
 }
 
 export function researchScriptPath(sessionId: string): string {
+  assertSafeSessionId(sessionId);
   return join(researchScriptsDir(), `${sessionId}.sh`);
 }
 
 /** Stderr log for a research launch (written by the script itself). */
 export function researchScriptLogPath(sessionId: string): string {
+  assertSafeSessionId(sessionId);
   return join(researchScriptsDir(), `${sessionId}.log`);
 }
 
 export function researchSessionStatePath(sessionId: string): string {
+  assertSafeSessionId(sessionId);
   return join(researchSessionsDir(), `${sessionId}.json`);
 }
 
 export function researchReportPath(sessionId: string): string {
+  assertSafeSessionId(sessionId);
   return join(researchReportsDir(), `${sessionId}.json`);
 }

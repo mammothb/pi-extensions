@@ -18,6 +18,7 @@ import {
   createResearchSession,
   getResearchSession,
   listResearchSessions,
+  type ResearchSessionState,
   removeResearchSession,
 } from "./lib/research-state.js";
 import {
@@ -181,18 +182,45 @@ export function createResearchHandler(pi: ExtensionAPI) {
       // Split first, register state, then start the child — the child must
       // never boot before its state file exists, or its childPid
       // self-registration would no-op (HazAT's split-then-send pattern).
-      const paneId = tmuxSplitWindow("h");
+      let paneId: string;
+      try {
+        paneId = tmuxSplitWindow("h");
+      } catch (err) {
+        ctx.ui.notify(
+          `Failed to create tmux pane: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+        return;
+      }
 
-      createResearchSession({
-        id: sessionId,
-        task,
-        sessionFile: childSessionFile,
-        paneId,
-        tmuxSession,
-        status: "running",
-      });
+      try {
+        createResearchSession({
+          id: sessionId,
+          task,
+          sessionFile: childSessionFile,
+          paneId,
+          tmuxSession,
+          status: "running",
+        });
 
-      tmuxSendKeys(paneId, runCmd);
+        tmuxSendKeys(paneId, runCmd);
+      } catch (err) {
+        // Roll back: a failed startup must not leave a stale "running"
+        // session or an orphaned pane behind. Idempotent whether or not
+        // createResearchSession completed (kills the pane first, then
+        // removes state + artifacts if registered).
+        try {
+          tmuxKillPane(paneId);
+        } catch {
+          // Pane may already be dead
+        }
+        closeResearchSessionById(sessionId);
+        ctx.ui.notify(
+          `Failed to start research session: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+        return;
+      }
 
       pi.sendMessage({
         customType: "research_start",
@@ -203,7 +231,12 @@ export function createResearchHandler(pi: ExtensionAPI) {
       // Jump the user into the new research pane so they can steer it
       // (disable via pi-subagents.json: { "focusOnStart": false }).
       if (config.focusOnStart) {
-        tmuxSelectPane(paneId);
+        try {
+          tmuxSelectPane(paneId);
+        } catch {
+          // Focus is best-effort — the pane is up and the child started.
+          // Don't fail the whole command over a select-pane hiccup.
+        }
       }
     } else {
       createResearchSession({
@@ -267,23 +300,56 @@ export function closeResearchSessionById(sessionId: string): void {
   removeResearchSession(sessionId);
 }
 
+/**
+ * Resolve a close target by exact id, or by a prefix that uniquely
+ * identifies one session (the /rsh listing shows the first 8 chars).
+ * Returns "ambiguous" when a prefix matches more than one session,
+ * null when nothing matches.
+ */
+export function resolveResearchSession(
+  sessions: ResearchSessionState[],
+  id: string,
+): ResearchSessionState | "ambiguous" | null {
+  const exact = sessions.find((s) => s.id === id) ?? null;
+  if (exact) {
+    return exact;
+  }
+  const matches = sessions.filter((s) => s.id.startsWith(id));
+  if (matches.length > 1) {
+    return "ambiguous";
+  }
+  const match = matches[0];
+  if (match) {
+    return match;
+  }
+  return null;
+}
+
 export function createResearchCloseHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
     const id = args.trim();
 
     if (id) {
-      // Close a specific session
-      const state = getResearchSession(id);
-      if (!state) {
+      // Close a specific session — exact id, or a prefix that uniquely
+      // identifies one session (what the listing displays).
+      const resolved = resolveResearchSession(listResearchSessions(), id);
+      if (resolved === "ambiguous") {
+        ctx.ui.notify(
+          `Multiple sessions match id prefix "${id}" — use the full id.`,
+          "error",
+        );
+        return;
+      }
+      if (!resolved) {
         ctx.ui.notify(`No research session found with id "${id}".`, "error");
         return;
       }
 
-      closeResearchSessionById(id);
+      closeResearchSessionById(resolved.id);
 
       pi.sendMessage({
         customType: "research_close",
-        content: `Closed research session: ${state.task}`,
+        content: `Closed research session: ${resolved.task}`,
         display: true,
       });
     } else {

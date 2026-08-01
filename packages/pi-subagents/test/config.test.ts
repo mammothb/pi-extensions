@@ -70,6 +70,7 @@ describe("loadConfig", () => {
     );
     const config = loadConfig(projectDir);
     expect(config.focusOnStart).toBe(false);
+    expect(config).not.toHaveProperty("bogus");
   });
 
   it("ignores wrong-typed values", () => {

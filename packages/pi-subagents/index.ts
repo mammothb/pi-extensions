@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
   SessionShutdownEvent,
 } from "@earendil-works/pi-coding-agent";
-import { createIPC } from "./src/lib/research-ipc.js";
+import { createIPC, type Unsubscribe } from "./src/lib/research-ipc.js";
 import { setResearchSessionChildPid } from "./src/lib/research-state.js";
 import {
   closeResearchSessionById,
@@ -80,7 +80,26 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         display: true,
       });
     });
-    ipc.start();
+    let stopWatcher: Unsubscribe | null = null;
+    ipc
+      .start()
+      .then((stop) => {
+        stopWatcher = stop;
+      })
+      .catch((err) => {
+        // mkdirSync/watch failures (EACCES, ENOSPC, EMFILE, ...) surface
+        // as a rejected promise — don't let them become unhandled rejections.
+        // The before_agent_start poll fallback still delivers reports.
+        console.error(`pi-subagents: failed to watch reports dir: ${err}`);
+      });
+
+    // Close the watcher when this extension instance is torn down (quit,
+    // reload, new, fork, resume). A fresh instance re-starts it; leaving
+    // the old watcher alive would double-deliver reports.
+    pi.on("session_shutdown", () => {
+      stopWatcher?.();
+      stopWatcher = null;
+    });
   }
 
   // Poll fallback — catches reports written before the watcher started

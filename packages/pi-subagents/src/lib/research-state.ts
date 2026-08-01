@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -68,17 +69,24 @@ export function listResearchSessions(): ResearchSessionState[] {
   return sessions.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
 }
 
+/**
+ * Write state atomically: temp file + rename, so a concurrent reader in the
+ * other pi process (child ↔ parent) never observes a partially-written file.
+ */
+function writeResearchSessionState(state: ResearchSessionState): void {
+  const path = researchSessionStatePath(state.id);
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8");
+  renameSync(tmp, path);
+}
+
 export function setResearchSessionChildPid(id: string, childPid: number): void {
   const state = getResearchSession(id);
   if (!state) {
     return;
   }
   state.childPid = childPid;
-  writeFileSync(
-    researchSessionStatePath(id),
-    JSON.stringify(state, null, 2),
-    "utf-8",
-  );
+  writeResearchSessionState(state);
 }
 
 export function updateResearchSessionStatus(
@@ -90,11 +98,7 @@ export function updateResearchSessionStatus(
     return;
   }
   state.status = status;
-  writeFileSync(
-    researchSessionStatePath(id),
-    JSON.stringify(state, null, 2),
-    "utf-8",
-  );
+  writeResearchSessionState(state);
 }
 
 export function removeResearchSession(id: string): void {

@@ -54,7 +54,7 @@ export function writeResearchScript(
       `echo "[research] exited with $?" >&2`,
       "",
     ].join("\n"),
-    { mode: 0o755 },
+    { mode: 0o700 },
   );
   return path;
 }

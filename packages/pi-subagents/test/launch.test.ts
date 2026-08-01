@@ -7,7 +7,12 @@ import {
   buildResearchCommandLine,
   writeResearchScript,
 } from "../src/lib/launch-script.js";
-import { researchScriptPath } from "../src/lib/paths.js";
+import {
+  researchReportPath,
+  researchScriptLogPath,
+  researchScriptPath,
+  researchSessionStatePath,
+} from "../src/lib/paths.js";
 import { withAgentDir } from "./_helpers.js";
 
 describe("writeResearchScript", () => {
@@ -20,8 +25,9 @@ describe("writeResearchScript", () => {
       );
       expect(path).toBe(join(dir, "research-scripts", "abc-123.sh"));
       expect(existsSync(path)).toBe(true);
-      // 0o755 → owner rwx
+      // 0o700 → owner-only access (script inlines PI_* env values)
       expect(statSync(path).mode & 0o111).not.toBe(0);
+      expect(statSync(path).mode & 0o077).toBe(0);
     });
   });
 
@@ -62,11 +68,23 @@ describe("researchScriptPath", () => {
   });
 });
 
+describe("session id validation", () => {
+  it("rejects path traversal and unsafe ids in every id-keyed helper", () => {
+    const badIds = ["../escape", "a/b", "a\\b", "a..b", "a b", ""];
+    for (const id of badIds) {
+      expect(() => researchScriptPath(id)).toThrow();
+      expect(() => researchScriptLogPath(id)).toThrow();
+      expect(() => researchSessionStatePath(id)).toThrow();
+      expect(() => researchReportPath(id)).toThrow();
+    }
+  });
+});
+
 describe("buildResearchCommandLine", () => {
   it("produces a bash line that executes with the right env and args", () => {
     withAgentDir((dir) => {
       const outFile = join(dir, "out.json");
-      const stub = join(dir, "stub.js");
+      const stub = join(dir, "stub.cjs");
       writeFileSync(
         stub,
         `require("node:fs").writeFileSync(process.argv[2], JSON.stringify({ env: { SID: process.env.PI_RSH_SESSION_ID, TASK: process.env.PI_RSH_TASK }, args: process.argv.slice(3) }));`,

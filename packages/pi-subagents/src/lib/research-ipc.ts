@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   watch,
   writeFileSync,
@@ -62,12 +63,14 @@ export class FileIPC implements ResearchReporter, ResearchReceiver {
   // ── ResearchReporter ──────────────────────────────────────────────────
 
   async reportBack(report: ResearchReport): Promise<void> {
-    mkdirSync(researchReportsDir(), { recursive: true });
-    writeFileSync(
-      researchReportPath(report.sessionId),
-      JSON.stringify(report, null, 2),
-      "utf-8",
-    );
+    const dir = researchReportsDir();
+    mkdirSync(dir, { recursive: true });
+    const path = researchReportPath(report.sessionId);
+    // Write to a temp file and rename into place so poll() (or the watcher)
+    // never parses a partially-written report. poll() skips *.json.tmp.
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(report, null, 2), "utf-8");
+    renameSync(tmp, path);
   }
 
   // ── ResearchReceiver ──────────────────────────────────────────────────
@@ -101,8 +104,14 @@ export class FileIPC implements ResearchReporter, ResearchReceiver {
           readFileSync(join(dir, file), "utf-8"),
         ) as ResearchReport;
         updateResearchSessionStatus(report.sessionId, "completed");
+        try {
+          unlinkSync(join(dir, file));
+        } catch {
+          // Unlink failure (EACCES, EPERM, ...): keep the file in
+          // `processed` so a later poll cannot re-read and re-deliver it.
+          continue;
+        }
         delivered.push(report);
-        unlinkSync(join(dir, file));
       } catch {
         // Malformed file — retry next poll
         this.processed.delete(file);

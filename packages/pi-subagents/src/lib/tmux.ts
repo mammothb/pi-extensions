@@ -8,6 +8,21 @@ import { execFileSync } from "node:child_process";
 const TMUX_STDIO: ["ignore", "pipe", "ignore"] = ["ignore", "pipe", "ignore"];
 
 /**
+ * Shared execFileSync options for all tmux calls: keep the stdio discard
+ * behavior above, capture stdout as text, and bound the wait — a tmux
+ * server that stops responding must not block pi indefinitely.
+ */
+const TMUX_EXEC_OPTS: {
+  encoding: "utf-8";
+  stdio: ["ignore", "pipe", "ignore"];
+  timeout: number;
+} = {
+  encoding: "utf-8",
+  stdio: TMUX_STDIO,
+  timeout: 5_000,
+};
+
+/**
  * Check if we're inside a tmux session.
  */
 export function tmuxActive(): boolean {
@@ -19,10 +34,11 @@ export function tmuxActive(): boolean {
  */
 export function tmuxGetSessionName(): string | null {
   try {
-    const name = execFileSync("tmux", ["display-message", "-p", "#S"], {
-      encoding: "utf-8",
-      stdio: TMUX_STDIO,
-    }).trim();
+    const name = execFileSync(
+      "tmux",
+      ["display-message", "-p", "#S"],
+      TMUX_EXEC_OPTS,
+    ).trim();
     return name || null;
   } catch {
     return null;
@@ -47,10 +63,7 @@ export function tmuxSplitWindow(direction: "h" | "v" = "h"): string {
     "#{pane_id}",
   ];
 
-  const pane = execFileSync("tmux", args, {
-    encoding: "utf-8",
-    stdio: TMUX_STDIO,
-  }).trim();
+  const pane = execFileSync("tmux", args, TMUX_EXEC_OPTS).trim();
   if (!pane.startsWith("%")) {
     throw new Error(`Unexpected tmux split-window output: ${pane}`);
   }
@@ -62,10 +75,7 @@ export function tmuxSplitWindow(direction: "h" | "v" = "h"): string {
  * into a newly spawned research pane after /rsh.
  */
 export function tmuxSelectPane(paneId: string): void {
-  execFileSync("tmux", ["select-pane", "-t", paneId], {
-    encoding: "utf-8",
-    stdio: TMUX_STDIO,
-  });
+  execFileSync("tmux", ["select-pane", "-t", paneId], TMUX_EXEC_OPTS);
 }
 
 /**
@@ -73,24 +83,19 @@ export function tmuxSelectPane(paneId: string): void {
  * Used to start a research child after the parent's bookkeeping is done.
  */
 export function tmuxSendKeys(paneId: string, command: string): void {
-  execFileSync("tmux", ["send-keys", "-t", paneId, "-l", command], {
-    encoding: "utf-8",
-    stdio: TMUX_STDIO,
-  });
-  execFileSync("tmux", ["send-keys", "-t", paneId, "Enter"], {
-    encoding: "utf-8",
-    stdio: TMUX_STDIO,
-  });
+  execFileSync(
+    "tmux",
+    ["send-keys", "-t", paneId, "-l", command],
+    TMUX_EXEC_OPTS,
+  );
+  execFileSync("tmux", ["send-keys", "-t", paneId, "Enter"], TMUX_EXEC_OPTS);
 }
 
 /**
  * Kill a tmux pane by its pane ID.
  */
 export function tmuxKillPane(paneId: string): void {
-  execFileSync("tmux", ["kill-pane", "-t", paneId], {
-    encoding: "utf-8",
-    stdio: TMUX_STDIO,
-  });
+  execFileSync("tmux", ["kill-pane", "-t", paneId], TMUX_EXEC_OPTS);
 }
 
 /**
@@ -98,10 +103,7 @@ export function tmuxKillPane(paneId: string): void {
  */
 export function tmuxPaneAlive(paneId: string): boolean {
   try {
-    execFileSync("tmux", ["list-panes", "-t", paneId], {
-      encoding: "utf-8",
-      stdio: TMUX_STDIO,
-    });
+    execFileSync("tmux", ["list-panes", "-t", paneId], TMUX_EXEC_OPTS);
     return true;
   } catch {
     return false;
