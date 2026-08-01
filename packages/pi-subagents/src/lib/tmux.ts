@@ -1,6 +1,13 @@
 import { execFileSync, execSync } from "node:child_process";
 
 /**
+ * tmux errors (e.g. "can't find pane") must not leak to the terminal —
+ * all calls here treat failure via exit code / exceptions. execFileSync
+ * and execSync print the child's stderr on failure, so discard it.
+ */
+const TMUX_STDIO: ["ignore", "pipe", "ignore"] = ["ignore", "pipe", "ignore"];
+
+/**
  * Check if we're inside a tmux session.
  */
 export function tmuxActive(): boolean {
@@ -15,7 +22,7 @@ export function tmuxGetSessionName(): string | null {
     const name = execSync("tmux display-message -p '#S'", {
       encoding: "utf-8",
       timeout: 3000,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: TMUX_STDIO,
     }).trim();
     return name || null;
   } catch {
@@ -45,7 +52,10 @@ export function tmuxSplitWindow(
 
   args.push("--", command);
 
-  const pane = execFileSync("tmux", args, { encoding: "utf-8" }).trim();
+  const pane = execFileSync("tmux", args, {
+    encoding: "utf-8",
+    stdio: TMUX_STDIO,
+  }).trim();
   if (!pane.startsWith("%")) {
     throw new Error(`Unexpected tmux split-window output: ${pane}`);
   }
@@ -58,6 +68,7 @@ export function tmuxSplitWindow(
 export function tmuxKillPane(paneId: string): void {
   execFileSync("tmux", ["kill-pane", "-t", `"${paneId}"`], {
     encoding: "utf-8",
+    stdio: TMUX_STDIO,
   });
 }
 
@@ -68,6 +79,7 @@ export function tmuxPaneAlive(paneId: string): boolean {
   try {
     execFileSync("tmux", ["list-panes", "-t", `"${paneId}"`], {
       encoding: "utf-8",
+      stdio: TMUX_STDIO,
     });
     return true;
   } catch {
