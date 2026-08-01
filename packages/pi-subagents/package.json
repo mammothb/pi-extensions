@@ -15,7 +15,9 @@
       "./index.ts"
     ]
   },
-  "dependencies": {},
+  "dependencies": {
+    "@mammothb/pi-shared": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "catalog:"
   },

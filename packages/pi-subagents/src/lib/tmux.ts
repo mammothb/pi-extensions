@@ -59,6 +59,17 @@ export function tmuxSplitWindow(direction: "h" | "v" = "h"): string {
 }
 
 /**
+ * Focus a pane (make it the active pane). Used to jump the user straight
+ * into a newly spawned research pane after /rsh.
+ */
+export function tmuxSelectPane(paneId: string): void {
+  execFileSync("tmux", ["select-pane", "-t", paneId], {
+    encoding: "utf-8",
+    stdio: TMUX_STDIO,
+  });
+}
+
+/**
  * Type a command into a pane as literal text, then press Enter.
  * Used to start a research child after the parent's bookkeeping is done.
  */

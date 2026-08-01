@@ -245,6 +245,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: 0.80.10
         version: 0.80.10
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
     devDependencies:
       vitest:
         specifier: 'catalog:'

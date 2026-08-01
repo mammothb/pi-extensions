@@ -5,6 +5,7 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { loadConfig } from "./config.js";
 import { getPiInvocation } from "./lib/launch.js";
 import {
   buildResearchCommandLine,
@@ -29,6 +30,7 @@ import {
   tmuxGetSessionName,
   tmuxKillPane,
   tmuxPaneAlive,
+  tmuxSelectPane,
   tmuxSendKeys,
   tmuxSplitWindow,
 } from "./lib/tmux.js";
@@ -117,6 +119,7 @@ function collectPiEnv(sessionId: string, task: string): Record<string, string> {
 
 export function createResearchHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
+    const config = loadConfig(ctx.cwd);
     const task = args.trim();
     if (!task) {
       ctx.ui.notify(`Usage: /${RSH_COMMANDS.research} <task>`, "error");
@@ -196,6 +199,12 @@ export function createResearchHandler(pi: ExtensionAPI) {
         content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/${RSH_COMMANDS.report}\` in the child pane to send findings back here.`,
         display: true,
       });
+
+      // Jump the user into the new research pane so they can steer it
+      // (disable via pi-subagents.json: { "focusOnStart": false }).
+      if (config.focusOnStart) {
+        tmuxSelectPane(paneId);
+      }
     } else {
       createResearchSession({
         id: sessionId,
