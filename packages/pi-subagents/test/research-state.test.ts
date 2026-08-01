@@ -1,10 +1,14 @@
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { researchSessionsDir } from "../src/lib/paths.js";
+import {
+  researchSessionStatePath,
+  researchSessionsDir,
+} from "../src/lib/paths.js";
 import {
   createResearchSession,
   getResearchSession,
+  listResearchSessions,
   setResearchSessionChildPid,
   updateResearchSessionStatus,
 } from "../src/lib/research-state.js";
@@ -50,6 +54,80 @@ describe("research session state writes", () => {
       const state = getResearchSession("abc-123");
       expect(state?.status).toBe("completed");
       expect(state?.childPid).toBe(4242);
+    });
+  });
+
+  it("getResearchSession returns null for a corrupted state file", () => {
+    withAgentDir((dir) => {
+      createResearchSession({
+        ...BASE,
+        id: "abc-123",
+        sessionFile: join(dir, "x.jsonl"),
+        status: "running",
+      });
+      writeFileSync(researchSessionStatePath("abc-123"), "{ broken", "utf-8");
+      expect(getResearchSession("abc-123")).toBeNull();
+    });
+  });
+
+  it("listResearchSessions returns [] when the sessions dir is missing", () => {
+    withAgentDir(() => {
+      expect(listResearchSessions()).toEqual([]);
+    });
+  });
+
+  it("listResearchSessions skips unparseable state files", () => {
+    withAgentDir((dir) => {
+      createResearchSession({
+        ...BASE,
+        id: "abc-123",
+        sessionFile: join(dir, "x.jsonl"),
+        status: "running",
+      });
+      writeFileSync(researchSessionStatePath("abc-123"), "{ broken", "utf-8");
+      expect(listResearchSessions()).toEqual([]);
+    });
+  });
+
+  it("setResearchSessionChildPid is a no-op for unknown ids", () => {
+    withAgentDir(() => {
+      expect(() => setResearchSessionChildPid("nope", 1)).not.toThrow();
+    });
+  });
+
+  it("listResearchSessions sorts by startedAt descending", () => {
+    withAgentDir(() => {
+      mkdirSync(researchSessionsDir(), { recursive: true });
+      const base = {
+        task: "t",
+        sessionFile: "x.jsonl",
+        paneId: null,
+        tmuxSession: null,
+        status: "running" as const,
+      };
+      writeFileSync(
+        researchSessionStatePath("older"),
+        JSON.stringify({
+          ...base,
+          id: "older",
+          startedAt: "2020-01-01T00:00:00.000Z",
+        }),
+        "utf-8",
+      );
+      writeFileSync(
+        researchSessionStatePath("newer"),
+        JSON.stringify({
+          ...base,
+          id: "newer",
+          startedAt: "2021-01-01T00:00:00.000Z",
+        }),
+        "utf-8",
+      );
+
+      expect(listResearchSessions().map((s) => s.id)).toEqual([
+        "newer",
+        "older",
+      ]);
     });
   });
 });

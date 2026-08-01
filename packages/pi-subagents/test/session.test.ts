@@ -314,6 +314,22 @@ describe("extractLastAssistantOutput", () => {
     expect(extractLastAssistantOutput(entries)).toBe("survived");
   });
 
+  it("skips null entries in the entries array itself", () => {
+    // Null entry comes LAST so backward scanning must skip it.
+    const entries = [
+      {
+        type: "message",
+        id: "a",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "found" }],
+        },
+      },
+      null,
+    ] as unknown as Array<Record<string, unknown>>;
+    expect(extractLastAssistantOutput(entries)).toBe("found");
+  });
+
   it("returns empty string when no assistant text exists", () => {
     const entries = [
       {
@@ -370,5 +386,11 @@ describe("appendBoundaryEntry", () => {
     expect(boundary.customType).toBe("background_boundary");
     expect(boundary.display).toBe(false);
     expect(boundary.details.name).toBe("my-agent");
+  });
+
+  it("returns the given parentId when the session file does not exist", () => {
+    const path = join(tmpDir, "missing.jsonl");
+    expect(appendBoundaryEntry(path, "my-agent", "parent-1")).toBe("parent-1");
+    expect(appendBoundaryEntry(path, "my-agent", null)).toBeNull();
   });
 });

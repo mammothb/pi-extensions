@@ -1,5 +1,11 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  researchScriptLogPath,
+  researchScriptPath,
+  researchScriptsDir,
+} from "../src/lib/paths.js";
 import {
   createResearchSession,
   getResearchSession,
@@ -16,6 +22,31 @@ describe("closeResearchSessionById", () => {
   it("is a no-op for unknown sessions", () => {
     withAgentDir(() => {
       expect(() => closeResearchSessionById("nope")).not.toThrow();
+    });
+  });
+
+  it("removes the session file, launch script, and stderr log", () => {
+    withAgentDir((dir) => {
+      createResearchSession({
+        id: "abc-123",
+        task: "t",
+        sessionFile: join(dir, "x.jsonl"),
+        paneId: null,
+        tmuxSession: null,
+        status: "running",
+      });
+      const sessionFile = join(dir, "x.jsonl");
+      writeFileSync(sessionFile, "{}", "utf-8");
+      mkdirSync(researchScriptsDir(), { recursive: true });
+      writeFileSync(researchScriptPath("abc-123"), "#!/bin/bash\n", "utf-8");
+      writeFileSync(researchScriptLogPath("abc-123"), "log\n", "utf-8");
+
+      closeResearchSessionById("abc-123");
+
+      expect(existsSync(sessionFile)).toBe(false);
+      expect(existsSync(researchScriptPath("abc-123"))).toBe(false);
+      expect(existsSync(researchScriptLogPath("abc-123"))).toBe(false);
+      expect(getResearchSession("abc-123")).toBeNull();
     });
   });
 });
