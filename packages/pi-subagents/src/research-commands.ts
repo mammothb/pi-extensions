@@ -22,19 +22,11 @@ import {
 } from "./lib/tmux.js";
 import type { AgentConfig } from "./lib/types.js";
 
-// ── Fork agent config ───────────────────────────────────────────────────────
+// ── Research fork identity ──────────────────────────────────────────────────
 
 function makeResearchAgent(): AgentConfig {
   return {
     name: "research",
-    description: "",
-    model: "",
-    thinking: "",
-    tools: [],
-    mode: "fork",
-    sandbox: false,
-    noSession: true,
-    body: "",
   };
 }
 
@@ -58,13 +50,13 @@ function collectPiEnv(sessionId: string, task: string): Record<string, string> {
   return env;
 }
 
-// ── /research ───────────────────────────────────────────────────────────────
+// ── /rsh ───────────────────────────────────────────────────────────────
 
 export function createResearchHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
     const task = args.trim();
     if (!task) {
-      ctx.ui.notify("Usage: /research <task>", "error");
+      ctx.ui.notify("Usage: /rsh <task>", "error");
       return;
     }
 
@@ -144,7 +136,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
   };
 }
 
-// ── /research-close ─────────────────────────────────────────────────────────
+// ── /rsh-close ──────────────────────────────────────────────────────────────
 
 export function createResearchCloseHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {

@@ -18,14 +18,6 @@ import type { AgentConfig } from "../src/lib/types.js";
 
 const baseAgent: AgentConfig = {
   name: "test-agent",
-  description: "",
-  model: "google/gemini-2.5-flash",
-  thinking: "low",
-  tools: ["read", "edit"],
-  mode: "clean",
-  sandbox: false,
-  noSession: true,
-  body: "",
 };
 
 function makeParentSession(
@@ -183,7 +175,7 @@ describe("seedForkSession", () => {
     // Find boundary entry
     const boundaryLine = lines.find((l) => {
       const e = JSON.parse(l);
-      return e.customType === "subagent_boundary";
+      return e.customType === "background_boundary";
     });
     if (!boundaryLine) {
       throw new Error("expected boundary line");
@@ -231,7 +223,7 @@ describe("appendBoundaryEntry", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("appends a custom_message entry with subagent_boundary type", () => {
+  it("appends a custom_message entry with background_boundary type", () => {
     const path = join(tmpDir, "session.jsonl");
     writeFileSync(
       path,
@@ -257,7 +249,7 @@ describe("appendBoundaryEntry", () => {
     }
     const boundary = JSON.parse(secondLine);
     expect(boundary.type).toBe("custom_message");
-    expect(boundary.customType).toBe("subagent_boundary");
+    expect(boundary.customType).toBe("background_boundary");
     expect(boundary.display).toBe(false);
     expect(boundary.details.name).toBe("my-agent");
   });

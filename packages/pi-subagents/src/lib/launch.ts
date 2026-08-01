@@ -4,7 +4,7 @@ import { basename } from "node:path";
 /**
  * Determine how to invoke the `pi` binary.
  *
- * Logic mirrors the official pi subagent example:
+ * Priority:
  * - If the current script path exists on disk, use it (development mode).
  * - If the current runtime is not a generic node/bun binary, use it directly.
  * - Otherwise, fall back to `pi` on PATH.

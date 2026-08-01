@@ -15,9 +15,8 @@ const CURRENT_SESSION_VERSION = 1;
 // =============================================================================
 
 /**
- * Generate a unique child session file path.
- * Uses the default pi session directory under `~/.pi/agent/sessions/`
- * so sandboxed children (bubblewrap) can access it.
+ * Generate a unique child session file path under the pi session directory
+ * (`~/.pi/agent/sessions/pi-subagents/`).
  */
 export function generateChildSessionFile(sessionDir?: string): string {
   const dir = sessionDir ?? join(agentSessionRoot(), "pi-subagents");
@@ -124,7 +123,7 @@ export function appendBoundaryEntry(
   const resolvedId = parentId ?? getLastEntryId(path);
   const entry = {
     type: "custom_message",
-    customType: "subagent_boundary",
+    customType: "background_boundary",
     content: "--- Background context from parent session ends here. ---",
     display: false,
     details: { name },
