@@ -21,6 +21,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 shlex = { version = "2.0.1" }
 serde_json = { version = "1.0.150" }
 shellexpand = { version = "3.1.2" }
+thiserror = { version = "2.0.19" }
 unicode-segmentation = { version = "1.13.0" }
 uuid = { version = "1.24.0", features = ["serde", "v4"] }
 
