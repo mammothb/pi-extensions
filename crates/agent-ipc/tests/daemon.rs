@@ -105,6 +105,57 @@ async fn second_daemon_refuses_live_socket() {
     connect(&daemon.socket_path).await;
 }
 
+#[rstest]
+#[tokio::test]
+async fn concurrent_startup_single_winner() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket_path = dir.path().join("daemon.sock");
+
+    // Three daemons race for the same socket from a cold start. The startup
+    // lock serializes cleanup-and-bind: exactly one binds, the others fail.
+    let mut handles: Vec<_> = (0..3)
+        .map(|_| {
+            let p = socket_path.clone();
+            tokio::spawn(async move { agent_ipc::server::run(&p).await })
+        })
+        .collect();
+
+    let mut errors = 0;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while errors < 2 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "startup race never resolved (got {errors} failures)"
+        );
+        let mut drained = false;
+        let mut i = 0;
+        while i < handles.len() {
+            if handles[i].is_finished() {
+                let result = handles.swap_remove(i).await.unwrap();
+                match result {
+                    Err(e) => {
+                        assert!(e.to_string().contains("already in use"));
+                        errors += 1;
+                    }
+                    Ok(()) => panic!("competing daemon unexpectedly started"),
+                }
+                drained = true;
+            } else {
+                i += 1;
+            }
+        }
+        if !drained {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+    assert_eq!(errors, 2, "exactly 2 of 3 daemons must fail");
+
+    // The remaining task is the winner, still serving: abort it.
+    for handle in handles {
+        handle.abort();
+    }
+}
+
 // =============
 // wire protocol
 // =============

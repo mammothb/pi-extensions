@@ -1,7 +1,7 @@
 use chrono::Utc;
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,34 +20,47 @@ use crate::types::{AckOutcome, EventType, MessageEnvelope, RequestId, SessionId}
 type Pending = HashMap<RequestId, (SessionId, mpsc::Sender<EventType>)>;
 
 /// Bind, accept loop, spawn per-connection handler.
-/// Probes the socket first: refuses to start if another daemon already owns
-/// it, and only unlinks the path when the probe shows it is stale or
-/// unavailable. On SIGTERM/SIGINT unlinks the socket and returns `Ok(())`
-/// so the process exits 0.
+/// Acquires an exclusive advisory lock on a sibling `socket_path.lock` file
+/// before any cleanup, held for the daemon's lifetime: competing daemons
+/// serialize the entire cleanup-and-bind sequence, so exactly one can bind.
+/// On SIGTERM/SIGINT unlinks the socket and returns `Ok(())` so the process
+/// exits 0.
 pub async fn run(socket_path: &Path) -> anyhow::Result<()> {
     // Installed before the socket exists, so a signal can never race the
     // accept loop's handlers.
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
 
-    // Probe before cleanup: a successful connection means another daemon is
-    // live on this path — refuse rather than unlink its listener out from
-    // under it. A failed connect means the path is stale or nonexistent,
-    // so it is safe to unlink and bind.
-    match UnixStream::connect(socket_path).await {
-        Ok(_) => anyhow::bail!(
-            "socket {} already in use by another daemon",
-            socket_path.display()
-        ),
-        Err(_) => match fs_err::remove_file(socket_path) {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!("failed to unlink stale socket: {e}"),
-        },
-    }
-
     if let Some(parent) = socket_path.parent() {
         fs_err::create_dir_all(parent)?;
+    }
+
+    // Exclusive advisory lock on a sibling file, acquired before any socket
+    // cleanup and held for the daemon's lifetime. A stale socket (no live
+    // daemon) holds no lock and is cleaned below; a live daemon holds the
+    // lock, so we fail before touching the socket at all — no probe TOCTOU.
+    let lock_path = PathBuf::from(format!("{}.lock", socket_path.display()));
+    let lock_file = fs_err::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&lock_path)?;
+    if let Err(e) = lock_file.try_lock() {
+        if matches!(e, std::fs::TryLockError::WouldBlock) {
+            anyhow::bail!(
+                "socket {} already in use by another daemon",
+                socket_path.display()
+            );
+        }
+        return Err(e.into());
+    }
+
+    // Lock held: safe to remove a stale socket (if any) and bind. The lock
+    // file itself is intentionally left in place — unlinking it would let a
+    // second daemon lock a fresh inode while the first still holds this one.
+    match fs_err::remove_file(socket_path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!("failed to unlink stale socket: {e}"),
     }
 
     let listener = UnixListener::bind(socket_path)?;
@@ -69,7 +82,12 @@ pub async fn run(socket_path: &Path) -> anyhow::Result<()> {
                         let pending = Arc::clone(&pending);
                         tokio::spawn(handle_connection(stream, registry, pending));
                     }
-                    Err(e) => tracing::warn!("accept failed: {e}"),
+                    Err(e) => {
+                        tracing::warn!("accept failed: {e}");
+                        // Back off briefly so a persistent failure (e.g. fd
+                        // exhaustion) doesn't spin the loop hot.
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
                 }
             }
             _ = sigterm.recv() => break,
@@ -312,9 +330,21 @@ async fn handle_producer(
         pending_guard.insert(request_id, (session.session_id, tx));
     }
 
-    if session.sender.send(forward_msg).await.is_err() {
-        pending.write().await.remove(&request_id);
-        return;
+    // Forward to session with a bound: a session whose channel is full
+    // (stalled task) must not make the producer wait indefinitely.
+    match tokio::time::timeout(Duration::from_secs(10), session.sender.send(forward_msg)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) => {
+            // Session channel closed: clean up and return, as before.
+            pending.write().await.remove(&request_id);
+            return;
+        }
+        Err(_) => {
+            // Backpressure: the session is not draining its channel.
+            tracing::warn!("session channel full; dropping request {request_id:?}");
+            pending.write().await.remove(&request_id);
+            return;
+        }
     }
 
     // Await the session's response, bounded: a session that accepts a request

@@ -3,7 +3,9 @@ use crate::types::MessageEnvelope;
 pub const PROTOCOL_VERSION: u8 = 0x01;
 /// Size of the length prefix in bytes (u32 big-endian).
 pub const LENGTH_PREFIX_SIZE: usize = 4;
-/// Maximum accepted frame size (length prefix + version + payload).
+/// Maximum accepted declared frame body size (version byte + payload),
+/// excluding the 4-byte length prefix. The total encoded frame on the wire
+/// may be up to `LENGTH_PREFIX_SIZE` bytes larger than this limit.
 /// Guards the frame reader against a malicious peer declaring a huge
 /// length: a 4-byte prefix must never force a multi-GB allocation.
 pub const MAX_FRAME_SIZE: usize = 1 << 20; // 1 MiB
@@ -147,6 +149,10 @@ mod tests {
         session_id: session_id(),
         content: "report body".into(),
     })]
+    #[case::report_delivered(EventType::ReportDelivered {
+        request_id: request_id(),
+        content: "report body".into(),
+    })]
     #[case::report_completed(EventType::ReportCompleted {
         request_id: request_id(),
         report: "final report".into(),
@@ -219,7 +225,7 @@ mod tests {
     }
 
     #[rstest]
-    fn declared_at_limit_is_accepted() {
+    fn declared_at_limit_passes_size_check() {
         let mut frame = Vec::new();
         frame.extend_from_slice(&(MAX_FRAME_SIZE as u32).to_be_bytes());
         frame.extend_from_slice(&[0u8; 4]);
