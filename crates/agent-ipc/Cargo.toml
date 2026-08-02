@@ -11,3 +11,6 @@ name = "aipcd"
 path = "src/main.rs"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["serde", "v4"] }
