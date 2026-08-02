@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::{RwLock, mpsc};
 use uuid::Uuid;
 
@@ -14,8 +15,14 @@ use crate::registry::SessionRegistry;
 use crate::types::{AckOutcome, EventType, MessageEnvelope, RequestId};
 
 /// Bind, accept loop, spawn per-connection handler.
-/// Removes stale socket file before binding.
+/// Removes stale socket file before binding; on SIGTERM/SIGINT unlinks the
+/// socket and returns `Ok(())` so the process exits 0.
 pub async fn run(socket_path: &Path) -> anyhow::Result<()> {
+    // Installed before the socket exists, so a signal can never race the
+    // accept loop's handlers.
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+
     match fs_err::remove_file(socket_path) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -35,11 +42,23 @@ pub async fn run(socket_path: &Path) -> anyhow::Result<()> {
     tracing::info!("listening on {}", socket_path.display());
 
     loop {
-        let (stream, _addr) = listener.accept().await?;
-        let registry = Arc::clone(&registry);
-        let pending = Arc::clone(&pending);
-        tokio::spawn(handle_connection(stream, registry, pending));
+        tokio::select! {
+            accepted = listener.accept() => {
+                let (stream, _addr) = accepted?;
+                let registry = Arc::clone(&registry);
+                let pending = Arc::clone(&pending);
+                tokio::spawn(handle_connection(stream, registry, pending));
+            }
+            _ = sigterm.recv() => break,
+            _ = sigint.recv() => break,
+        }
     }
+
+    if let Err(e) = fs_err::remove_file(socket_path) {
+        tracing::warn!("failed to unlink socket on shutdown: {e}");
+    }
+    tracing::info!("shutdown complete");
+    Ok(())
 }
 
 /// Classify connection by first frame, dispatch to session or producer handler.

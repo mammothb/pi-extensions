@@ -4,19 +4,29 @@ use std::time::Duration;
 
 use rstest::rstest;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
+use tokio::net::{UnixListener, UnixStream};
 use uuid::Uuid;
 
 use agent_ipc::framing;
 use agent_ipc::types::{AckOutcome, EventType, MessageEnvelope, RequestId, SessionId};
 
-/// In-process daemon on a temp socket. `aipcd` hardcodes its socket path, so
+/// In-process daemon on a temp socket. `aipcd` is a long-running daemon, so
 /// tests drive `server::run` directly instead of spawning the binary.
 struct TestDaemon {
     socket_path: PathBuf,
     /// Keeps the socket file alive for the lifetime of the test.
     _dir: tempfile::TempDir,
     _task: tokio::task::JoinHandle<anyhow::Result<()>>,
+}
+
+/// Polls until a connection to `socket` succeeds.
+async fn wait_until_connectable(socket: &Path) {
+    let mut attempts = 0;
+    while UnixStream::connect(socket).await.is_err() {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        attempts += 1;
+        assert!(attempts < 200, "daemon socket never appeared");
+    }
 }
 
 impl TestDaemon {
@@ -26,13 +36,7 @@ impl TestDaemon {
         let run_socket = socket_path.clone();
         let task = tokio::spawn(async move { agent_ipc::server::run(&run_socket).await });
 
-        // Wait until the listener has bound the socket.
-        let mut attempts = 0;
-        while UnixStream::connect(&socket_path).await.is_err() {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-            attempts += 1;
-            assert!(attempts < 200, "daemon socket never appeared");
-        }
+        wait_until_connectable(&socket_path).await;
 
         Self {
             socket_path,
@@ -40,6 +44,49 @@ impl TestDaemon {
             _task: task,
         }
     }
+}
+
+// =======
+// startup
+// =======
+
+#[rstest]
+#[tokio::test]
+async fn parent_dir_created() {
+    let dir = tempfile::tempdir().unwrap();
+    // Nested path — neither the parent nor the socket exists yet.
+    let socket_path = dir.path().join("nested").join("daemon.sock");
+    let run_socket = socket_path.clone();
+    let task = tokio::spawn(async move { agent_ipc::server::run(&run_socket).await });
+
+    wait_until_connectable(&socket_path).await;
+
+    let parent = socket_path.parent().unwrap();
+    assert!(
+        parent.exists(),
+        "daemon must create the socket's parent dir"
+    );
+    drop(task);
+}
+
+#[rstest]
+#[tokio::test]
+async fn stale_socket_cleaned() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket_path = dir.path().join("daemon.sock");
+
+    // Orphaned socket file, as if a previous daemon crashed: bind() creates
+    // the inode, dropping the listener leaves it behind.
+    let stale = UnixListener::bind(&socket_path).unwrap();
+    drop(stale);
+    assert!(socket_path.exists());
+
+    let run_socket = socket_path.clone();
+    let task = tokio::spawn(async move { agent_ipc::server::run(&run_socket).await });
+
+    // Binding the same path only succeeds if the stale socket was unlinked.
+    wait_until_connectable(&socket_path).await;
+    drop(task);
 }
 
 // =============
@@ -384,4 +431,56 @@ async fn concurrent_producers() {
     }
 
     assert_eq!(session_task.await.unwrap(), num_producers);
+}
+
+// ========
+// shutdown
+// ========
+
+/// Spawns the real `aipcd` binary — unlike `TestDaemon` above, signals
+/// require a real process.
+fn spawn_binary(socket: &Path) -> std::process::Child {
+    std::process::Command::new(assert_cmd::cargo::cargo_bin!("aipcd"))
+        .arg("--socket-path")
+        .arg(socket)
+        .spawn()
+        .unwrap()
+}
+
+fn send_signal(child: &std::process::Child, signal: libc::c_int) {
+    // SAFETY: `child` is a live child of this process; kill(2) is passed the
+    // child's real pid and a valid signal number.
+    unsafe {
+        libc::kill(child.id() as libc::pid_t, signal);
+    }
+}
+
+#[rstest]
+#[tokio::test]
+async fn sigterm_shutdown() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("daemon.sock");
+    let mut child = spawn_binary(&socket);
+    wait_until_connectable(&socket).await;
+
+    send_signal(&child, libc::SIGTERM);
+
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(0));
+    assert!(!socket.exists(), "socket must be unlinked on shutdown");
+}
+
+#[rstest]
+#[tokio::test]
+async fn sigint_shutdown() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("daemon.sock");
+    let mut child = spawn_binary(&socket);
+    wait_until_connectable(&socket).await;
+
+    send_signal(&child, libc::SIGINT);
+
+    let status = child.wait().unwrap();
+    assert_eq!(status.code(), Some(0));
+    assert!(!socket.exists(), "socket must be unlinked on shutdown");
 }
