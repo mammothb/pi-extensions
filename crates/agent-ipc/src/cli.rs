@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(about = "Agent IPC daemon.")]
-#[command(arg_required_else_help = true)]
 #[command(version = crate_version!())]
 pub struct Cli {
     /// Path to the Unix domain socket.

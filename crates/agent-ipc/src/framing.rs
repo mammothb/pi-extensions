@@ -3,6 +3,10 @@ use crate::types::MessageEnvelope;
 pub const PROTOCOL_VERSION: u8 = 0x01;
 /// Size of the length prefix in bytes (u32 big-endian).
 pub const LENGTH_PREFIX_SIZE: usize = 4;
+/// Maximum accepted frame size (length prefix + version + payload).
+/// Guards the frame reader against a malicious peer declaring a huge
+/// length: a 4-byte prefix must never force a multi-GB allocation.
+pub const MAX_FRAME_SIZE: usize = 1 << 20; // 1 MiB
 
 /// Serializes a MessageEnvelope into a length-prefixed frame.
 pub fn encode(msg: &MessageEnvelope) -> Result<Vec<u8>, FrameError> {
@@ -25,6 +29,10 @@ pub fn decode(frame: &[u8]) -> Result<MessageEnvelope, FrameError> {
         .split_first_chunk::<LENGTH_PREFIX_SIZE>()
         .ok_or(FrameError::TooShort(frame.len()))?;
     let declared = u32::from_be_bytes(*len_bytes);
+
+    if declared as usize > MAX_FRAME_SIZE {
+        return Err(FrameError::TooLarge(declared));
+    }
 
     if rest.len() != declared as usize {
         return Err(FrameError::LengthMismatch {
@@ -53,6 +61,8 @@ pub enum FrameError {
     Io(#[from] std::io::Error),
     #[error("length mismatch: declared {declared}, actual {actual}")]
     LengthMismatch { declared: u32, actual: u32 },
+    #[error("frame too large: declared {0} bytes")]
+    TooLarge(u32),
     #[error("frame too short: {0} bytes")]
     TooShort(usize),
     #[error("unsupported protocol version: {0}")]
@@ -137,6 +147,10 @@ mod tests {
         session_id: session_id(),
         content: "report body".into(),
     })]
+    #[case::report_completed(EventType::ReportCompleted {
+        request_id: request_id(),
+        report: "final report".into(),
+    })]
     fn roundtrip_all_event_types(#[case] event: EventType) {
         let msg = envelope(event);
         let decoded = decode(&encode(&msg).unwrap()).unwrap();
@@ -190,6 +204,33 @@ mod tests {
                 declared: 10,
                 actual: 5
             })
+        ));
+    }
+
+    #[rstest]
+    fn declared_too_large() {
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&u32::MAX.to_be_bytes());
+        frame.extend_from_slice(&[0u8; 4]);
+        assert!(matches!(
+            decode(&frame),
+            Err(FrameError::TooLarge(declared)) if declared == u32::MAX
+        ));
+    }
+
+    #[rstest]
+    fn declared_at_limit_is_accepted() {
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&(MAX_FRAME_SIZE as u32).to_be_bytes());
+        frame.extend_from_slice(&[0u8; 4]);
+        // At the limit the max check passes; the short actual payload then
+        // fails the length check instead.
+        assert!(matches!(
+            decode(&frame),
+            Err(FrameError::LengthMismatch {
+                declared,
+                actual: 4
+            }) if declared == MAX_FRAME_SIZE as u32
         ));
     }
 

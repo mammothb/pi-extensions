@@ -9,6 +9,20 @@ fn cli_with_socket(socket_path: &str) -> Cli {
     Cli::parse_from(["aipcd", "--socket-path", socket_path])
 }
 
+// ============
+// default args
+// ============
+
+#[rstest]
+fn no_args_uses_default_socket() {
+    // No-argument invocation, as used by the systemd unit (aipcd.service).
+    let cli = Cli::try_parse_from(["aipcd"]).unwrap();
+    assert_eq!(
+        cli.socket_path,
+        PathBuf::from("~/.pi/agent/research-ipc.sock")
+    );
+}
+
 // =======================
 // custom_socket_path_flag
 // =======================
