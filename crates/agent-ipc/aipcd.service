@@ -1,0 +1,13 @@
+  [Unit]
+  Description=Agent IPC daemon
+  After=network.target
+
+  [Service]
+  Type=simple
+  ExecStart=%h/.cargo/bin/aipcd
+  Restart=always
+  RestartSec=2
+  Environment=RUST_LOG=info
+
+  [Install]
+  WantedBy=default.target
