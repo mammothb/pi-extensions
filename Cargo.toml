@@ -6,15 +6,17 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/mammothb/pi-extensions"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [workspace.dependencies]
 anyhow = { version = "1.0.103" }
+chrono = { version = "0.4.45" }
 clap = { version = "4.6.1", features = ["cargo", "derive"] }
 env_logger = { version = "0.11.10" }
 fs-err = { version = "3.3.0" }
 glob = { version = "0.3.3" }
 itertools = { version = "0.15.0" }
+libc = { version = "0.2.186" }
 log = { version = "0.4.33" }
 regex = { version = "1.12.4" }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -22,6 +24,9 @@ shlex = { version = "2.0.1" }
 serde_json = { version = "1.0.150" }
 shellexpand = { version = "3.1.2" }
 thiserror = { version = "2.0.19" }
+tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tracing = { version = "0.1.44" }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 unicode-segmentation = { version = "1.13.0" }
 uuid = { version = "1.24.0", features = ["serde", "v4"] }
 
