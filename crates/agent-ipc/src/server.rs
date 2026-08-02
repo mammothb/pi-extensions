@@ -267,14 +267,16 @@ async fn send_ack(writer: &mut OwnedWriteHalf, request_id: &RequestId, outcome: 
 }
 
 /// Read one length-prefixed frame from the buffered reader.
-/// Reads 4-byte BE length, then exactly that many bytes, then calls `framing::decode`.
+/// Reads the full frame (4-byte BE length prefix + declared payload) and
+/// hands it to `framing::decode`, which expects the length prefix.
 async fn read_frame(reader: &mut OwnedReadHalf) -> Result<MessageEnvelope, FrameError> {
     let mut len_buf = [0u8; LENGTH_PREFIX_SIZE];
     reader.read_exact(&mut len_buf).await?;
     let declared = u32::from_be_bytes(len_buf);
-    let mut payload = vec![0u8; declared as usize];
-    reader.read_exact(&mut payload).await?;
-    framing::decode(&payload)
+    let mut frame = vec![0u8; LENGTH_PREFIX_SIZE + declared as usize];
+    frame[..LENGTH_PREFIX_SIZE].copy_from_slice(&len_buf);
+    reader.read_exact(&mut frame[LENGTH_PREFIX_SIZE..]).await?;
+    framing::decode(&frame)
 }
 
 /// Write a MessageEnvelope as a length-prefixed frame to the owned write half.
