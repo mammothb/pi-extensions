@@ -41,14 +41,9 @@ pub enum EventType {
 
     #[serde(rename = "review.ack")]
     ReviewAck {
-        status: AckStatus,
         request_id: RequestId,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        session_id: Option<SessionId>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        message: Option<String>,
+        #[serde(flatten)]
+        outcome: AckOutcome,
     },
 
     #[serde(rename = "review.requested")]
@@ -72,9 +67,20 @@ pub enum EventType {
     },
 }
 
+/// Outcome of a review request. Flattened into `review.ack` with the variant
+/// tag serialized as `status` (e.g. `{"status": "accepted", ...}`), preserving
+/// the wire format of the former `status` + optional field layout.
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AckStatus {
-    Accepted,
-    Rejected,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AckOutcome {
+    Accepted {
+        session_id: SessionId,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+    Rejected {
+        reason: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
 }

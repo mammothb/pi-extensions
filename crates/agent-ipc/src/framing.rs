@@ -60,7 +60,7 @@ pub enum FrameError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{AckStatus, EventType, RequestId, SessionId};
+    use crate::types::{AckOutcome, EventType, RequestId, SessionId};
     use rstest::rstest;
     use serde::{Serialize, de::DeserializeOwned};
     use uuid::Uuid;
@@ -109,11 +109,11 @@ mod tests {
         snippet: "fn main() {}".into(),
     })]
     #[case::review_ack(EventType::ReviewAck {
-        status: AckStatus::Rejected,
         request_id: request_id(),
-        session_id: Some(session_id()),
-        reason: Some("duplicate".into()),
-        message: Some("already handled".into()),
+        outcome: AckOutcome::Rejected {
+            reason: "duplicate".into(),
+            message: Some("already handled".into()),
+        },
     })]
     #[case::review_requested(EventType::ReviewRequested {
         request_id: request_id(),
@@ -208,21 +208,18 @@ mod tests {
     }
 
     #[rstest]
-    #[case::accepted(AckStatus::Accepted, Some(session_id()), None, None, &["reason", "message"][..])]
-    #[case::rejected(AckStatus::Rejected, None, Some("policy violation".to_string()), None, &["session_id"][..])]
-    fn ack_omits_unset_optional_fields(
-        #[case] status: AckStatus,
-        #[case] session_id: Option<SessionId>,
-        #[case] reason: Option<String>,
-        #[case] message: Option<String>,
-        #[case] absent: &[&str],
-    ) {
+    #[case::accepted(AckOutcome::Accepted {
+        session_id: session_id(),
+        message: None,
+    }, &["reason", "message"][..])]
+    #[case::rejected(AckOutcome::Rejected {
+        reason: "policy violation".to_string(),
+        message: None,
+    }, &["session_id", "message"][..])]
+    fn ack_omits_unset_optional_fields(#[case] outcome: AckOutcome, #[case] absent: &[&str]) {
         let msg = envelope(EventType::ReviewAck {
-            status,
             request_id: request_id(),
-            session_id,
-            reason,
-            message,
+            outcome,
         });
         let value = serde_json::to_value(&msg).unwrap();
         let event = value.get("review.ack").unwrap().as_object().unwrap();
