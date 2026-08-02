@@ -1,12 +1,10 @@
-use std::path::PathBuf;
+use clap::Parser;
 
-use agent_ipc::server;
+use agent_ipc::{cli::Cli, server};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
-
-    let home = shellexpand::tilde("~");
-    let sock_path = PathBuf::from(home.as_ref()).join(".pi/agent/research-ipc.sock");
+    let sock_path = Cli::parse().resolve_socket_path()?;
     server::run(&sock_path).await
 }
