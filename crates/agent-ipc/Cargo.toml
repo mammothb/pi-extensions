@@ -1,6 +1,6 @@
 [package]
 name = "agent-ipc"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agent IPC daemon"
 edition.workspace = true
 license.workspace = true

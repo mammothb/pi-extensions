@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/mammothb/pi-extensions/compare/mm-cli-v0.5.2...mm-cli-v0.5.3) - 2026-08-02
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.5.2](https://github.com/mammothb/pi-extensions/compare/mm-cli-v0.5.1...mm-cli-v0.5.2) - 2026-07-28
 
 ### Fixed
