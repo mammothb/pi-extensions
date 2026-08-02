@@ -100,3 +100,128 @@ impl SessionRegistry {
         sessions.get(project_path)?.get(instant).cloned()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    /// Deterministic session id for test index `n`.
+    fn session_id(n: u8) -> SessionId {
+        SessionId(Uuid::from_bytes([n; 16]))
+    }
+
+    // ===============
+    // register + find
+    // ===============
+
+    #[rstest]
+    #[tokio::test]
+    async fn register_and_find() {
+        let registry = SessionRegistry::new();
+        let path = PathBuf::from("/proj/a");
+        let id = session_id(1);
+
+        let (_rx, handle) = registry.register(path.clone(), id).await;
+        assert_eq!(handle.session_id, id);
+
+        let found = registry.find(&path).await.unwrap();
+        assert_eq!(found.session_id, id);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn find_returns_newest() {
+        let registry = SessionRegistry::new();
+        let path = PathBuf::from("/proj/a");
+
+        let (_, older) = registry.register(path.clone(), session_id(1)).await;
+        let (_, newer) = registry.register(path.clone(), session_id(2)).await;
+        assert_ne!(older.session_id, newer.session_id);
+
+        let found = registry.find(&path).await.unwrap();
+        assert_eq!(found.session_id, newer.session_id);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn unregister_removes() {
+        let registry = SessionRegistry::new();
+        let path = PathBuf::from("/proj/a");
+        let id = session_id(1);
+        registry.register(path.clone(), id).await;
+
+        assert!(registry.unregister(&id).await);
+        assert!(registry.find(&path).await.is_none());
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn unregister_wrong_id_noop() {
+        let registry = SessionRegistry::new();
+        let path = PathBuf::from("/proj/a");
+        let id_a = session_id(1);
+        registry.register(path.clone(), id_a).await;
+
+        assert!(!registry.unregister(&session_id(2)).await);
+        let found = registry.find(&path).await.unwrap();
+        assert_eq!(found.session_id, id_a);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn different_paths_independent() {
+        let registry = SessionRegistry::new();
+        let path_a = PathBuf::from("/proj/a");
+        let path_b = PathBuf::from("/proj/b");
+        let id_a = session_id(1);
+        let id_b = session_id(2);
+        registry.register(path_a.clone(), id_a).await;
+        registry.register(path_b.clone(), id_b).await;
+
+        let found_a = registry.find(&path_a).await.unwrap();
+        let found_b = registry.find(&path_b).await.unwrap();
+        assert_eq!(found_a.session_id, id_a);
+        assert_eq!(found_b.session_id, id_b);
+    }
+
+    // ===========
+    // concurrency
+    // ===========
+
+    #[rstest]
+    #[tokio::test]
+    async fn concurrent_register() {
+        let registry = Arc::new(SessionRegistry::new());
+        let path = PathBuf::from("/proj/concurrent");
+        let barrier = Arc::new(tokio::sync::Barrier::new(10));
+
+        let mut tasks = Vec::new();
+        for n in 0..10u8 {
+            let registry = Arc::clone(&registry);
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            tasks.push(tokio::spawn(async move {
+                let id = session_id(n);
+                barrier.wait().await;
+                let (_rx, handle) = registry.register(path, id).await;
+                handle
+            }));
+        }
+
+        for (n, task) in tasks.into_iter().enumerate() {
+            let handle = task.await.unwrap();
+            assert_eq!(handle.session_id, session_id(n as u8));
+        }
+
+        // All 10 sessions are registered and findable.
+        for n in 0..10u8 {
+            assert!(
+                registry.find_by_session_id(&session_id(n)).await.is_some(),
+                "session {n} missing after concurrent register"
+            );
+        }
+    }
+}
