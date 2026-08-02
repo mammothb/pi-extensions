@@ -115,6 +115,13 @@ mod tests {
             message: Some("already handled".into()),
         },
     })]
+    #[case::review_ack_accepted(EventType::ReviewAck {
+        request_id: request_id(),
+        outcome: AckOutcome::Accepted {
+            session_id: session_id(),
+            message: None,
+        },
+    })]
     #[case::review_requested(EventType::ReviewRequested {
         request_id: request_id(),
         snippet: "let x = 1;".into(),
