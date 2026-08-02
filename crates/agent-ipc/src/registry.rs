@@ -92,4 +92,11 @@ impl SessionRegistry {
             .and_then(|map| map.last_key_value())
             .map(|(_, handle)| handle.clone())
     }
+
+    pub async fn find_by_session_id(&self, session_id: &SessionId) -> Option<SessionHandle> {
+        let index = self.index.read().await;
+        let (project_path, instant) = index.get(session_id)?;
+        let sessions = self.sessions.read().await;
+        sessions.get(project_path)?.get(instant).cloned()
+    }
 }

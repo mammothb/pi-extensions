@@ -47,14 +47,16 @@ pub fn decode(frame: &[u8]) -> Result<MessageEnvelope, FrameError> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FrameError {
-    #[error("unsupported protocol version: {0}")]
-    UnsupportedVersion(u8),
-    #[error("frame too short: {0} bytes")]
-    TooShort(usize),
-    #[error("length mismatch: declared {declared}, actual {actual}")]
-    LengthMismatch { declared: u32, actual: u32 },
     #[error("invalid envelope: {0}")]
     InvalidEnvelope(#[from] serde_json::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("length mismatch: declared {declared}, actual {actual}")]
+    LengthMismatch { declared: u32, actual: u32 },
+    #[error("frame too short: {0} bytes")]
+    TooShort(usize),
+    #[error("unsupported protocol version: {0}")]
+    UnsupportedVersion(u8),
 }
 
 #[cfg(test)]

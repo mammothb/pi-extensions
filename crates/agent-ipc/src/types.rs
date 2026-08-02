@@ -65,6 +65,12 @@ pub enum EventType {
         session_id: SessionId,
         content: String,
     },
+
+    #[serde(rename = "report.delivered")]
+    ReportDelivered {
+        request_id: RequestId,
+        content: String,
+    },
 }
 
 /// Outcome of a review request. Flattened into `review.ack` with the variant

@@ -10,6 +10,7 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 anyhow = { version = "1.0.103" }
+chrono = { version = "0.4.45" }
 clap = { version = "4.6.1", features = ["cargo", "derive"] }
 env_logger = { version = "0.11.10" }
 fs-err = { version = "3.3.0" }
@@ -22,7 +23,7 @@ shlex = { version = "2.0.1" }
 serde_json = { version = "1.0.150" }
 shellexpand = { version = "3.1.2" }
 thiserror = { version = "2.0.19" }
-tokio = { version = "1.53.1", features = ["macros", "net", "rt", "sync"] }
+tokio = { version = "1.53.1", features = ["io-util", "macros", "net", "rt", "sync"] }
 tracing = { version = "0.1.44" }
 tracing-subscriber = { version = "0.3.23" }
 unicode-segmentation = { version = "1.13.0" }
