@@ -60,7 +60,21 @@ function readMockFrame(
   timeout: number = 2000,
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("timeout")), timeout);
+    let cleaned = false;
+    const cleanup = (): void => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      clearTimeout(timer);
+      sock.off("data", onData);
+      sock.off("error", onError);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("timeout"));
+    }, timeout);
     let buffer = Buffer.alloc(0);
 
     function tryParse(): boolean {
@@ -78,14 +92,19 @@ function readMockFrame(
       if (frame.length < 5) {
         return false;
       }
-      const version = frame[4];
-      if (version !== PROTOCOL_VERSION) {
+      if (frame[4] !== PROTOCOL_VERSION) {
         return false;
       }
 
-      const msg = JSON.parse(frame.subarray(5).toString("utf-8"));
-      clearTimeout(timer);
-      sock.off("data", onData);
+      let msg: Record<string, unknown>;
+      try {
+        msg = JSON.parse(frame.subarray(5).toString("utf-8"));
+      } catch (err) {
+        cleanup();
+        reject(err);
+        return true;
+      }
+      cleanup();
       resolve(msg);
       return true;
     }
@@ -95,12 +114,13 @@ function readMockFrame(
       tryParse();
     }
 
-    sock.on("data", onData);
-    sock.on("error", (err) => {
-      clearTimeout(timer);
-      sock.off("data", onData);
+    function onError(err: Error): void {
+      cleanup();
       reject(err);
-    });
+    }
+
+    sock.on("data", onData);
+    sock.on("error", onError);
   });
 }
 
@@ -126,6 +146,7 @@ describe("SocketIPC", () => {
 
   afterEach(() => {
     mock.close();
+    vi.unstubAllEnvs();
   });
 
   describe("connect", () => {
@@ -180,21 +201,21 @@ describe("SocketIPC", () => {
 
   describe("reportBack", () => {
     it("sends report.submit and resolves on report.completed", async () => {
-      process.env.PI_RSH_PARENT_SESSION_ID = randomUUID();
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
+      let capturedSubmit: Record<string, unknown> | null = null;
       const receivedPromise = new Promise<void>((resolve) => {
         mock.onConnection = async (sock) => {
           const msg = await readMockFrame(sock);
-          const submit =
+          capturedSubmit =
             (msg["report.submit"] as Record<string, unknown>) ?? null;
-          expect(submit).not.toBeNull();
 
           sock.write(
             encodeDaemon({
               id: randomUUID(),
               timestamp: new Date().toISOString(),
               "review.ack": {
-                request_id: submit.request_id,
+                request_id: capturedSubmit?.request_id,
                 status: "accepted",
                 session_id: randomUUID(),
               },
@@ -206,8 +227,8 @@ describe("SocketIPC", () => {
               id: randomUUID(),
               timestamp: new Date().toISOString(),
               "report.completed": {
-                request_id: submit.request_id,
-                report: submit.content,
+                request_id: capturedSubmit?.request_id,
+                report: capturedSubmit?.content,
               },
             }),
           );
@@ -217,42 +238,45 @@ describe("SocketIPC", () => {
 
       await ipc.reportBack(REPORT);
       await receivedPromise;
-      delete process.env.PI_RSH_PARENT_SESSION_ID;
+      expect(capturedSubmit).not.toBeNull();
     });
 
     it("falls back when daemon rejects", async () => {
-      process.env.PI_RSH_PARENT_SESSION_ID = randomUUID();
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
       const fallbackCalled = vi.fn();
       ipc.setFallbackReporter(async (report) => {
         fallbackCalled(report);
       });
 
-      mock.onConnection = async (sock) => {
-        const msg = await readMockFrame(sock);
-        const submit =
-          (msg["report.submit"] as Record<string, unknown>) ?? null;
-        sock.write(
-          encodeDaemon({
-            id: randomUUID(),
-            timestamp: new Date().toISOString(),
-            "review.ack": {
-              request_id: submit.request_id,
-              status: "rejected",
-              reason: "no_active_session",
-            },
-          }),
-        );
-      };
+      const ackSent = new Promise<void>((resolve) => {
+        mock.onConnection = async (sock) => {
+          const msg = await readMockFrame(sock);
+          const submit =
+            (msg["report.submit"] as Record<string, unknown>) ?? null;
+          sock.write(
+            encodeDaemon({
+              id: randomUUID(),
+              timestamp: new Date().toISOString(),
+              "review.ack": {
+                request_id: submit?.request_id,
+                status: "rejected",
+                reason: "no_active_session",
+              },
+            }),
+          );
+          resolve();
+        };
+      });
 
       await ipc.reportBack(REPORT);
+      await ackSent;
       expect(fallbackCalled).toHaveBeenCalledTimes(1);
       expect(fallbackCalled).toHaveBeenCalledWith(REPORT);
-      delete process.env.PI_RSH_PARENT_SESSION_ID;
     });
 
     it("falls back when PI_RSH_PARENT_SESSION_ID is not set", async () => {
-      delete process.env.PI_RSH_PARENT_SESSION_ID;
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", undefined);
 
       const fallbackCalled = vi.fn();
       ipc.setFallbackReporter(async (report) => {
@@ -262,6 +286,78 @@ describe("SocketIPC", () => {
       await ipc.reportBack(REPORT);
       expect(fallbackCalled).toHaveBeenCalledTimes(1);
       expect(fallbackCalled).toHaveBeenCalledWith(REPORT);
+    });
+
+    it("handles coalesced ack+completed in a single read", async () => {
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
+
+      let capturedSubmit: Record<string, unknown> | null = null;
+      const done = new Promise<void>((resolve) => {
+        mock.onConnection = async (sock) => {
+          const msg = await readMockFrame(sock);
+          capturedSubmit =
+            (msg["report.submit"] as Record<string, unknown>) ?? null;
+
+          // Write both review.ack and report.completed as one coalesced
+          // buffer — exercises readOneFrame's buffered-data handling.
+          const ack = encodeDaemon({
+            id: randomUUID(),
+            timestamp: new Date().toISOString(),
+            "review.ack": {
+              request_id: capturedSubmit?.request_id,
+              status: "accepted",
+              session_id: randomUUID(),
+            },
+          });
+          const completed = encodeDaemon({
+            id: randomUUID(),
+            timestamp: new Date().toISOString(),
+            "report.completed": {
+              request_id: capturedSubmit?.request_id,
+              report: capturedSubmit?.content,
+            },
+          });
+          sock.write(Buffer.concat([ack, completed]));
+          resolve();
+        };
+      });
+
+      await ipc.reportBack(REPORT);
+      await done;
+      expect(capturedSubmit).not.toBeNull();
+    });
+
+    it("times out and falls back when daemon never responds", async () => {
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
+      vi.useFakeTimers();
+
+      const fallbackCalled = vi.fn();
+      ipc.setFallbackReporter(async (report) => {
+        fallbackCalled(report);
+      });
+
+      // Don't respond at all — the daemon accepts the connection but
+      // never writes a review.ack frame.
+      let connected = false;
+      const connectedPromise = new Promise<void>((resolve) => {
+        mock.onConnection = () => {
+          connected = true;
+          resolve();
+        };
+      });
+
+      const reportPromise = ipc.reportBack(REPORT);
+      await connectedPromise;
+      expect(connected).toBe(true);
+
+      // Advance past REPORT_TIMEOUT to trigger the timeout fallback
+      vi.advanceTimersByTime(15_000);
+
+      await reportPromise;
+      expect(fallbackCalled).toHaveBeenCalledTimes(1);
+      expect(fallbackCalled).toHaveBeenCalledWith(REPORT);
+
+      vi.useRealTimers();
     });
   });
 
@@ -352,12 +448,57 @@ describe("SocketIPC", () => {
   });
 
   describe("onReport", () => {
-    it("returns an unsubscribe function", async () => {
+    it("returns an unsubscribe function that stops further delivery", async () => {
+      await ipc.start();
+
       const handler = vi.fn();
       const unsubscribe = ipc.onReport(handler);
       expect(typeof unsubscribe).toBe("function");
+
+      // Register to get a session socket
+      let sessionSock: Socket | null = null;
+      const connected = new Promise<void>((resolve) => {
+        mock.onConnection = async (sock) => {
+          sessionSock = sock;
+          await readMockFrame(sock); // consume session.register
+          resolve();
+        };
+      });
+      await ipc.register(randomUUID(), "/tmp/test-project");
+      await connected;
+
+      // Deliver a report.delivered frame
+      sessionSock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          "report.delivered": {
+            request_id: randomUUID(),
+            content: JSON.stringify(REPORT),
+          },
+        }),
+      );
+
+      // Wait for dispatch to fire the handler
+      await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+      expect(handler).toHaveBeenCalledWith(REPORT);
+
+      // Unsubscribe and deliver another frame — handler should not fire again
       unsubscribe();
-      expect(handler).not.toHaveBeenCalled();
+      sessionSock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          "report.delivered": {
+            request_id: randomUUID(),
+            content: JSON.stringify(REPORT),
+          },
+        }),
+      );
+
+      // Small delay to let any async dispatch settle
+      await new Promise((r) => setTimeout(r, 50));
+      expect(handler).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -9,6 +9,25 @@ import { childSessionsDir } from "./paths.js";
 import type { AgentConfig } from "./types.js";
 
 // =============================================================================
+// Session ID resolution
+// =============================================================================
+
+/**
+ * Open a session file and read its header ID. Returns undefined when the
+ * file is unreadable or the header is missing (best-effort).
+ */
+export function resolveSessionId(
+  sessionFile: string,
+  cwd: string,
+): string | undefined {
+  try {
+    return SessionManager.open(sessionFile, undefined, cwd).getHeader()?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+// =============================================================================
 // Report extraction
 // =============================================================================
 

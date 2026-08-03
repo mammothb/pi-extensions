@@ -24,6 +24,7 @@ import {
 import {
   extractLastAssistantOutput,
   generateChildSessionFile,
+  resolveSessionId,
   seedForkSession,
 } from "./lib/session.js";
 import {
@@ -135,16 +136,7 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
     const cwd = ctx.cwd;
     const sessionId = randomUUID();
-    let parentSessionId: string | undefined;
-    try {
-      parentSessionId = SessionManager.open(
-        parentSessionFile,
-        undefined,
-        cwd,
-      ).getHeader()?.id;
-    } catch {
-      // best-effort — daemon path won't work but file IPC still does
-    }
+    const parentSessionId = resolveSessionId(parentSessionFile, cwd);
     const childSessionFile = generateChildSessionFile(sessionId);
     const researchAgent = makeResearchAgent();
 
@@ -176,6 +168,9 @@ export function createResearchHandler(pi: ExtensionAPI) {
     const piEnv = collectPiEnv(sessionId, task);
     if (parentSessionId) {
       piEnv.PI_RSH_PARENT_SESSION_ID = parentSessionId;
+    } else {
+      // Remove inherited value so the child cannot target a grandparent
+      delete piEnv.PI_RSH_PARENT_SESSION_ID;
     }
 
     // Full pi command goes into an executable launch script, so the pane

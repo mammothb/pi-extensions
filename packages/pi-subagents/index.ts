@@ -3,10 +3,10 @@ import type {
   ExtensionContext,
   SessionShutdownEvent,
 } from "@earendil-works/pi-coding-agent";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createIPC, type Unsubscribe } from "./src/lib/research-ipc.js";
 import { SocketIPC } from "./src/lib/research-ipc-socket.js";
 import { setResearchSessionChildPid } from "./src/lib/research-state.js";
+import { resolveSessionId } from "./src/lib/session.js";
 import {
   closeResearchSessionById,
   createResearchCloseHandler,
@@ -89,23 +89,13 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       if (ipc instanceof SocketIPC) {
         const sessionFile = ctx.sessionManager.getSessionFile();
         if (sessionFile) {
-          try {
-            const sessionId = SessionManager.open(
-              sessionFile,
-              undefined,
-              ctx.cwd,
-            ).getHeader()?.id;
-            if (sessionId) {
-              ipc.register(sessionId, ctx.cwd).catch((err) => {
-                console.error(
-                  `pi-subagents: failed to register with daemon: ${err}`,
-                );
-              });
-            }
-          } catch (err) {
-            console.error(
-              `pi-subagents: failed to open session for daemon registration: ${err}`,
-            );
+          const sessionId = resolveSessionId(sessionFile, ctx.cwd);
+          if (sessionId) {
+            ipc.register(sessionId, ctx.cwd).catch((err) => {
+              console.error(
+                `pi-subagents: failed to register with daemon: ${err}`,
+              );
+            });
           }
         }
       }

@@ -13,9 +13,42 @@ import { updateResearchSessionStatus } from "./research-state.js";
 // ── Frame codec ─────────────────────────────────────────────────────────────
 
 const PROTOCOL_VERSION = 0x01;
-const SOCKET_FILENAME = "research-ipc.sock";
+export const SOCKET_FILENAME = "research-ipc.sock";
 const CONNECT_TIMEOUT = 2_000; // ms
 const REPORT_TIMEOUT = 10_000; // ms, overall report.submit → report.completed
+
+/**
+ * Decode the next complete frame from a buffer holder. Returns the parsed
+ * JSON message or undefined when the buffer doesn't contain a complete,
+ * valid frame. Mutates buffer.buf to consume the frame.
+ */
+function decodeFrame(buffer: {
+  buf: Buffer;
+}): Record<string, unknown> | undefined {
+  if (buffer.buf.length < 4) {
+    return undefined;
+  }
+  const len = buffer.buf.readUInt32BE(0);
+  if (buffer.buf.length < 4 + len) {
+    return undefined;
+  }
+
+  const frame = buffer.buf.subarray(0, 4 + len);
+  buffer.buf = buffer.buf.subarray(4 + len);
+
+  if (frame.length < 5) {
+    return undefined;
+  }
+  if (frame[4] !== PROTOCOL_VERSION) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(frame.subarray(5).toString("utf-8"));
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Encode a JSON message into a length-prefixed frame.
@@ -39,44 +72,33 @@ function readOneFrame(
   buffer: { buf: Buffer },
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    // Early check — maybe we already have a frame in the buffer
-    tryNext();
+    let cleaned = false;
+
+    const cleanup = (): void => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      clearTimeout(timer);
+      sock.off("data", onData);
+      sock.off("error", onError);
+    };
 
     const timer = setTimeout(() => {
-      sock.off("data", onData);
+      cleanup();
       reject(new Error("read timeout"));
     }, timeout);
 
+    // Early check — maybe we already have a frame in the buffer
+    tryNext();
+
     function tryNext(): void {
-      while (buffer.buf.length >= 4) {
-        const len = buffer.buf.readUInt32BE(0);
-        if (buffer.buf.length < 4 + len) {
-          return; // incomplete
-        }
-
-        const frame = buffer.buf.subarray(0, 4 + len);
-        buffer.buf = buffer.buf.subarray(4 + len);
-
-        if (frame.length < 5) {
-          continue;
-        }
-        const version = frame[4];
-        if (version !== PROTOCOL_VERSION) {
-          continue; // skip unknown version
-        }
-
-        let msg: Record<string, unknown>;
-        try {
-          msg = JSON.parse(frame.subarray(5).toString("utf-8"));
-        } catch {
-          continue; // skip malformed JSON
-        }
-
-        clearTimeout(timer);
-        sock.off("data", onData);
-        resolve(msg);
+      const msg = decodeFrame(buffer);
+      if (msg === undefined) {
         return;
       }
+      cleanup();
+      resolve(msg);
     }
 
     function onData(data: Buffer): void {
@@ -84,12 +106,13 @@ function readOneFrame(
       tryNext();
     }
 
-    sock.on("data", onData);
-    sock.on("error", (err) => {
-      clearTimeout(timer);
-      sock.off("data", onData);
+    function onError(err: Error): void {
+      cleanup();
       reject(err);
-    });
+    }
+
+    sock.on("data", onData);
+    sock.on("error", onError);
   });
 }
 
@@ -117,6 +140,13 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
   private fallbackReportBack:
     | ((report: ResearchReport) => Promise<void>)
     | null = null;
+
+  private fileIPC: ResearchReceiver | null = null;
+
+  /** Inject a file-based IPC for fallback report consumption. */
+  setFileIPC(fileIPC: ResearchReceiver): void {
+    this.fileIPC = fileIPC;
+  }
 
   // ── Construct ─────────────────────────────────────────────────────────
 
@@ -171,8 +201,38 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
         reject(new Error("register timeout"));
       }, CONNECT_TIMEOUT);
 
+      const connectErrorHandler = (err: Error): void => {
+        clearTimeout(timer);
+        reject(err);
+      };
+
       sock.on("connect", () => {
         clearTimeout(timer);
+        sock.off("error", connectErrorHandler);
+
+        // Persistent error/close handlers for the session socket.
+        // On failure or closure, log the event, clear this.socket only
+        // when it references this socket, and dispose the read loop so
+        // the session can re-register and dispatch does not write to a
+        // dead connection.
+        sock.on("error", (err) => {
+          console.error(`pi-subagents: session socket error: ${err.message}`);
+          if (this.socket === sock) {
+            this.socket = null;
+          }
+          this.readLoopDisposer?.();
+          this.readLoopDisposer = null;
+        });
+
+        sock.on("close", () => {
+          console.error("pi-subagents: session socket closed");
+          if (this.socket === sock) {
+            this.socket = null;
+          }
+          this.readLoopDisposer?.();
+          this.readLoopDisposer = null;
+        });
+
         sock.write(
           encodeFrame({
             id: randomUUID(),
@@ -188,10 +248,7 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
         resolve();
       });
 
-      sock.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
+      sock.on("error", connectErrorHandler);
     });
   }
 
@@ -219,17 +276,24 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
       const requestId = randomUUID();
       const buffer = { buf: Buffer.alloc(0) };
 
-      const fail = () => {
-        sock.destroy();
-        this.fallback(report).then(resolve);
-      };
-
       let settled = false;
-      const succeed = () => {
+
+      const fail = (): void => {
         if (settled) {
           return;
         }
         settled = true;
+        clearTimeout(timer);
+        sock.destroy();
+        this.fallback(report).then(resolve);
+      };
+
+      const succeed = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
         sock.destroy();
         resolve();
       };
@@ -266,7 +330,6 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
             return;
           }
           if (result["report.completed"] != null) {
-            clearTimeout(timer);
             succeed();
           } else {
             fail();
@@ -295,8 +358,18 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
    */
   async start(): Promise<Unsubscribe> {
     this.started = true;
+    let fileStop: Unsubscribe | null = null;
+    if (this.fileIPC) {
+      try {
+        fileStop = await this.fileIPC.start();
+      } catch {
+        // FileIPC start failure is non-fatal; socket push still works
+      }
+    }
+
     return () => {
       this.started = false;
+      fileStop?.();
       const sid = this.sessionId;
       this.sessionId = null;
       this.readLoopDisposer?.();
@@ -321,8 +394,12 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
     };
   }
 
-  /** No-op — daemon push delivers reports. */
-  async poll(): Promise<void> {}
+  /** Delegates to the injected FileIPC for file-based reports. */
+  async poll(): Promise<void> {
+    if (this.fileIPC) {
+      await this.fileIPC.poll();
+    }
+  }
 
   // ── Internals ─────────────────────────────────────────────────────────
 
@@ -340,32 +417,16 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
   }
 
   private processBuffer(): void {
-    while (this.buffer.length >= 4) {
-      const len = this.buffer.readUInt32BE(0);
-      if (this.buffer.length < 4 + len) {
-        break; // incomplete frame
+    const buf = { buf: this.buffer };
+    for (;;) {
+      const msg = decodeFrame(buf);
+      if (msg === undefined) {
+        break;
       }
-
-      const frame = this.buffer.subarray(0, 4 + len);
-      this.buffer = this.buffer.subarray(4 + len);
-
-      if (frame.length < 5) {
-        continue;
-      }
-      const version = frame[4];
-      if (version !== PROTOCOL_VERSION) {
-        continue;
-      }
-
-      let msg: Record<string, unknown>;
-      try {
-        msg = JSON.parse(frame.subarray(5).toString("utf-8"));
-      } catch {
-        continue;
-      }
-
+      this.buffer = buf.buf;
       this.dispatch(msg);
     }
+    this.buffer = buf.buf;
   }
 
   /** Handle an incoming message from the daemon on the session connection. */
@@ -373,40 +434,48 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
     const delivered = msg["report.delivered"] as
       | Record<string, unknown>
       | undefined;
-    if (delivered) {
-      const content =
-        typeof delivered.content === "string" ? delivered.content : "";
-      const requestId =
-        typeof delivered.request_id === "string" ? delivered.request_id : "";
+    if (!delivered) {
+      return;
+    }
 
-      // Parse the report and fire handlers
+    const content =
+      typeof delivered.content === "string" ? delivered.content : "";
+    const requestId =
+      typeof delivered.request_id === "string" ? delivered.request_id : "";
+
+    // Parse the report — only send report.completed on success
+    let report: ResearchReport;
+    try {
+      report = JSON.parse(content);
+    } catch {
+      return; // invalid content — don't echo report.completed
+    }
+
+    updateResearchSessionStatus(report.sessionId, "completed");
+    for (const handler of this.handlers) {
       try {
-        const report: ResearchReport = JSON.parse(content);
-        updateResearchSessionStatus(report.sessionId, "completed");
-        for (const handler of this.handlers) {
-          handler(report);
-        }
+        handler(report);
       } catch {
-        // content is not a valid ResearchReport — ignore
+        // isolate each handler so one failure doesn't prevent others
       }
+    }
 
-      // Echo back report.completed so the daemon forwards it to the
-      // waiting producer (child's reportBack).
-      if (this.socket && requestId) {
-        try {
-          this.socket.write(
-            encodeFrame({
-              id: randomUUID(),
-              timestamp: new Date().toISOString(),
-              "report.completed": {
-                request_id: requestId,
-                report: content,
-              },
-            }),
-          );
-        } catch {
-          // best-effort: producer will time out and fall back to FileIPC
-        }
+    // Echo back report.completed so the daemon forwards it to the
+    // waiting producer (child's reportBack).
+    if (this.socket && requestId) {
+      try {
+        this.socket.write(
+          encodeFrame({
+            id: randomUUID(),
+            timestamp: new Date().toISOString(),
+            "report.completed": {
+              request_id: requestId,
+              report: content,
+            },
+          }),
+        );
+      } catch {
+        // best-effort: producer will time out and fall back to FileIPC
       }
     }
   }

@@ -11,7 +11,7 @@ import {
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { researchReportPath, researchReportsDir } from "./paths.js";
-import { SocketIPC } from "./research-ipc-socket.js";
+import { SOCKET_FILENAME, SocketIPC } from "./research-ipc-socket.js";
 import { updateResearchSessionStatus } from "./research-state.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -151,11 +151,12 @@ export class FileIPC implements ResearchReporter, ResearchReceiver {
 // otherwise. The connectivity check is lazy: SocketIPC.reportBack and
 // .register fall back transparently on any daemon failure.
 export function createIPC(): ResearchReporter & ResearchReceiver {
-  const socketPath = join(getAgentDir(), "research-ipc.sock");
+  const socketPath = join(getAgentDir(), SOCKET_FILENAME);
   if (existsSync(socketPath)) {
     const socket = new SocketIPC(socketPath);
     const file = new FileIPC();
     socket.setFallbackReporter((report) => file.reportBack(report));
+    socket.setFileIPC(file);
     return socket;
   }
   return new FileIPC();
