@@ -101,7 +101,7 @@ function readMockFrame(
         msg = JSON.parse(frame.subarray(5).toString("utf-8"));
       } catch (err) {
         cleanup();
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
         return true;
       }
       cleanup();
@@ -122,6 +122,128 @@ function readMockFrame(
     sock.on("data", onData);
     sock.on("error", onError);
   });
+}
+
+// ── Mock daemon helpers ────────────────────────────────────────────────────
+
+/** Mutable holder so async mock-daemon handlers can capture the submit. */
+interface SubmitCapture {
+  submit: Record<string, unknown> | null;
+}
+
+/** Mutable holder so async mock-daemon handlers can capture the socket. */
+interface SocketCapture {
+  sock: Socket | null;
+}
+
+/** Read the next frame and extract its report.submit payload, or null. */
+async function readSubmitFrame(
+  sock: Socket,
+): Promise<Record<string, unknown> | null> {
+  const msg = await readMockFrame(sock);
+  return (msg["report.submit"] as Record<string, unknown>) ?? null;
+}
+
+/** review.ack frame for a report.submit. */
+function encodeAckFrame(
+  submit: Record<string, unknown> | null,
+  status: string,
+  reason?: string,
+): Buffer {
+  return encodeDaemon({
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    "review.ack": {
+      request_id: submit?.request_id,
+      status,
+      ...(status === "accepted" ? { session_id: randomUUID() } : {}),
+      ...(reason !== undefined ? { reason } : {}),
+    },
+  });
+}
+
+/** report.completed frame for a report.submit. */
+function encodeCompletedFrame(submit: Record<string, unknown> | null): Buffer {
+  return encodeDaemon({
+    id: randomUUID(),
+    timestamp: new Date().toISOString(),
+    "report.completed": {
+      request_id: submit?.request_id,
+      report: submit?.content,
+    },
+  });
+}
+
+/**
+ * Mock-daemon handler: read report.submit, ack it accepted, then send
+ * report.completed. Captures the submit for later assertions.
+ */
+async function ackSubmitAndComplete(
+  sock: Socket,
+  capture: SubmitCapture,
+  done: () => void,
+): Promise<void> {
+  const submit = await readSubmitFrame(sock);
+  capture.submit = submit;
+  sock.write(encodeAckFrame(submit, "accepted"));
+  sock.write(encodeCompletedFrame(submit));
+  done();
+}
+
+/** Mock-daemon handler: read report.submit and ack it rejected. */
+async function rejectSubmit(sock: Socket, done: () => void): Promise<void> {
+  const submit = await readSubmitFrame(sock);
+  sock.write(encodeAckFrame(submit, "rejected", "no_active_session"));
+  done();
+}
+
+/**
+ * Mock-daemon handler: read report.submit, then write review.ack and
+ * report.completed coalesced into a single buffer write — exercises
+ * readOneFrame's buffered-data handling.
+ */
+async function ackSubmitAndCompleteCoalesced(
+  sock: Socket,
+  capture: SubmitCapture,
+  done: () => void,
+): Promise<void> {
+  const submit = await readSubmitFrame(sock);
+  capture.submit = submit;
+  sock.write(
+    Buffer.concat([
+      encodeAckFrame(submit, "accepted"),
+      encodeCompletedFrame(submit),
+    ]),
+  );
+  done();
+}
+
+/** Mock-daemon handler: capture the socket and read a session.register frame. */
+async function captureSessionRegister(
+  sock: Socket,
+  socketCapture: SocketCapture,
+  done: () => void,
+): Promise<void> {
+  socketCapture.sock = sock;
+  const msg = await readMockFrame(sock);
+  expect(msg["session.register"]).toBeDefined();
+  done();
+}
+
+/**
+ * Mock-daemon handler: read session.register, then keep reading until the
+ * session.unregister frame arrives.
+ */
+async function captureRegisterThenUnregister(
+  sock: Socket,
+  onRegistered: () => void,
+  onUnregistered: (msg: Record<string, unknown>) => void,
+): Promise<void> {
+  const reg = await readMockFrame(sock);
+  expect(reg["session.register"]).toBeDefined();
+  onRegistered();
+  const unreg = await readMockFrame(sock);
+  onUnregistered(unreg);
 }
 
 // ── Fixture ────────────────────────────────────────────────────────────────
@@ -164,13 +286,15 @@ describe("SocketIPC", () => {
     it("sends a valid session.register frame to the daemon", async () => {
       await ipc.start();
 
+      let resolveFrame!: (msg: Record<string, unknown>) => void;
       const receivedPromise = new Promise<Record<string, unknown>>(
         (resolve) => {
-          mock.onConnection = (sock) => {
-            readMockFrame(sock).then(resolve);
-          };
+          resolveFrame = resolve;
         },
       );
+      mock.onConnection = (sock) => {
+        readMockFrame(sock).then(resolveFrame);
+      };
 
       const sessionId = randomUUID();
       await ipc.register(sessionId, "/tmp/test-project");
@@ -203,42 +327,18 @@ describe("SocketIPC", () => {
     it("sends report.submit and resolves on report.completed", async () => {
       vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
-      let capturedSubmit: Record<string, unknown> | null = null;
+      const captured: SubmitCapture = { submit: null };
+      let resolveReceived!: () => void;
       const receivedPromise = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          const msg = await readMockFrame(sock);
-          capturedSubmit =
-            (msg["report.submit"] as Record<string, unknown>) ?? null;
-
-          sock.write(
-            encodeDaemon({
-              id: randomUUID(),
-              timestamp: new Date().toISOString(),
-              "review.ack": {
-                request_id: capturedSubmit?.request_id,
-                status: "accepted",
-                session_id: randomUUID(),
-              },
-            }),
-          );
-
-          sock.write(
-            encodeDaemon({
-              id: randomUUID(),
-              timestamp: new Date().toISOString(),
-              "report.completed": {
-                request_id: capturedSubmit?.request_id,
-                report: capturedSubmit?.content,
-              },
-            }),
-          );
-          resolve();
-        };
+        resolveReceived = resolve;
       });
+      mock.onConnection = (sock) => {
+        void ackSubmitAndComplete(sock, captured, resolveReceived);
+      };
 
       await ipc.reportBack(REPORT);
       await receivedPromise;
-      expect(capturedSubmit).not.toBeNull();
+      expect(captured.submit).not.toBeNull();
     });
 
     it("falls back when daemon rejects", async () => {
@@ -249,25 +349,13 @@ describe("SocketIPC", () => {
         fallbackCalled(report);
       });
 
+      let resolveAckSent!: () => void;
       const ackSent = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          const msg = await readMockFrame(sock);
-          const submit =
-            (msg["report.submit"] as Record<string, unknown>) ?? null;
-          sock.write(
-            encodeDaemon({
-              id: randomUUID(),
-              timestamp: new Date().toISOString(),
-              "review.ack": {
-                request_id: submit?.request_id,
-                status: "rejected",
-                reason: "no_active_session",
-              },
-            }),
-          );
-          resolve();
-        };
+        resolveAckSent = resolve;
       });
+      mock.onConnection = (sock) => {
+        void rejectSubmit(sock, resolveAckSent);
+      };
 
       await ipc.reportBack(REPORT);
       await ackSent;
@@ -291,40 +379,18 @@ describe("SocketIPC", () => {
     it("handles coalesced ack+completed in a single read", async () => {
       vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
-      let capturedSubmit: Record<string, unknown> | null = null;
+      const captured: SubmitCapture = { submit: null };
+      let resolveDone!: () => void;
       const done = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          const msg = await readMockFrame(sock);
-          capturedSubmit =
-            (msg["report.submit"] as Record<string, unknown>) ?? null;
-
-          // Write both review.ack and report.completed as one coalesced
-          // buffer — exercises readOneFrame's buffered-data handling.
-          const ack = encodeDaemon({
-            id: randomUUID(),
-            timestamp: new Date().toISOString(),
-            "review.ack": {
-              request_id: capturedSubmit?.request_id,
-              status: "accepted",
-              session_id: randomUUID(),
-            },
-          });
-          const completed = encodeDaemon({
-            id: randomUUID(),
-            timestamp: new Date().toISOString(),
-            "report.completed": {
-              request_id: capturedSubmit?.request_id,
-              report: capturedSubmit?.content,
-            },
-          });
-          sock.write(Buffer.concat([ack, completed]));
-          resolve();
-        };
+        resolveDone = resolve;
       });
+      mock.onConnection = (sock) => {
+        void ackSubmitAndCompleteCoalesced(sock, captured, resolveDone);
+      };
 
       await ipc.reportBack(REPORT);
       await done;
-      expect(capturedSubmit).not.toBeNull();
+      expect(captured.submit).not.toBeNull();
     });
 
     it("times out and falls back when daemon never responds", async () => {
@@ -339,12 +405,14 @@ describe("SocketIPC", () => {
       // Don't respond at all — the daemon accepts the connection but
       // never writes a review.ack frame.
       let connected = false;
+      let resolveConnected!: () => void;
       const connectedPromise = new Promise<void>((resolve) => {
-        mock.onConnection = () => {
-          connected = true;
-          resolve();
-        };
+        resolveConnected = resolve;
       });
+      mock.onConnection = () => {
+        connected = true;
+        resolveConnected();
+      };
 
       const reportPromise = ipc.reportBack(REPORT);
       await connectedPromise;
@@ -365,26 +433,27 @@ describe("SocketIPC", () => {
     it("fires onReport handler when daemon sends report.delivered", async () => {
       const stop = await ipc.start();
 
+      let resolveReport!: (report: ResearchReport | null) => void;
       const receivedReport = new Promise<ResearchReport | null>((resolve) => {
-        ipc.onReport((report) => resolve(report));
+        resolveReport = resolve;
       });
+      ipc.onReport((report) => resolveReport(report));
 
-      let sessionSock: Socket | null = null;
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
       const connectedPromise = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          sessionSock = sock;
-          const msg = await readMockFrame(sock);
-          expect(msg["session.register"]).toBeDefined();
-          resolve();
-        };
+        resolveConnected = resolve;
       });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
 
       await ipc.register(randomUUID(), "/tmp/test-project");
       await connectedPromise;
 
       const requestId = randomUUID();
       const content = JSON.stringify(REPORT);
-      sessionSock!.write(
+      sessionSock.sock!.write(
         encodeDaemon({
           id: randomUUID(),
           timestamp: new Date().toISOString(),
@@ -400,7 +469,7 @@ describe("SocketIPC", () => {
 
       // The session echoes back report.completed for the daemon to relay
       // to the waiting producer.
-      const completed = await readMockFrame(sessionSock!);
+      const completed = await readMockFrame(sessionSock.sock!);
       const payload =
         (completed["report.completed"] as Record<string, unknown>) ?? null;
       expect(payload).not.toBeNull();
@@ -416,7 +485,7 @@ describe("SocketIPC", () => {
       const stop = await ipc.start();
       const sessionId = randomUUID();
 
-      let unregResolve: (msg: Record<string, unknown>) => void;
+      let unregResolve!: (msg: Record<string, unknown>) => void;
       const unregisterPromise = new Promise<Record<string, unknown>>(
         (resolve) => {
           unregResolve = resolve;
@@ -425,15 +494,17 @@ describe("SocketIPC", () => {
       // Resolves once the mock daemon has read the register frame and is
       // listening for the next one — arming the unregister read before the
       // test calls stop(), so no frame is missed.
+      let resolveRegistered!: () => void;
       const registered = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          const reg = await readMockFrame(sock);
-          expect(reg["session.register"]).toBeDefined();
-          resolve();
-          const unreg = await readMockFrame(sock);
-          unregResolve(unreg);
-        };
+        resolveRegistered = resolve;
       });
+      mock.onConnection = (sock) => {
+        void captureRegisterThenUnregister(
+          sock,
+          resolveRegistered,
+          unregResolve,
+        );
+      };
 
       await ipc.register(sessionId, "/tmp/p");
       await registered;
@@ -456,19 +527,19 @@ describe("SocketIPC", () => {
       expect(typeof unsubscribe).toBe("function");
 
       // Register to get a session socket
-      let sessionSock: Socket | null = null;
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
       const connected = new Promise<void>((resolve) => {
-        mock.onConnection = async (sock) => {
-          sessionSock = sock;
-          await readMockFrame(sock); // consume session.register
-          resolve();
-        };
+        resolveConnected = resolve;
       });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
       await ipc.register(randomUUID(), "/tmp/test-project");
       await connected;
 
       // Deliver a report.delivered frame
-      sessionSock!.write(
+      sessionSock.sock!.write(
         encodeDaemon({
           id: randomUUID(),
           timestamp: new Date().toISOString(),
@@ -485,7 +556,7 @@ describe("SocketIPC", () => {
 
       // Unsubscribe and deliver another frame — handler should not fire again
       unsubscribe();
-      sessionSock!.write(
+      sessionSock.sock!.write(
         encodeDaemon({
           id: randomUUID(),
           timestamp: new Date().toISOString(),

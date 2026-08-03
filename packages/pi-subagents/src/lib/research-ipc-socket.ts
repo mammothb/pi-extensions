@@ -172,7 +172,7 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
       sock.on("error", (err) => {
         clearTimeout(timer);
         sock.destroy();
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
       });
     });
   }
