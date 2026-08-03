@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,6 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, unlinkSync: vi.fn() };
 });
 
-import { unlinkSync } from "node:fs";
 import { researchReportPath, researchReportsDir } from "../src/lib/paths.js";
 import { createIPC } from "../src/lib/research-ipc.js";
 import { withAgentDir } from "./_helpers.js";

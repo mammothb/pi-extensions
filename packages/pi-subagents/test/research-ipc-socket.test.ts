@@ -471,10 +471,13 @@ describe("SocketIPC", () => {
       // to the waiting producer.
       const completed = await readMockFrame(sessionSock.sock!);
       const payload =
-        (completed["report.completed"] as Record<string, unknown>) ?? null;
+        (completed["report.completed"] as
+          | Record<string, unknown>
+          | undefined) ?? null;
       expect(payload).not.toBeNull();
-      expect(payload.request_id).toBe(requestId);
-      expect(payload.report).toBe(content);
+      // Vitest's negated assertion doesn't narrow the type for TS
+      expect(payload!.request_id).toBe(requestId);
+      expect(payload!.report).toBe(content);
 
       stop();
     });
