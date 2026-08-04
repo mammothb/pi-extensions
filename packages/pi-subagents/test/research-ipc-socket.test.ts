@@ -267,6 +267,8 @@ describe("SocketIPC", () => {
   });
 
   afterEach(() => {
+    // Restore real timers even when a fake-timer test failed mid-body.
+    vi.useRealTimers();
     mock.close();
     vi.unstubAllEnvs();
   });
@@ -327,6 +329,11 @@ describe("SocketIPC", () => {
     it("sends report.submit and resolves on report.completed", async () => {
       vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
+      const fallbackCalled = vi.fn();
+      ipc.setFallbackReporter(async (report) => {
+        fallbackCalled(report);
+      });
+
       const captured: SubmitCapture = { submit: null };
       let resolveReceived!: () => void;
       const receivedPromise = new Promise<void>((resolve) => {
@@ -339,6 +346,8 @@ describe("SocketIPC", () => {
       await ipc.reportBack(REPORT);
       await receivedPromise;
       expect(captured.submit).not.toBeNull();
+      // Success must come from the socket path, not the fallback.
+      expect(fallbackCalled).not.toHaveBeenCalled();
     });
 
     it("falls back when daemon rejects", async () => {
@@ -379,6 +388,11 @@ describe("SocketIPC", () => {
     it("handles coalesced ack+completed in a single read", async () => {
       vi.stubEnv("PI_RSH_PARENT_SESSION_ID", randomUUID());
 
+      const fallbackCalled = vi.fn();
+      ipc.setFallbackReporter(async (report) => {
+        fallbackCalled(report);
+      });
+
       const captured: SubmitCapture = { submit: null };
       let resolveDone!: () => void;
       const done = new Promise<void>((resolve) => {
@@ -391,6 +405,8 @@ describe("SocketIPC", () => {
       await ipc.reportBack(REPORT);
       await done;
       expect(captured.submit).not.toBeNull();
+      // Success must come from the socket path, not the fallback.
+      expect(fallbackCalled).not.toHaveBeenCalled();
     });
 
     it("times out and falls back when daemon never responds", async () => {
@@ -424,8 +440,6 @@ describe("SocketIPC", () => {
       await reportPromise;
       expect(fallbackCalled).toHaveBeenCalledTimes(1);
       expect(fallbackCalled).toHaveBeenCalledWith(REPORT);
-
-      vi.useRealTimers();
     });
   });
 
