@@ -26,8 +26,9 @@ function buildPreview(
   chars: number,
   truncated: boolean,
   warningCount: number,
+  maxChars?: number,
 ): string {
-  const preview = truncatePreview(markdown, maxChars);
+  const preview = truncatePreview(markdown, maxChars ?? 2000);
   const lines = [
     `# Read DOCX: ${fileName}`,
     "",
@@ -88,6 +89,7 @@ export function createReadDocxTool(): ToolDefinition<
         markdown.length,
         truncated,
         warnings.length,
+        maxChars,
       );
 
       return buildToolResponse(preview, {
