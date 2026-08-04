@@ -1,5 +1,11 @@
 # @mammothb/pi-memory
 
+## 1.2.5
+
+### Patch Changes
+
+- 0acecd7: Refactor `walkPattern` to reduce cognitive complexity and fix missing type imports in `before-compact`.
+
 ## 1.2.4
 
 ### Patch Changes
