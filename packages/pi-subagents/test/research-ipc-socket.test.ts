@@ -595,4 +595,181 @@ describe("SocketIPC", () => {
       await expect(ipc.poll()).resolves.toBeUndefined();
     });
   });
+
+  describe("coverage gaps", () => {
+    it("rejects register when daemon is not listening", async () => {
+      await ipc.start();
+      mock.close();
+      await expect(ipc.register(randomUUID(), "/tmp/p")).rejects.toThrow();
+    });
+
+    it("does not fire onReport when payload is not a ResearchReport", async () => {
+      const stop = await ipc.start();
+
+      const handler = vi.fn();
+      ipc.onReport(handler);
+
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
+      const connectedPromise = new Promise<void>((resolve) => {
+        resolveConnected = resolve;
+      });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
+      await ipc.register(randomUUID(), "/tmp/test-project");
+      await connectedPromise;
+
+      // Send a report.delivered frame whose content parses to a number
+      // (not a ResearchReport).
+      sessionSock.sock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          "report.delivered": {
+            request_id: randomUUID(),
+            content: "42",
+          },
+        }),
+      );
+
+      // Allow dispatch to settle — handler must not fire.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(handler).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it("skips invalid frames and processes the next valid one", async () => {
+      const stop = await ipc.start();
+
+      const receivedReport = new Promise<ResearchReport>((resolve) => {
+        ipc.onReport(resolve);
+      });
+
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
+      const connectedPromise = new Promise<void>((resolve) => {
+        resolveConnected = resolve;
+      });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
+      await ipc.register(randomUUID(), "/tmp/test-project");
+      await connectedPromise;
+
+      // Write a frame with wrong protocol version (0x02 instead of 0x01).
+      // Length = 1 (version) + 2 (JSON "{}") = 3.
+      const badFrame = Buffer.concat([
+        Buffer.from([0, 0, 0, 3]),
+        Buffer.from([0x02]),
+        Buffer.from("{}", "utf-8"),
+      ]);
+      sessionSock.sock!.write(badFrame);
+
+      // Write a valid report.delivered frame immediately after.
+      const content = JSON.stringify(REPORT);
+      sessionSock.sock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          "report.delivered": {
+            request_id: randomUUID(),
+            content,
+          },
+        }),
+      );
+
+      const delivered = await receivedReport;
+      expect(delivered).toEqual(REPORT);
+      stop();
+    });
+
+    it("reportBack still resolves when fallback reporter rejects", async () => {
+      vi.stubEnv("PI_RSH_PARENT_SESSION_ID", undefined);
+
+      ipc.setFallbackReporter(async () => {
+        throw new Error("fallback failed");
+      });
+
+      await expect(ipc.reportBack(REPORT)).resolves.toBeUndefined();
+    });
+
+    it("does not fire handler for a message without report.delivered", async () => {
+      const stop = await ipc.start();
+
+      const handler = vi.fn();
+      ipc.onReport(handler);
+
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
+      const connectedPromise = new Promise<void>((resolve) => {
+        resolveConnected = resolve;
+      });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
+      await ipc.register(randomUUID(), "/tmp/test-project");
+      await connectedPromise;
+
+      // Send a valid frame whose JSON has no report.delivered field.
+      sessionSock.sock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          // no report.delivered — some other key
+          ping: {},
+        }),
+      );
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(handler).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it("skips a frame with unparseable JSON", async () => {
+      const stop = await ipc.start();
+
+      const receivedReport = new Promise<ResearchReport>((resolve) => {
+        ipc.onReport(resolve);
+      });
+
+      const sessionSock: SocketCapture = { sock: null };
+      let resolveConnected!: () => void;
+      const connectedPromise = new Promise<void>((resolve) => {
+        resolveConnected = resolve;
+      });
+      mock.onConnection = (sock) => {
+        void captureSessionRegister(sock, sessionSock, resolveConnected);
+      };
+      await ipc.register(randomUUID(), "/tmp/test-project");
+      await connectedPromise;
+
+      // Write a frame with correct version but garbage JSON.
+      const garbage = Buffer.from("{ not json", "utf-8");
+      const badFrame = Buffer.concat([
+        Buffer.alloc(4),
+        Buffer.from([PROTOCOL_VERSION]),
+        garbage,
+      ]);
+      badFrame.writeUInt32BE(1 + garbage.length, 0);
+      sessionSock.sock!.write(badFrame);
+
+      // Write a valid report.delivered frame after.
+      const content = JSON.stringify(REPORT);
+      sessionSock.sock!.write(
+        encodeDaemon({
+          id: randomUUID(),
+          timestamp: new Date().toISOString(),
+          "report.delivered": {
+            request_id: randomUUID(),
+            content,
+          },
+        }),
+      );
+
+      const delivered = await receivedReport;
+      expect(delivered).toEqual(REPORT);
+      stop();
+    });
+  });
 });
