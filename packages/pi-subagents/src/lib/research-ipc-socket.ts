@@ -49,10 +49,11 @@ function decodeFrame(buffer: { buf: Buffer }): DecodeResult {
   }
 
   try {
-    return {
-      kind: "message",
-      msg: JSON.parse(frame.subarray(5).toString("utf-8")),
-    };
+    const parsed: unknown = JSON.parse(frame.subarray(5).toString("utf-8"));
+    if (typeof parsed !== "object" || parsed === null) {
+      return { kind: "invalid" };
+    }
+    return { kind: "message", msg: parsed as Record<string, unknown> };
   } catch {
     return { kind: "invalid" };
   }
@@ -115,12 +116,18 @@ function readOneFrame(
     tryNext();
 
     function tryNext(): void {
-      const result = decodeFrame(buffer);
-      if (result.kind !== "message") {
-        return;
+      for (;;) {
+        const result = decodeFrame(buffer);
+        if (result.kind === "incomplete") {
+          return;
+        }
+        if (result.kind === "message") {
+          cleanup();
+          resolve(result.msg);
+          return;
+        }
+        // invalid frame was consumed — try the next one
       }
-      cleanup();
-      resolve(result.msg);
     }
 
     function onData(data: Buffer): void {
@@ -241,10 +248,10 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
           console.error(`pi-subagents: session socket error: ${err.message}`);
           if (this.socket === sock) {
             this.socket = null;
+            this.readLoopDisposer?.();
+            this.readLoopDisposer = null;
+            this.buffer = Buffer.alloc(0);
           }
-          this.readLoopDisposer?.();
-          this.readLoopDisposer = null;
-          this.buffer = Buffer.alloc(0);
         });
 
         sock.on("close", (hadError) => {
@@ -255,10 +262,10 @@ export class SocketIPC implements ResearchReporter, ResearchReceiver {
           }
           if (this.socket === sock) {
             this.socket = null;
+            this.readLoopDisposer?.();
+            this.readLoopDisposer = null;
+            this.buffer = Buffer.alloc(0);
           }
-          this.readLoopDisposer?.();
-          this.readLoopDisposer = null;
-          this.buffer = Buffer.alloc(0);
         });
 
         sock.write(

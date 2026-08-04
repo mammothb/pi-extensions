@@ -664,20 +664,19 @@ describe("SocketIPC", () => {
         Buffer.from([0x02]),
         Buffer.from("{}", "utf-8"),
       ]);
-      sessionSock.sock!.write(badFrame);
 
-      // Write a valid report.delivered frame immediately after.
+      // Concatenate a valid report.delivered frame and write both in one
+      // call — exercises processBuffer handling both in the same buffer.
       const content = JSON.stringify(REPORT);
-      sessionSock.sock!.write(
-        encodeDaemon({
-          id: randomUUID(),
-          timestamp: new Date().toISOString(),
-          "report.delivered": {
-            request_id: randomUUID(),
-            content,
-          },
-        }),
-      );
+      const goodFrame = encodeDaemon({
+        id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        "report.delivered": {
+          request_id: randomUUID(),
+          content,
+        },
+      });
+      sessionSock.sock!.write(Buffer.concat([badFrame, goodFrame]));
 
       const delivered = await receivedReport;
       expect(delivered).toEqual(REPORT);
@@ -752,20 +751,19 @@ describe("SocketIPC", () => {
         garbage,
       ]);
       badFrame.writeUInt32BE(1 + garbage.length, 0);
-      sessionSock.sock!.write(badFrame);
 
-      // Write a valid report.delivered frame after.
+      // Concatenate a valid report.delivered frame and write both in one
+      // call — exercises processBuffer handling both in the same buffer.
       const content = JSON.stringify(REPORT);
-      sessionSock.sock!.write(
-        encodeDaemon({
-          id: randomUUID(),
-          timestamp: new Date().toISOString(),
-          "report.delivered": {
-            request_id: randomUUID(),
-            content,
-          },
-        }),
-      );
+      const goodFrame = encodeDaemon({
+        id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        "report.delivered": {
+          request_id: randomUUID(),
+          content,
+        },
+      });
+      sessionSock.sock!.write(Buffer.concat([badFrame, goodFrame]));
 
       const delivered = await receivedReport;
       expect(delivered).toEqual(REPORT);

@@ -106,8 +106,20 @@ function tryRepo(obj: Record<string, unknown>): Result | null {
     return null;
   }
   const fullName = obj.full_name ?? obj.fullName;
-  const stars = safeStr(obj.stargazers_count ?? obj.stargazersCount ?? 0);
-  const forks = safeStr(obj.forks_count ?? obj.forksCount ?? 0);
+  const stars = safeStr(
+    typeof obj.stargazers_count === "number"
+      ? obj.stargazers_count
+      : typeof obj.stargazersCount === "number"
+        ? obj.stargazersCount
+        : 0,
+  );
+  const forks = safeStr(
+    typeof obj.forks_count === "number"
+      ? obj.forks_count
+      : typeof obj.forksCount === "number"
+        ? obj.forksCount
+        : 0,
+  );
   const lang = safeStr(obj.language, "none");
   const desc = obj.description ? ` — ${safeStr(obj.description)}` : "";
   return {
