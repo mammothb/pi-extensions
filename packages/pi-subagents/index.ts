@@ -4,7 +4,9 @@ import type {
   SessionShutdownEvent,
 } from "@earendil-works/pi-coding-agent";
 import { createIPC, type Unsubscribe } from "./src/lib/research-ipc.js";
+import { SocketIPC } from "./src/lib/research-ipc-socket.js";
 import { setResearchSessionChildPid } from "./src/lib/research-state.js";
+import { resolveSessionId } from "./src/lib/session.js";
 import {
   closeResearchSessionById,
   createResearchCloseHandler,
@@ -79,6 +81,24 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         content: `**Research completed:** ${report.task}\n\n${report.output}`,
         display: true,
       });
+    });
+
+    // Register with daemon on session_start so push delivery routes
+    // report.submit from child panes directly to this session.
+    pi.on("session_start", (_event, ctx: ExtensionContext) => {
+      if (ipc instanceof SocketIPC) {
+        const sessionFile = ctx.sessionManager.getSessionFile();
+        if (sessionFile) {
+          const sessionId = resolveSessionId(sessionFile, ctx.cwd);
+          if (sessionId) {
+            ipc.register(sessionId, ctx.cwd).catch((err) => {
+              console.error(
+                `pi-subagents: failed to register with daemon: ${err}`,
+              );
+            });
+          }
+        }
+      }
     });
     let stopWatcher: Unsubscribe | null = null;
     ipc

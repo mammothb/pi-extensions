@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,9 +23,9 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, unlinkSync: vi.fn() };
 });
 
-import { unlinkSync } from "node:fs";
 import { researchReportPath, researchReportsDir } from "../src/lib/paths.js";
 import { createIPC } from "../src/lib/research-ipc.js";
+import { SocketIPC } from "../src/lib/research-ipc-socket.js";
 import { withAgentDir } from "./_helpers.js";
 
 const unlinkMock = vi.mocked(unlinkSync);
@@ -198,5 +199,22 @@ describe("FileIPC.poll", () => {
       }
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("createIPC", () => {
+  it("returns SocketIPC when daemon socket file exists", () => {
+    withAgentDir((dir) => {
+      writeFileSync(join(dir, "research-ipc.sock"), "");
+      const ipc = createIPC();
+      expect(ipc).toBeInstanceOf(SocketIPC);
+    });
+  });
+
+  it("returns FileIPC when daemon socket does not exist", () => {
+    withAgentDir(() => {
+      const ipc = createIPC();
+      expect(ipc).not.toBeInstanceOf(SocketIPC);
+    });
   });
 });

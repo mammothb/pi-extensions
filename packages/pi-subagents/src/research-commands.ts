@@ -5,7 +5,7 @@ import type {
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { loadConfig } from "./config.js";
+import { loadConfig, type SubagentsConfig } from "./config.js";
 import { getPiInvocation } from "./lib/launch.js";
 import {
   buildResearchCommandLine,
@@ -24,6 +24,7 @@ import {
 import {
   extractLastAssistantOutput,
   generateChildSessionFile,
+  resolveSessionId,
   seedForkSession,
 } from "./lib/session.js";
 import {
@@ -118,6 +119,151 @@ function collectPiEnv(sessionId: string, task: string): Record<string, string> {
 
 // ── /rsh ───────────────────────────────────────────────────────────────
 
+/** Minimal session identity shared by the tmux and no-tmux launch paths. */
+interface NewResearchSession {
+  id: string;
+  task: string;
+  sessionFile: string;
+}
+
+/**
+ * Build the `bash <script>` command that launches the forked research
+ * session. The full pi command goes into an executable launch script, so
+ * the pane only runs a short `bash <script>` and the exact invocation is
+ * kept as a debuggable artifact. Env identity is inlined in the script so
+ * the manual (no-tmux) fallback also carries PI_RSH_* vars.
+ */
+function buildRunCommand(
+  ctx: ExtensionCommandContext,
+  cwd: string,
+  task: string,
+  session: NewResearchSession,
+  parentSessionFile: string,
+): string {
+  // Build pi command: interactive mode with the forked session
+  const piArgs = ["--session", session.sessionFile];
+  const modelId = ctx.model
+    ? `${ctx.model.provider}/${ctx.model.id}`
+    : undefined;
+  if (modelId) {
+    piArgs.push("--model", modelId);
+  }
+
+  const piEnv = collectPiEnv(session.id, task);
+  const parentSessionId = resolveSessionId(parentSessionFile, cwd);
+  if (parentSessionId) {
+    piEnv.PI_RSH_PARENT_SESSION_ID = parentSessionId;
+  } else {
+    // Remove inherited value so the child cannot target a grandparent
+    delete piEnv.PI_RSH_PARENT_SESSION_ID;
+  }
+
+  const { command, args: cmdArgs } = getPiInvocation(piArgs);
+  const launchScript = writeResearchScript(
+    session.id,
+    task,
+    buildResearchCommandLine(piEnv, [command, ...cmdArgs]),
+  );
+  return `bash ${shq(launchScript)}`;
+}
+
+/** Split a pane, register state, then start the child. Roll back on failure. */
+function launchInTmux(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  config: SubagentsConfig,
+  session: NewResearchSession,
+  runCmd: string,
+): void {
+  const tmuxSession = tmuxGetSessionName();
+  // Split first, register state, then start the child — the child must
+  // never boot before its state file exists, or its childPid
+  // self-registration would no-op (HazAT's split-then-send pattern).
+  let paneId: string;
+  try {
+    paneId = tmuxSplitWindow("h");
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to create tmux pane: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
+
+  try {
+    createResearchSession({
+      id: session.id,
+      task: session.task,
+      sessionFile: session.sessionFile,
+      paneId,
+      tmuxSession,
+      status: "running",
+    });
+
+    tmuxSendKeys(paneId, runCmd);
+  } catch (err) {
+    // Roll back: a failed startup must not leave a stale "running"
+    // session or an orphaned pane behind. Idempotent whether or not
+    // createResearchSession completed (kills the pane first, then
+    // removes state + artifacts if registered).
+    try {
+      tmuxKillPane(paneId);
+    } catch {
+      // Pane may already be dead
+    }
+    closeResearchSessionById(session.id);
+    ctx.ui.notify(
+      `Failed to start research session: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
+
+  pi.sendMessage({
+    customType: "research_start",
+    content: `**Research:** ${session.task}\n\nOpened in tmux pane ${paneId}. When done, type \`/${RSH_COMMANDS.report}\` in the child pane to send findings back here.`,
+    display: true,
+  });
+
+  // Jump the user into the new research pane so they can steer it
+  // (disable via pi-subagents.json: { "focusOnStart": false }).
+  if (config.focusOnStart) {
+    try {
+      tmuxSelectPane(paneId);
+    } catch {
+      // Focus is best-effort — the pane is up and the child started.
+      // Don't fail the whole command over a select-pane hiccup.
+    }
+  }
+}
+
+/** No tmux — register state and print the manual run command. */
+function launchWithoutTmux(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  session: NewResearchSession,
+  runCmd: string,
+): void {
+  createResearchSession({
+    id: session.id,
+    task: session.task,
+    sessionFile: session.sessionFile,
+    paneId: null,
+    tmuxSession: null,
+    status: "running",
+  });
+
+  ctx.ui.notify("No tmux session detected.", "warning");
+  ctx.ui.notify("Run this in another terminal to continue:", "info");
+  ctx.ui.notify(`  ${runCmd}`, "info");
+
+  pi.sendMessage({
+    customType: "research_start",
+    content: `**Research:** ${session.task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${runCmd}\n\`\`\`\n\nUse \`/${RSH_COMMANDS.report}\` when done.`,
+    display: true,
+  });
+}
+
 export function createResearchHandler(pi: ExtensionAPI) {
   return async (args: string, ctx: ExtensionCommandContext) => {
     const config = loadConfig(ctx.cwd);
@@ -135,16 +281,19 @@ export function createResearchHandler(pi: ExtensionAPI) {
 
     const cwd = ctx.cwd;
     const sessionId = randomUUID();
-    const childSessionFile = generateChildSessionFile(sessionId);
-    const researchAgent = makeResearchAgent();
+    const session: NewResearchSession = {
+      id: sessionId,
+      task,
+      sessionFile: generateChildSessionFile(sessionId),
+    };
 
     try {
       seedForkSession(
         parentSessionFile,
-        childSessionFile,
-        researchAgent,
+        session.sessionFile,
+        makeResearchAgent(),
         cwd,
-        sessionId,
+        session.id,
       );
     } catch (err) {
       ctx.ui.notify(
@@ -154,109 +303,12 @@ export function createResearchHandler(pi: ExtensionAPI) {
       return;
     }
 
-    // Build pi command: interactive mode with the forked session
-    const piArgs = ["--session", childSessionFile];
-    const modelId = ctx.model
-      ? `${ctx.model.provider}/${ctx.model.id}`
-      : undefined;
-    if (modelId) {
-      piArgs.push("--model", modelId);
-    }
-
-    const piEnv = collectPiEnv(sessionId, task);
-
-    // Full pi command goes into an executable launch script, so the pane
-    // only runs a short `bash <script>` and the exact invocation is kept
-    // as a debuggable artifact. Env identity is inlined in the script so
-    // the manual (no-tmux) fallback also carries PI_RSH_* vars.
-    const { command, args: cmdArgs } = getPiInvocation(piArgs);
-    const launchScript = writeResearchScript(
-      sessionId,
-      task,
-      buildResearchCommandLine(piEnv, [command, ...cmdArgs]),
-    );
-    const runCmd = `bash ${shq(launchScript)}`;
+    const runCmd = buildRunCommand(ctx, cwd, task, session, parentSessionFile);
 
     if (tmuxActive()) {
-      const tmuxSession = tmuxGetSessionName();
-      // Split first, register state, then start the child — the child must
-      // never boot before its state file exists, or its childPid
-      // self-registration would no-op (HazAT's split-then-send pattern).
-      let paneId: string;
-      try {
-        paneId = tmuxSplitWindow("h");
-      } catch (err) {
-        ctx.ui.notify(
-          `Failed to create tmux pane: ${err instanceof Error ? err.message : String(err)}`,
-          "error",
-        );
-        return;
-      }
-
-      try {
-        createResearchSession({
-          id: sessionId,
-          task,
-          sessionFile: childSessionFile,
-          paneId,
-          tmuxSession,
-          status: "running",
-        });
-
-        tmuxSendKeys(paneId, runCmd);
-      } catch (err) {
-        // Roll back: a failed startup must not leave a stale "running"
-        // session or an orphaned pane behind. Idempotent whether or not
-        // createResearchSession completed (kills the pane first, then
-        // removes state + artifacts if registered).
-        try {
-          tmuxKillPane(paneId);
-        } catch {
-          // Pane may already be dead
-        }
-        closeResearchSessionById(sessionId);
-        ctx.ui.notify(
-          `Failed to start research session: ${err instanceof Error ? err.message : String(err)}`,
-          "error",
-        );
-        return;
-      }
-
-      pi.sendMessage({
-        customType: "research_start",
-        content: `**Research:** ${task}\n\nOpened in tmux pane ${paneId}. When done, type \`/${RSH_COMMANDS.report}\` in the child pane to send findings back here.`,
-        display: true,
-      });
-
-      // Jump the user into the new research pane so they can steer it
-      // (disable via pi-subagents.json: { "focusOnStart": false }).
-      if (config.focusOnStart) {
-        try {
-          tmuxSelectPane(paneId);
-        } catch {
-          // Focus is best-effort — the pane is up and the child started.
-          // Don't fail the whole command over a select-pane hiccup.
-        }
-      }
+      launchInTmux(pi, ctx, config, session, runCmd);
     } else {
-      createResearchSession({
-        id: sessionId,
-        task,
-        sessionFile: childSessionFile,
-        paneId: null,
-        tmuxSession: null,
-        status: "running",
-      });
-
-      ctx.ui.notify("No tmux session detected.", "warning");
-      ctx.ui.notify(`Run this in another terminal to continue:`, "info");
-      ctx.ui.notify(`  ${runCmd}`, "info");
-
-      pi.sendMessage({
-        customType: "research_start",
-        content: `**Research:** ${task}\n\nNo tmux session detected. Run this in another terminal:\n\n\`\`\`\n${runCmd}\n\`\`\`\n\nUse \`/${RSH_COMMANDS.report}\` when done.`,
-        display: true,
-      });
+      launchWithoutTmux(pi, ctx, session, runCmd);
     }
   };
 }

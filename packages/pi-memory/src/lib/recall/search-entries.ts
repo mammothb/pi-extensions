@@ -58,41 +58,55 @@ function walkPattern(pattern: string): boolean {
   let inClass = false;
   let i = 0;
   while (i < pattern.length) {
-    const c = pattern[i];
-    if (c === "\\") {
-      i += 2;
-      continue;
-    }
-    if (inClass) {
-      if (c === "]") {
-        inClass = false;
-      }
-      i++;
-      continue;
-    }
-    if (c === "[") {
-      inClass = true;
-      i++;
-      continue;
-    }
-    if (c === "(") {
-      groups.push(false);
-      i++;
-      continue;
-    }
-    if (c === ")") {
-      i = closeParen(pattern, i, groups);
-      continue;
-    }
-    const q = quantifierAt(pattern, i);
-    if (q.unbounded && groups.length) {
-      groups[groups.length - 1] = true;
-      i += q.len;
-    } else {
-      i++;
-    }
+    const result = stepPattern(pattern, i, groups, inClass);
+    i = result.nextI;
+    inClass = result.inClass;
   }
   return false;
+}
+
+/**
+ * Process one character / token at position `i`.
+ * Returns the next position and whether we're inside a character class.
+ * Mutates `groups` for group nesting tracking. Throws
+ * NestedQuantifierError when a nested unbounded quantifier is detected.
+ */
+function stepPattern(
+  pattern: string,
+  i: number,
+  groups: boolean[],
+  inClass: boolean,
+): { nextI: number; inClass: boolean } {
+  const c = pattern[i];
+
+  if (c === "\\") {
+    return { nextI: i + 2, inClass };
+  }
+
+  if (inClass) {
+    return { nextI: i + 1, inClass: c !== "]" };
+  }
+
+  if (c === "[") {
+    return { nextI: i + 1, inClass: true };
+  }
+
+  if (c === "(") {
+    groups.push(false);
+    return { nextI: i + 1, inClass };
+  }
+
+  if (c === ")") {
+    return { nextI: closeParen(pattern, i, groups), inClass };
+  }
+
+  const q = quantifierAt(pattern, i);
+  if (q.unbounded && groups.length) {
+    groups[groups.length - 1] = true;
+    return { nextI: i + q.len, inClass };
+  }
+
+  return { nextI: i + 1, inClass };
 }
 
 /** Process a closing paren: pop the group's quantifier flag, check whether

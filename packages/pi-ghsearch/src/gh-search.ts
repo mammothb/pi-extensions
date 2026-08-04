@@ -182,6 +182,7 @@ function str(val: unknown, fallback: string): string {
   if (typeof val === "object") {
     return fallback;
   }
+  // NOSONAR: objects already caught by typeof val === "object" guard above
   return String(val);
 }
 

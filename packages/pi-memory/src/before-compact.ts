@@ -1,10 +1,14 @@
 import { writeFileSync } from "node:fs";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import {
   buildOwnCut,
   collectLiveMessages,
   findLastCompaction,
+  type OwnCutResult,
   REASON_MESSAGES,
 } from "./lib/compact/build-own-cut";
 import {
@@ -174,7 +178,7 @@ function buildFailedCutDiagnostics(
   ownCut: OwnCutResult & { ok: false },
   branchEntries: unknown[],
   isMmCompact: boolean,
-  reason: string,
+  reason: string | undefined,
   willRetry: boolean,
   settings: MmCompactSettings,
 ): void {
@@ -234,9 +238,9 @@ function buildFailedCutDiagnostics(
 function handleFailedCut(
   ownCut: OwnCutResult & { ok: false },
   event: { branchEntries: unknown[] },
-  ctx: { ui?: { notify?: (msg: string, level: string) => void } },
+  ctx: ExtensionContext,
   isMmCompact: boolean,
-  reason: string,
+  reason: string | undefined,
   willRetry: boolean,
   settings: MmCompactSettings,
 ): { cancel: true } | undefined {

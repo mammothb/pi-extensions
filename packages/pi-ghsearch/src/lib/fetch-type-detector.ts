@@ -29,7 +29,7 @@ function safeStr(val: unknown, fallback = "?"): string {
   if (typeof val === "string") {
     return val;
   }
-  if (val == null) {
+  if (val == null || typeof val === "object") {
     return fallback;
   }
   return String(val);
@@ -106,8 +106,20 @@ function tryRepo(obj: Record<string, unknown>): Result | null {
     return null;
   }
   const fullName = obj.full_name ?? obj.fullName;
-  const stars = obj.stargazers_count ?? obj.stargazersCount ?? 0;
-  const forks = obj.forks_count ?? obj.forksCount ?? 0;
+  const stars = safeStr(
+    typeof obj.stargazers_count === "number"
+      ? obj.stargazers_count
+      : typeof obj.stargazersCount === "number"
+        ? obj.stargazersCount
+        : 0,
+  );
+  const forks = safeStr(
+    typeof obj.forks_count === "number"
+      ? obj.forks_count
+      : typeof obj.forksCount === "number"
+        ? obj.forksCount
+        : 0,
+  );
   const lang = safeStr(obj.language, "none");
   const desc = obj.description ? ` — ${safeStr(obj.description)}` : "";
   return {
