@@ -1,5 +1,11 @@
 # @mammothb/pi-office
 
+## 0.1.7
+
+### Patch Changes
+
+- 0acecd7: Fix missing `maxChars` parameter in `read_docx` preview builder.
+
 ## 0.1.6
 
 ### Patch Changes

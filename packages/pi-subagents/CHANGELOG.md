@@ -1,5 +1,15 @@
 # @mammothb/pi-subagents
 
+## 1.1.0
+
+### Minor Changes
+
+- 0acecd7: Add socket IPC push delivery for research reports via the `aipcd` daemon. Report submissions now route through a Unix domain socket (`research-ipc.sock`) when the daemon is reachable, falling back to file-based IPC transparently.
+
+### Patch Changes
+
+- 0acecd7: Harden socket IPC frame decoding against invalid and non-object payloads, guard error/close teardown against stale sockets, resolve fallback rejections cleanly, and improve test coverage.
+
 ## 1.0.0
 
 ### Major Changes

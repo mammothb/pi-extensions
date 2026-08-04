@@ -1,5 +1,11 @@
 # @mammothb/pi-ghsearch
 
+## 1.1.3
+
+### Patch Changes
+
+- 0acecd7: Validate numeric fields before string conversion in `detectFetchType` and guard `safeStr` against object arguments to prevent `[object Object]` in summaries.
+
 ## 1.1.2
 
 ### Patch Changes
