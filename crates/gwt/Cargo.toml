@@ -1,0 +1,27 @@
+[package]
+name = "gwt-helper"
+version = "0.1.8"
+description = "Git worktree helper"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "gwt"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+env_logger = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+git2 = { version = "0.20.4" }
