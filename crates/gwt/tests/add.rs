@@ -44,6 +44,45 @@ fn add_creates_worktree_on_new_branch() {
 }
 
 #[rstest]
+fn add_from_workspace_root_uses_bare_and_resolves_feat_under_cwd() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src-repo");
+    init_repo(&src);
+
+    // Scaffold the workspace: bare clone at `.bare`.
+    gwt()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(src.to_str().unwrap())
+        .assert()
+        .success();
+    let ws = tmp.path().join("src-repo-workspace");
+
+    // Add from the workspace ROOT (not inside a checkout), so detection must
+    // find `.bare` and resolve `feat/q` under the workspace dir.
+    gwt()
+        .current_dir(&ws)
+        .args(["add", "feat/q", "-b", "feat/q"])
+        .assert()
+        .success();
+
+    assert!(
+        ws.join("feat").join("q").join(".git").exists(),
+        "worktree checked out at ws/feat/q"
+    );
+    let out = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(ws.join(".bare"))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("branch refs/heads/feat/q"),
+        "branch registered in bare repo: {text}"
+    );
+}
+
+#[rstest]
 fn add_second_time_reports_conflict_with_hint() {
     let tmp = TempDir::new().unwrap();
     init_repo(tmp.path());

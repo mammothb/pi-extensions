@@ -82,46 +82,29 @@ impl Git {
         }
     }
 
-    /// Run git with `args` and return the captured output.
-    ///
-    /// Applies deterministic environment hygiene so git behaves identically
-    /// everywhere: locale pinned to C (parseable, English error prefixes),
-    /// pager disabled, object replacement disabled, stdin closed.
-    pub fn run(&self, args: &[impl AsRef<str>]) -> Result<Output, GitError> {
-        let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
-        let command = format!("{} {}", self.executable_path.display(), args.join(" "));
-        log::debug!("running {command}");
-
-        let mut cmd = Command::new(&self.executable_path);
-        cmd.args(["--no-pager", "--no-replace-objects"])
-            .args(&args)
-            .env_remove("LC_ALL")
-            .env_remove("LANGUAGE")
-            .env("LC_MESSAGES", "C")
-            .stdin(Stdio::null());
-
-        let output = cmd.output().map_err(|e| self.map_spawn_error(e))?;
-
-        if output.status.success() {
-            return Ok(output);
+    /// Assert the installed git is at least [`MIN_VERSION`]; error otherwise.
+    pub fn check_version(&self) -> Result<(), GitError> {
+        let output = self.run(&["--version"])?;
+        let raw = String::from_utf8_lossy(&output.stdout).into_owned();
+        let current = parse_version(&raw).ok_or_else(|| GitError::Parse {
+            command: format!("{} --version", self.executable_path.display()),
+            message: format!("unrecognized version string {raw:?}"),
+        })?;
+        if current < MIN_VERSION {
+            return Err(GitError::VersionTooOld {
+                current: format_version(current),
+                required: format_version(MIN_VERSION),
+            });
         }
-        let code = output.status.code().unwrap_or(128);
-        Err(GitError::NonZeroExit {
-            command,
-            code,
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })
+        Ok(())
     }
 
-    /// Like [`Git::run`], but treats `exit 1` as a "no" outcome (`None`)
-    /// rather than an error. Any other non-zero exit is still an error.
-    pub fn run_optional(&self, args: &[impl AsRef<str>]) -> Result<Option<Output>, GitError> {
-        match self.run(args) {
-            Ok(output) => Ok(Some(output)),
-            Err(GitError::NonZeroExit { code: 1, .. }) => Ok(None),
-            Err(err) => Err(err),
-        }
+    /// Clone a repository (optionally `--bare`) into `dir`, applying
+    /// `--config`-style settings.
+    pub fn clone(&self, args: &GitCloneArgs) -> Result<(), GitError> {
+        let args = args.to_args()?;
+        self.run(&args)?;
+        Ok(())
     }
 
     /// Resolve the top-level directory of the current worktree.
@@ -147,18 +130,13 @@ impl Git {
         Ok(root)
     }
 
-    /// Clone a repository (optionally `--bare`) into `dir`, applying
-    /// `--config`-style settings.
-    pub fn clone(&self, args: &GitCloneArgs) -> Result<(), GitError> {
-        let args = args.to_args()?;
-        self.run(&args)?;
-        Ok(())
-    }
-
     /// Create a worktree at `path` on a new branch `branch`, optionally at
-    /// `commit` instead of HEAD.
+    /// `commit` instead of HEAD. `run_dir` sets the git process's working
+    /// directory (the `.bare` repo for workspace-root invocation); `None`
+    /// runs from the caller's cwd.
     pub fn add_worktree(
         &self,
+        run_dir: Option<&Path>,
         branch: &str,
         path: &Path,
         commit: Option<&str>,
@@ -171,7 +149,7 @@ impl Git {
         if let Some(c) = commit {
             args.push(c);
         }
-        self.run(&args)?;
+        self.run_at(run_dir, &args)?;
         Ok(())
     }
 
@@ -190,21 +168,43 @@ impl Git {
         })
     }
 
-    /// Assert the installed git is at least [`MIN_VERSION`]; error otherwise.
-    pub fn check_version(&self) -> Result<(), GitError> {
-        let output = self.run(&["--version"])?;
-        let raw = String::from_utf8_lossy(&output.stdout).into_owned();
-        let current = parse_version(&raw).ok_or_else(|| GitError::Parse {
-            command: format!("{} --version", self.executable_path.display()),
-            message: format!("unrecognized version string {raw:?}"),
+    /// Resolve where the current directory sits relative to a repository:
+    /// inside a worktree, or at a workspace root containing a verified bare
+    /// repo (`.bare`).
+    pub fn resolve_context(&self) -> Result<RepoContext, GitError> {
+        // 1. Inside an actual worktree checkout — always wins.
+        if let Ok(root) = self.show_toplevel() {
+            return Ok(RepoContext::Worktree { root });
+        }
+
+        // 2. Workspace root: a bare repo named `.bare` right under cwd.
+        let cwd = std::env::current_dir().map_err(|e| GitError::Parse {
+            command: "current_dir".to_owned(),
+            message: e.to_string(),
         })?;
-        if current < MIN_VERSION {
-            return Err(GitError::VersionTooOld {
-                current: format_version(current),
-                required: format_version(MIN_VERSION),
+        let bare_dir = cwd.join(".bare");
+        if self.is_bare_repo(&bare_dir)? {
+            return Ok(RepoContext::BareWorkspace {
+                workspace: cwd,
+                bare_dir,
             });
         }
-        Ok(())
+
+        // 3. Final fallback: the git-dir parent (inside a linked worktree of
+        //    a bare repo, or a bare admin dir).
+        let root = self.get_worktree_root()?;
+        Ok(RepoContext::Worktree { root })
+    }
+
+    /// `true` when `dir` is a real git repo with `core.bare=true`. Cheap
+    /// markers gate the authoritative check so we don't spawn git when there
+    /// is no `.bare` around at all.
+    fn is_bare_repo(&self, dir: &Path) -> Result<bool, GitError> {
+        if !dir.join("HEAD").is_file() || !dir.join("objects").is_dir() {
+            return Ok(false);
+        }
+        let output = self.run_at(Some(dir), &["rev-parse", "--is-bare-repository"])?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim() == "true")
     }
 
     fn map_spawn_error(&self, source: io::Error) -> GitError {
@@ -218,6 +218,99 @@ impl Git {
                 executable: self.executable_path.display().to_string(),
                 source,
             }
+        }
+    }
+
+    /// Run git with `args` and return the captured output.
+    ///
+    /// Applies deterministic environment hygiene so git behaves identically
+    /// everywhere: locale pinned to C (parseable, English error prefixes),
+    /// pager disabled, object replacement disabled, stdin closed.
+    fn run(&self, args: &[impl AsRef<str>]) -> Result<Output, GitError> {
+        self.run_at(None, args)
+    }
+
+    /// Like [`Git::run`], but with the git process's working directory set to
+    /// `dir` (e.g. a `.bare` repo). Pass `None` for the caller's cwd.
+    fn run_at(&self, dir: Option<&Path>, args: &[impl AsRef<str>]) -> Result<Output, GitError> {
+        let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
+        let command = format!("{} {}", self.executable_path.display(), args.join(" "));
+        log::debug!("running {command}");
+
+        let mut cmd = Command::new(&self.executable_path);
+        cmd.args(["--no-pager", "--no-replace-objects"])
+            .args(&args)
+            .env_remove("LC_ALL")
+            .env_remove("LANGUAGE")
+            .env("LC_MESSAGES", "C")
+            .stdin(Stdio::null());
+        if let Some(dir) = dir {
+            cmd.current_dir(dir);
+        }
+
+        let output = cmd.output().map_err(|e| self.map_spawn_error(e))?;
+
+        if output.status.success() {
+            return Ok(output);
+        }
+        let code = output.status.code().unwrap_or(128);
+        Err(GitError::NonZeroExit {
+            command,
+            code,
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+
+    /// Like [`Git::run`], but treats `exit 1` as a "no" outcome (`None`)
+    /// rather than an error. Any other non-zero exit is still an error.
+    pub fn run_optional(&self, args: &[impl AsRef<str>]) -> Result<Option<Output>, GitError> {
+        self.run_optional_at(None, args)
+    }
+
+    /// Like [`Git::run_optional`], with the process's working directory set
+    /// to `dir` (pass `None` for the caller's cwd).
+    pub fn run_optional_at(
+        &self,
+        dir: Option<&Path>,
+        args: &[impl AsRef<str>],
+    ) -> Result<Option<Output>, GitError> {
+        match self.run_at(dir, args) {
+            Ok(output) => Ok(Some(output)),
+            Err(GitError::NonZeroExit { code: 1, .. }) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+/// Where the current directory's repository lives, and how to run git for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoContext {
+    /// Inside a normal worktree checkout. Relative paths resolve from the
+    /// worktree's toplevel; git runs from the caller's cwd.
+    Worktree { root: PathBuf },
+    /// At a workspace root that contains a bare repo (`.bare`). Relative
+    /// paths resolve from the workspace dir; git runs inside the bare repo.
+    BareWorkspace {
+        workspace: PathBuf,
+        bare_dir: PathBuf,
+    },
+}
+
+impl RepoContext {
+    /// Base directory for relative worktree paths.
+    pub fn base(&self) -> &Path {
+        match self {
+            RepoContext::Worktree { root } => root,
+            RepoContext::BareWorkspace { workspace, .. } => workspace,
+        }
+    }
+
+    /// Directory git should run from, or `None` for the caller's cwd.
+    pub fn run_dir(&self) -> Option<&Path> {
+        match self {
+            RepoContext::Worktree { .. } => None,
+            RepoContext::BareWorkspace { bare_dir, .. } => Some(bare_dir),
         }
     }
 }
