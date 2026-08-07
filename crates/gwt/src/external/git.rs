@@ -10,6 +10,8 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
+use crate::external::parse::{self, Worktrees};
+
 /// Minimum supported git version (2.40: `git config get`, modern porcelain).
 const MIN_VERSION: (u32, u32, u32) = (2, 40, 0);
 
@@ -120,6 +122,21 @@ impl Git {
             Err(GitError::NonZeroExit { code: 1, .. }) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// List the repository's worktrees, main first, via
+    /// `git worktree list --porcelain`. Fails with a [`GitError::Parse`] when
+    /// git produces output we cannot interpret.
+    pub fn list_worktrees(&self) -> Result<Worktrees, GitError> {
+        let output = self.run(&["worktree", "list", "--porcelain"])?;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        parse::parse_worktrees(&stdout).map_err(|message| GitError::Parse {
+            command: format!(
+                "{} worktree list --porcelain",
+                self.executable_path.display()
+            ),
+            message,
+        })
     }
 
     /// Assert the installed git is at least [`MIN_VERSION`]; error otherwise.
