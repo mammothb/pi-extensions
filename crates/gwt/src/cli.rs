@@ -22,12 +22,23 @@ pub enum Commands {
         #[command(flatten)]
         args: AddArgs,
     },
+    /// Initialize a new workspace
+    Init(InitArgs),
+}
+
+#[derive(Args)]
+pub struct InitArgs {
+    /// The repository to clone, and to grow worktrees from.
+    pub url: String,
+    /// Name the workspace directory (defaults to "<repo>-workspace").
+    #[arg(short, long)]
+    pub name: Option<String>,
 }
 
 #[derive(Args)]
 pub struct AddArgs {
     /// Create a new branch named <BRANCH> and check it out in the new worktree.
-    #[arg(short = 'b')]
+    #[arg(short)]
     pub branch: String,
     /// Start at <COMMIT-ISH> instead of HEAD.
     #[arg(value_name = "COMMIT-ISH")]

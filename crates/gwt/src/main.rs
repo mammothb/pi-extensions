@@ -43,5 +43,6 @@ fn run(git: &Git, cli: Cli) -> Result<(), CommandError> {
         Commands::Add { path, args } => {
             commands::add::execute(git, &path, &args.branch, args.commit.as_deref())
         }
+        Commands::Init(args) => commands::init::execute(git, &args.url, args.name.as_deref()),
     }
 }

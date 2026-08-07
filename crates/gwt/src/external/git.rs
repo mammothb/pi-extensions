@@ -147,6 +147,14 @@ impl Git {
         Ok(root)
     }
 
+    /// Clone a repository (optionally `--bare`) into `dir`, applying
+    /// `--config`-style settings.
+    pub fn clone(&self, args: &GitCloneArgs) -> Result<(), GitError> {
+        let args = args.to_args()?;
+        self.run(&args)?;
+        Ok(())
+    }
+
     /// Create a worktree at `path` on a new branch `branch`, optionally at
     /// `commit` instead of HEAD.
     pub fn add_worktree(
@@ -220,6 +228,38 @@ impl Default for Git {
     }
 }
 
+/// Arguments for a `git clone`, constructed separately from execution so the
+/// arg-building (incl. the UTF-8 dir check) is unit-testable.
+pub struct GitCloneArgs<'a> {
+    pub url: &'a str,
+    pub dir: &'a Path,
+    pub bare: bool,
+    pub config: Vec<(&'a str, &'a str)>,
+}
+
+impl GitCloneArgs<'_> {
+    /// Build the `git clone ...` argument list.
+    pub fn to_args(&self) -> Result<Vec<String>, GitError> {
+        let dir = self.dir.to_str().ok_or_else(|| GitError::Parse {
+            command: format!("clone {} into {}", self.url, self.dir.display()),
+            message: "destination path is not valid UTF-8".to_owned(),
+        })?;
+
+        let mut args = vec!["clone".to_owned()];
+        if self.bare {
+            args.push("--bare".to_owned());
+        }
+        for (key, value) in &self.config {
+            args.push("--config".to_owned());
+            args.push(format!("{key}={value}"));
+        }
+        args.push("--".to_owned());
+        args.push(self.url.to_owned());
+        args.push(dir.to_owned());
+        Ok(args)
+    }
+}
+
 /// Parse the version out of `git --version` output.
 ///
 /// Handles `git version 2.40.0` and suffixed forms like `2.40.0.windows.1`.
@@ -285,5 +325,27 @@ mod tests {
         };
         let err = git.map_spawn_error(io::Error::new(io::ErrorKind::NotFound, "no such file"));
         assert!(matches!(err, GitError::Spawn { .. }));
+    }
+
+    #[rstest]
+    fn clone_args_are_bare_with_fetch_config() {
+        let args = GitCloneArgs {
+            url: "https://x/y.git",
+            dir: Path::new("/ws/.bare"),
+            bare: true,
+            config: vec![("remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")],
+        };
+        assert_eq!(
+            args.to_args().unwrap(),
+            [
+                "clone",
+                "--bare",
+                "--config",
+                "remote.origin.fetch=+refs/heads/*:refs/remotes/origin/*",
+                "--",
+                "https://x/y.git",
+                "/ws/.bare"
+            ]
+        );
     }
 }

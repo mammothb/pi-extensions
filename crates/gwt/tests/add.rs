@@ -1,28 +1,13 @@
 //! End-to-end tests for `gwt add` against real git (assert_cmd + tempfile).
 
-use std::path::Path;
+mod common;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
 use rstest::rstest;
 use tempfile::TempDir;
 
-/// Initialize a repository with one commit and a local identity.
-fn init_repo(dir: &Path) {
-    run_git(dir, &["init", "-q", "-b", "main"]);
-    run_git(dir, &["config", "user.email", "tester@example.com"]);
-    run_git(dir, &["config", "user.name", "Tester"]);
-    run_git(dir, &["commit", "-qm", "init", "--allow-empty"]);
-}
-
-fn run_git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .status()
-        .expect("git runs");
-    assert!(status.success(), "git {args:?} failed in {}", dir.display());
-}
+use common::init_repo;
 
 fn gwt() -> Command {
     Command::cargo_bin("gwt").unwrap()

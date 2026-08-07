@@ -3,4 +3,4 @@
 pub mod git;
 pub mod parse;
 
-pub use git::{Git, GitError};
+pub use git::{Git, GitCloneArgs, GitError};

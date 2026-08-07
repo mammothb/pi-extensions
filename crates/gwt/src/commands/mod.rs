@@ -2,3 +2,4 @@
 //! convert [`GitError`]s into [`CommandError`]s with throw-site hints.
 
 pub mod add;
+pub mod init;

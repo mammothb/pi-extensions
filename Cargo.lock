@@ -475,6 +475,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "env_logger",
+ "fs-err",
  "log",
  "predicates",
  "rstest",
