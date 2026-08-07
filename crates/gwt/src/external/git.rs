@@ -7,7 +7,7 @@
 //! enough context to reproduce the failed command by hand; see [`GitError`].
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use crate::external::parse::{self, Worktrees};
@@ -122,6 +122,49 @@ impl Git {
             Err(GitError::NonZeroExit { code: 1, .. }) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// Resolve the top-level directory of the current worktree.
+    pub fn show_toplevel(&self) -> Result<PathBuf, GitError> {
+        let output = self.run(&["rev-parse", "--show-toplevel"])?;
+        Ok(PathBuf::from(
+            String::from_utf8_lossy(&output.stdout).trim(),
+        ))
+    }
+
+    /// Resolve the repository root from the absolute git dir — the
+    /// bare-repository fallback when there is no worktree toplevel.
+    pub fn get_worktree_root(&self) -> Result<PathBuf, GitError> {
+        let output = self.run(&["rev-parse", "--absolute-git-dir"])?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let root = PathBuf::from(stdout.trim())
+            .parent()
+            .ok_or_else(|| GitError::Parse {
+                command: "rev-parse --absolute-git-dir".to_owned(),
+                message: format!("cannot derive root from {stdout:?}"),
+            })?
+            .to_owned();
+        Ok(root)
+    }
+
+    /// Create a worktree at `path` on a new branch `branch`, optionally at
+    /// `commit` instead of HEAD.
+    pub fn add_worktree(
+        &self,
+        branch: &str,
+        path: &Path,
+        commit: Option<&str>,
+    ) -> Result<(), GitError> {
+        let path = path.to_str().ok_or_else(|| GitError::Parse {
+            command: format!("worktree add -b {branch} {}", path.display()),
+            message: "path is not valid UTF-8".to_owned(),
+        })?;
+        let mut args = vec!["worktree", "add", "-b", branch, path];
+        if let Some(c) = commit {
+            args.push(c);
+        }
+        self.run(&args)?;
+        Ok(())
     }
 
     /// List the repository's worktrees, main first, via
