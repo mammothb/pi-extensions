@@ -6,14 +6,21 @@
 //! classification never depend on the caller's environment. Errors carry
 //! enough context to reproduce the failed command by hand; see [`GitError`].
 
+use std::cell::OnceCell;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use crate::external::parse::{self, Worktrees};
 
-/// Minimum supported git version (2.40: `git config get`, modern porcelain).
+/// Minimum supported git version — a conservative floor for modern
+/// porcelain behavior (`rev-parse --path-format=absolute` needs 2.31+).
 const MIN_VERSION: (u32, u32, u32) = (2, 40, 0);
+
+/// The modern `git config get` subcommand appeared in 2.46. Earlier gits
+/// only support the `--get-regexp` flag, so the config read is dispatched
+/// on the installed version rather than forcing a higher floor.
+const CONFIG_GET_VERSION: (u32, u32, u32) = (2, 46, 0);
 
 /// Errors from the git spawn layer.
 #[derive(Debug, thiserror::Error)]
@@ -70,6 +77,9 @@ impl GitError {
 #[derive(Debug)]
 pub struct Git {
     executable_path: PathBuf,
+    /// Parsed `git --version`, cached on first query so the config-read
+    /// dispatch (and the version guard) pay the probe cost once per process.
+    version: OnceCell<(u32, u32, u32)>,
 }
 
 impl Git {
@@ -77,19 +87,35 @@ impl Git {
     /// resolved from `PATH` when unset.
     pub fn new() -> Self {
         let executable = std::env::var("GWT_GIT").unwrap_or_else(|_| "git".to_owned());
+        Self::with_executable(&executable)
+    }
+
+    /// A `Git` pinned to a concrete executable, without reading `GWT_GIT`.
+    fn with_executable(exe: &str) -> Self {
         Self {
-            executable_path: PathBuf::from(executable),
+            executable_path: PathBuf::from(exe),
+            version: OnceCell::new(),
         }
+    }
+
+    /// The installed git version, parsed from `git --version` and cached.
+    fn version(&self) -> Result<(u32, u32, u32), GitError> {
+        if let Some(v) = self.version.get() {
+            return Ok(*v);
+        }
+        let output = self.run(&["--version"])?;
+        let raw = String::from_utf8_lossy(&output.stdout).into_owned();
+        let v = parse_version(&raw).ok_or_else(|| GitError::Parse {
+            command: format!("{} --version", self.executable_path.display()),
+            message: format!("unrecognized version string {raw:?}"),
+        })?;
+        let _ = self.version.set(v);
+        Ok(v)
     }
 
     /// Assert the installed git is at least [`MIN_VERSION`]; error otherwise.
     pub fn check_version(&self) -> Result<(), GitError> {
-        let output = self.run(&["--version"])?;
-        let raw = String::from_utf8_lossy(&output.stdout).into_owned();
-        let current = parse_version(&raw).ok_or_else(|| GitError::Parse {
-            command: format!("{} --version", self.executable_path.display()),
-            message: format!("unrecognized version string {raw:?}"),
-        })?;
+        let current = self.version()?;
         if current < MIN_VERSION {
             return Err(GitError::VersionTooOld {
                 current: format_version(current),
@@ -130,17 +156,11 @@ impl Git {
     /// workspace root, or `None` for cwd). Exits 1 when no entries exist,
     /// which maps to an empty list.
     pub fn get_tracked_branches(&self, dir: Option<&Path>) -> Result<Vec<String>, GitError> {
-        let output = match self.run_optional_at(
-            dir,
-            &[
-                "config",
-                "get",
-                "--all",
-                "--show-names",
-                "--regexp",
-                "^branch.*merge$",
-            ],
-        )? {
+        // The tracked-branch read is version-dispatched: `config get` on
+        // 2.46+, `--get-regexp` before (deprecated upstream, but universal
+        // and still functional — the guard must not raise the floor for it).
+        let args = tracked_branch_args(self.version()?);
+        let output = match self.run_optional_at(dir, &args)? {
             Some(output) => output,
             None => return Ok(Vec::new()),
         };
@@ -195,7 +215,11 @@ impl Git {
             command: format!("worktree add -b {branch} {}", path.display()),
             message: "path is not valid UTF-8".to_owned(),
         })?;
-        let mut args = vec!["worktree", "add", "-b", branch, path];
+        // `--` terminates options so a path or commit that looks like a flag
+        // (e.g. a relative path starting with `-`) is still parsed
+        // positionally — same protection `GitCloneArgs::to_args` applies.
+        // parse_options has honored `--` since before the 2.40 floor.
+        let mut args = vec!["worktree", "add", "-b", branch, "--", path];
         if let Some(c) = commit {
             args.push(c);
         }
@@ -427,6 +451,30 @@ fn parse_version(output: &str) -> Option<(u32, u32, u32)> {
     Some((major, minor, patch))
 }
 
+/// Argument list for the tracked-branch config read. Both forms print
+/// `branch.<name>.merge <value>` lines and exit 1 when nothing matches.
+/// The anchored pattern matches only `branch.<name>.merge` keys,
+/// excluding e.g. `branch.autosetupmerge`.
+fn tracked_branch_args(version: (u32, u32, u32)) -> Vec<String> {
+    let pattern = r"^branch\..*\.merge$";
+    if version >= CONFIG_GET_VERSION {
+        vec![
+            "config".to_owned(),
+            "get".to_owned(),
+            "--all".to_owned(),
+            "--show-names".to_owned(),
+            "--regexp".to_owned(),
+            pattern.to_owned(),
+        ]
+    } else {
+        vec![
+            "config".to_owned(),
+            "--get-regexp".to_owned(),
+            pattern.to_owned(),
+        ]
+    }
+}
+
 fn format_version((major, minor, patch): (u32, u32, u32)) -> String {
     format!("{major}.{minor}.{patch}")
 }
@@ -464,20 +512,27 @@ mod tests {
 
     #[rstest]
     fn bare_name_spawn_failure_is_spawn_in_path() {
-        let git = Git {
-            executable_path: PathBuf::from("git"),
-        };
+        let git = Git::with_executable("git");
         let err = git.map_spawn_error(io::Error::new(io::ErrorKind::NotFound, "no such file"));
         assert!(matches!(err, GitError::SpawnInPath { .. }));
     }
 
     #[rstest]
     fn explicit_path_spawn_failure_is_spawn() {
-        let git = Git {
-            executable_path: PathBuf::from("/opt/gwt/git"),
-        };
+        let git = Git::with_executable("/opt/gwt/git");
         let err = git.map_spawn_error(io::Error::new(io::ErrorKind::NotFound, "no such file"));
         assert!(matches!(err, GitError::Spawn { .. }));
+    }
+
+    #[rstest]
+    #[case((2, 46, 0), &["config", "get", "--all", "--show-names", "--regexp", r"^branch\..*\.merge$"])]
+    #[case((2, 45, 9), &["config", "--get-regexp", r"^branch\..*\.merge$"])]
+    #[case((2, 40, 0), &["config", "--get-regexp", r"^branch\..*\.merge$"])]
+    fn tracked_branch_args_follow_version(
+        #[case] version: (u32, u32, u32),
+        #[case] expected: &[&str],
+    ) {
+        assert_eq!(tracked_branch_args(version), expected);
     }
 
     #[rstest]
@@ -559,6 +614,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[rstest]
     fn clone_args_reject_non_utf8_dir() {
         use std::ffi::OsString;
@@ -575,6 +631,7 @@ mod tests {
         assert!(matches!(err, GitError::Parse { .. }));
     }
 
+    #[cfg(unix)]
     #[rstest]
     fn add_worktree_rejects_non_utf8_path() {
         use std::ffi::OsString;
@@ -613,9 +670,7 @@ mod tests {
 
     /// A `Git` pinned to `exe` without touching the `GWT_GIT` env var.
     fn dummy_git(exe: &str) -> Git {
-        Git {
-            executable_path: PathBuf::from(exe),
-        }
+        Git::with_executable(exe)
     }
 
     fn error_like_parse() -> GitError {

@@ -85,3 +85,33 @@ fn init_rejects_garbage_url() {
         .code(1)
         .stderr(predicate::str::contains("invalid repository URL"));
 }
+
+#[rstest]
+fn failed_clone_removes_the_workspace_it_created() {
+    let tmp = TempDir::new().unwrap();
+    let missing = tmp.path().join("no-such-repo");
+
+    gwt()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(missing.to_str().unwrap())
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("fatal:"));
+
+    let ws = tmp.path().join("no-such-repo-workspace");
+    assert!(
+        !ws.exists(),
+        "failed init must not leave the workspace directory behind"
+    );
+
+    // A retry must hit the same clone failure, not "already exists" from a
+    // zombie directory left behind by the first attempt.
+    gwt()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(missing.to_str().unwrap())
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("fatal:"));
+}

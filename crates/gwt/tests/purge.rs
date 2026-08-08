@@ -112,15 +112,11 @@ fn purge_warns_and_continues_when_section_removal_fails() {
     let tmp = TempDir::new().unwrap();
     let ws = scaffold_workspace(&tmp);
 
-    // Make the bare dir read-only: config reads still work, but the
-    // lock+rename write of `--remove-section` fails. purge must warn and
-    // keep going.
+    // Pre-create the config lock: git's `--remove-section` is a lock+rename
+    // write and fails to acquire `config.lock` (O_EXCL) on every platform —
+    // no chmod games needed. Reads and the purge scan already ran.
     let bare = ws.join(".bare");
-    let status = std::process::Command::new("chmod")
-        .args(["555", bare.to_str().unwrap()])
-        .status()
-        .unwrap();
-    assert!(status.success(), "chmod made the bare dir read-only");
+    fs_err::write(bare.join("config.lock"), b"").expect("stale lock file created");
 
     gwt()
         .current_dir(&ws)
@@ -131,12 +127,6 @@ fn purge_warns_and_continues_when_section_removal_fails() {
             "Failed to remove config section branch.dead",
         ));
 
-    // Restore permissions so the TempDir can clean up, then verify the
-    // section is still there.
-    std::process::Command::new("chmod")
-        .args(["755", bare.to_str().unwrap()])
-        .status()
-        .unwrap();
     assert!(
         config_value(&ws, "branch.dead.merge").is_some(),
         "blocked removal leaves the section in place"

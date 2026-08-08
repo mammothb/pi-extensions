@@ -91,7 +91,7 @@ impl CommandError {
             Kind::User | Kind::Cli => "Error: ",
             Kind::Internal => "Internal error: ",
         };
-        let _ = write!(out, "{heading}{err}", err = self.error);
+        let _ = writeln!(out, "{heading}{err}", err = self.error);
         let _ = print_chain(out.by_ref(), self.error.as_ref());
         let _ = write_hints(&mut out, &self.hints);
         self.kind.exit_code()

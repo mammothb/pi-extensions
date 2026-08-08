@@ -9,14 +9,25 @@ pub fn gwt() -> Command {
     Command::cargo_bin("gwt").unwrap()
 }
 
-/// Run git in `dir`, panicking on failure.
+/// Run git in `dir`, isolated from host git configuration, panicking with
+/// the captured stderr on failure.
 pub fn run_git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let output = std::process::Command::new("git")
         .args(args)
         .current_dir(dir)
-        .status()
+        // Never let the developer's global/system config leak into tests:
+        // gpg signing, default branch names, pager settings, etc. would make
+        // results depend on the host. Repo-local config is unaffected.
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .output()
         .expect("git runs");
-    assert!(status.success(), "git {args:?} failed in {}", dir.display());
+    assert!(
+        output.status.success(),
+        "git {args:?} failed in {}:\n{}",
+        dir.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Initialize a repository with one commit and a local identity.

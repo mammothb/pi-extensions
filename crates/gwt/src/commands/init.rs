@@ -29,9 +29,36 @@ pub fn execute(git: &Git, url: &str, name: Option<&str>) -> Result<(), CommandEr
             workspace_dir.display()
         )));
     }
-    fs_err::create_dir_all(&workspace_dir).map_err(internal_error)?;
 
-    let repo_dir = clone_repository(git, url, &workspace_dir)?;
+    // Create exactly this one directory. `create_dir` (not `_all`) errors on
+    // AlreadyExists, so a racer that wins between the exists check and here
+    // gets the same friendly error — and the cleanup after a failed clone can
+    // only ever remove a directory this invocation created.
+    fs_err::create_dir(&workspace_dir).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::AlreadyExists {
+            user_error(format!(
+                "directory `{}` already exists",
+                workspace_dir.display()
+            ))
+        } else {
+            internal_error(err)
+        }
+    })?;
+
+    let repo_dir = match clone_repository(git, url, &workspace_dir) {
+        Ok(repo_dir) => repo_dir,
+        Err(err) => {
+            // A failed clone must not leave the directory this invocation
+            // created behind: it would block retries via the exists check.
+            if let Err(cleanup) = fs_err::remove_dir_all(&workspace_dir) {
+                log::warn!(
+                    "failed to remove incomplete workspace `{}`: {cleanup}",
+                    workspace_dir.display()
+                );
+            }
+            return Err(err);
+        }
+    };
     log::info!(
         "Initialized workspace at `{}` (bare repo `{}`)",
         workspace_dir.display(),

@@ -37,7 +37,7 @@ pub enum Commands {
 #[derive(Args)]
 pub struct AddArgs {
     /// Create a new branch named <BRANCH> and check it out in the new worktree.
-    #[arg(short)]
+    #[arg(short, long)]
     pub branch: String,
     /// Start at <COMMIT-ISH> instead of HEAD.
     #[arg(value_name = "COMMIT-ISH")]

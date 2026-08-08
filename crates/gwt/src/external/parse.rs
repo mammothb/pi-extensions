@@ -37,7 +37,7 @@ impl Worktrees {
 
     /// The main (first, non-bare) worktree.
     pub fn main(&self) -> Option<&Worktree> {
-        self.list.first()
+        self.list.iter().find(|w| !w.bare)
     }
 }
 
@@ -143,5 +143,21 @@ mod tests {
         assert!(ws.by_path(Path::new("/check/other")).is_some());
         assert_eq!(ws.by_path(Path::new("/nope")), None);
         assert_eq!(ws.main().unwrap().path, PathBuf::from("/check/main"));
+    }
+
+    #[rstest]
+    fn main_skips_leading_bare_worktree() {
+        // A `.bare` workspace lists the bare repo itself first.
+        let ws = parse_worktrees(
+            "worktree /check/bare\nbare\n\nworktree /check/feat\nHEAD abc\nbranch refs/heads/feat/x\n",
+        )
+        .unwrap();
+        assert_eq!(ws.main().unwrap().path, PathBuf::from("/check/feat"));
+    }
+
+    #[rstest]
+    fn main_is_none_when_all_worktrees_are_bare() {
+        let ws = parse_worktrees("worktree /check/bare\nbare\n").unwrap();
+        assert!(ws.main().is_none());
     }
 }

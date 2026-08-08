@@ -6,8 +6,7 @@ use predicates::prelude::*;
 use rstest::rstest;
 use tempfile::TempDir;
 
-use common::gwt;
-use common::init_repo;
+use common::{gwt, init_repo, run_git};
 
 #[rstest]
 fn add_creates_worktree_on_new_branch() {
@@ -114,7 +113,7 @@ fn add_from_inside_a_worktree_resolves_relative_to_workspace_root() {
         "both slots exist at ws/feat and ws/fix"
     );
     assert!(
-        !fix.join("feat").join("fix").exists(),
+        !feat.join("fix").exists(),
         "`fix` must not land inside the feat worktree"
     );
     let out = std::process::Command::new("git")
@@ -241,27 +240,34 @@ fn add_can_start_from_a_specific_commit() {
     let tmp = TempDir::new().unwrap();
     init_repo(tmp.path());
 
+    let rev = |arg: &str| {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", arg])
+            .current_dir(tmp.path())
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+
+    // Capture the initial commit, then advance HEAD so the pinned start is
+    // provably not the current branch tip.
+    let first = rev("HEAD");
+    run_git(tmp.path(), &["commit", "-qm", "second", "--allow-empty"]);
+    let later = rev("HEAD");
+
     gwt()
         .current_dir(tmp.path())
-        .args(["add", "feat/pinned", "-b", "feat/pinned", "HEAD"])
+        .arg("add")
+        .arg("feat/pinned")
+        .args(["-b", "feat/pinned"])
+        .arg(&first)
         .assert()
         .success();
 
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "refs/heads/feat/pinned"])
-        .current_dir(tmp.path())
-        .output()
-        .unwrap();
-    let head = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(tmp.path())
-        .output()
-        .unwrap();
-    let branch = String::from_utf8_lossy(&out.stdout);
-    let head = String::from_utf8_lossy(&head.stdout);
+    let branch = rev("refs/heads/feat/pinned");
     assert_eq!(
-        branch.trim(),
-        head.trim(),
+        branch, first,
         "worktree branch starts at the requested commit"
     );
+    assert_ne!(branch, later, "must differ from the newer HEAD");
 }
