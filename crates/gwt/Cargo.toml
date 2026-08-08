@@ -1,6 +1,6 @@
 [package]
 name = "gwt-helper"
-version = "0.1.8"
+version = "0.1.9"
 description = "Git worktree helper"
 edition.workspace = true
 license.workspace = true
