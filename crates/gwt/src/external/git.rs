@@ -107,24 +107,19 @@ impl Git {
         Ok(())
     }
 
-    /// Resolve the top-level directory of the current worktree.
-    pub fn show_toplevel(&self) -> Result<PathBuf, GitError> {
-        let output = self.run(&["rev-parse", "--show-toplevel"])?;
-        Ok(PathBuf::from(
-            String::from_utf8_lossy(&output.stdout).trim(),
-        ))
-    }
-
-    /// Resolve the repository root from the absolute git dir — the
-    /// bare-repository fallback when there is no worktree toplevel.
-    pub fn get_worktree_root(&self) -> Result<PathBuf, GitError> {
-        let output = self.run(&["rev-parse", "--absolute-git-dir"])?;
+    /// Resolve the shared repository root: the directory that contains the
+    /// repo's common git dir. For a plain repo that's the toplevel
+    /// (`…/<root>/.git` → `<root>`); for a `.bare` workspace it's the
+    /// workspace dir (`…/<workspace>/.bare` → `<workspace>`). Works from any
+    /// worktree, and from inside the bare dir itself.
+    pub fn get_workspace_root(&self) -> Result<PathBuf, GitError> {
+        let output = self.run(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let root = PathBuf::from(stdout.trim())
             .parent()
             .ok_or_else(|| GitError::Parse {
-                command: "rev-parse --absolute-git-dir".to_owned(),
-                message: format!("cannot derive root from {stdout:?}"),
+                command: "rev-parse --path-format=absolute --git-common-dir".to_owned(),
+                message: format!("cannot derive workspace root from {stdout:?}"),
             })?
             .to_owned();
         Ok(root)
@@ -172,28 +167,35 @@ impl Git {
     /// inside a worktree, or at a workspace root containing a verified bare
     /// repo (`.bare`).
     pub fn resolve_context(&self) -> Result<RepoContext, GitError> {
-        // 1. Inside an actual worktree checkout — always wins.
-        if let Ok(root) = self.show_toplevel() {
-            return Ok(RepoContext::Worktree { root });
+        // 1. Inside a repository (worktree, bare dir, or the repo itself):
+        //    the shared root decides where relative paths land, so the same
+        //    argument means the same thing from anywhere. Git auto-discovers
+        //    the common repo from the cwd, so no explicit run dir.
+        if let Ok(root) = self.get_workspace_root() {
+            return Ok(RepoContext {
+                base: root,
+                run_dir: None,
+            });
         }
 
-        // 2. Workspace root: a bare repo named `.bare` right under cwd.
+        // 2. At a workspace root: a bare repo named `.bare` right under cwd.
+        //    Git must be told to run there (the cwd itself is not a repo).
         let cwd = std::env::current_dir().map_err(|e| GitError::Parse {
             command: "current_dir".to_owned(),
             message: e.to_string(),
         })?;
         let bare_dir = cwd.join(".bare");
         if self.is_bare_repo(&bare_dir)? {
-            return Ok(RepoContext::BareWorkspace {
-                workspace: cwd,
-                bare_dir,
+            return Ok(RepoContext {
+                base: cwd,
+                run_dir: Some(bare_dir),
             });
         }
 
-        // 3. Final fallback: the git-dir parent (inside a linked worktree of
-        //    a bare repo, or a bare admin dir).
-        let root = self.get_worktree_root()?;
-        Ok(RepoContext::Worktree { root })
+        Err(GitError::Parse {
+            command: "resolve context".to_owned(),
+            message: "cwd is not inside a git repository or a gwt workspace".to_owned(),
+        })
     }
 
     /// `true` when `dir` is a real git repo with `core.bare=true`. Cheap
@@ -283,35 +285,32 @@ impl Git {
     }
 }
 
-/// Where the current directory's repository lives, and how to run git for it.
+/// Where the current directory sits relative to a repository, and how to
+/// invoke git for it.
+///
+/// `base` is always the workspace root — the directory that holds both the
+/// repo's common dir and, for a `.bare` workspace, the worktree slots. So a
+/// relative path means the same thing from any invocation site inside the
+/// repo. `run_dir` is only set when cwd itself is not a git repository (the
+/// bare workspace root), where git must be pointed at the bare repo.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RepoContext {
-    /// Inside a normal worktree checkout. Relative paths resolve from the
-    /// worktree's toplevel; git runs from the caller's cwd.
-    Worktree { root: PathBuf },
-    /// At a workspace root that contains a bare repo (`.bare`). Relative
-    /// paths resolve from the workspace dir; git runs inside the bare repo.
-    BareWorkspace {
-        workspace: PathBuf,
-        bare_dir: PathBuf,
-    },
+pub struct RepoContext {
+    /// Workspace root: relative worktree paths resolve here.
+    base: PathBuf,
+    /// Directory git should run from, or `None` for the caller's cwd.
+    run_dir: Option<PathBuf>,
 }
 
 impl RepoContext {
-    /// Base directory for relative worktree paths.
+    /// Base directory for relative worktree paths — always the workspace
+    /// root, regardless of where the command was invoked.
     pub fn base(&self) -> &Path {
-        match self {
-            RepoContext::Worktree { root } => root,
-            RepoContext::BareWorkspace { workspace, .. } => workspace,
-        }
+        &self.base
     }
 
     /// Directory git should run from, or `None` for the caller's cwd.
     pub fn run_dir(&self) -> Option<&Path> {
-        match self {
-            RepoContext::Worktree { .. } => None,
-            RepoContext::BareWorkspace { bare_dir, .. } => Some(bare_dir),
-        }
+        self.run_dir.as_deref()
     }
 }
 

@@ -83,6 +83,57 @@ fn add_from_workspace_root_uses_bare_and_resolves_feat_under_cwd() {
 }
 
 #[rstest]
+fn add_from_inside_a_worktree_resolves_relative_to_workspace_root() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src-repo");
+    init_repo(&src);
+
+    gwt()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(src.to_str().unwrap())
+        .assert()
+        .success();
+    let ws = tmp.path().join("src-repo-workspace");
+
+    // Seed the `feat` slot.
+    gwt()
+        .current_dir(&ws)
+        .args(["add", "-b", "feat/x", "feat"])
+        .assert()
+        .success();
+
+    // Invoke from INSIDE the feat worktree: `fix/y` must still resolve to
+    // ws/fix/y (sibling of .bare), not ws/feat/fix/y.
+    gwt()
+        .current_dir(ws.join("feat"))
+        .args(["add", "-b", "fix/y", "fix"])
+        .assert()
+        .success();
+
+    let feat = ws.join("feat");
+    let fix = ws.join("fix");
+    assert!(
+        feat.join(".git").exists() && fix.join(".git").exists(),
+        "both slots exist at ws/feat and ws/fix"
+    );
+    assert!(
+        !fix.join("feat").join("fix").exists(),
+        "`fix` must not land inside the feat worktree"
+    );
+    let out = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(ws.join(".bare"))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("branch refs/heads/fix/y"),
+        "fix/y registered in bare repo: {text}"
+    );
+}
+
+#[rstest]
 fn add_second_time_reports_conflict_with_hint() {
     let tmp = TempDir::new().unwrap();
     init_repo(tmp.path());

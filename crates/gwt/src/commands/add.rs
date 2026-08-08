@@ -16,14 +16,15 @@ pub fn execute(
     let ctx = git.resolve_context().map_err(repo_not_found)?;
     let target = resolve_target(&ctx, path);
 
-    git.add_worktree(ctx.run_dir(), branch, &target, commit).map_err(|err| {
-        let mut cmd = user_error(err);
-        cmd.add_hint(format!(
-            "branch `{branch}` may already exist, or the worktree `{}` is already checked out — pick a different `-b`/path",
-            target.display()
-        ));
-        cmd
-    })?;
+    git.add_worktree(ctx.run_dir(), branch, &target, commit)
+        .map_err(|err| {
+            let mut cmd = user_error(err);
+            cmd.add_hint(format!(
+                "path `{}` is already in use or branch `{branch}` already exists — to work there, cd into the existing worktree and run `git checkout -b {branch}`, or use a different path",
+                target.display()
+            ));
+            cmd
+        })?;
 
     log::info!(
         "Added worktree at `{}` on branch `{branch}` at {}",
