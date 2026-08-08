@@ -216,9 +216,12 @@ pub fn internal_error_with_message(
 
 #[cfg(test)]
 mod tests {
+    use clap::CommandFactory;
     use rstest::rstest;
     use std::io::Error as IoError;
     use std::io::ErrorKind as IoErrorKind;
+
+    use crate::cli::Cli;
 
     use super::*;
 
@@ -255,5 +258,80 @@ mod tests {
         let text = format!("{err}");
         assert!(text.contains("boom"));
         assert!(text.contains("Hint: do the thing"));
+    }
+
+    #[rstest]
+    fn render_internal_heading_exits_2() {
+        let err = internal_error(IoError::other("env exploded"));
+        assert_eq!(err.render(), 2);
+    }
+
+    #[rstest]
+    fn render_clap_usage_error_goes_to_stderr() {
+        let clap_err = Cli::command()
+            .try_get_matches_from(["gwt", "--bogus-flag"])
+            .unwrap_err();
+        let err = CommandError::new(Kind::Cli, clap_err).hinted("see --help");
+        assert_eq!(err.render(), 2);
+    }
+
+    #[rstest]
+    fn render_clap_help_exits_zero_to_stdout() {
+        let clap_err = Cli::command()
+            .try_get_matches_from(["gwt", "--help"])
+            .unwrap_err();
+        let err = CommandError::new(Kind::Cli, clap_err);
+        assert_eq!(err.render(), 0);
+    }
+
+    #[rstest]
+    fn multi_source_chain_renders_numbered() {
+        let leaf = user_error(IoError::other("leaf io"));
+        let mid = user_error_with_message("middle", leaf);
+        let top = user_error_with_message("outer", mid);
+
+        assert_eq!(top.to_string(), "outer");
+        let mut buf = Vec::new();
+        print_chain(&mut buf, top.error.as_ref()).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("Caused by:"));
+        assert!(text.contains("1: middle"));
+        assert!(text.contains("2: leaf io"));
+    }
+
+    #[rstest]
+    fn single_source_chain_renders_inline() {
+        let inner = IoError::new(IoErrorKind::NotFound, "no such git dir");
+        let err = user_error_with_message("failed to run git", inner);
+        let mut buf = Vec::new();
+        print_chain(&mut buf, err.error.as_ref()).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("Caused by: no such git dir"));
+    }
+
+    #[rstest]
+    fn source_delegates_to_inner_error() {
+        let leaf = user_error(IoError::other("leaf"));
+        assert!(leaf.source().is_none(), "bare io error has no source");
+
+        let mid = user_error_with_message("middle", leaf);
+        assert!(
+            mid.source().is_some(),
+            "message-wrapped error exposes source"
+        );
+    }
+
+    #[rstest]
+    fn constructors_preserve_kind() {
+        let err = cli_error(IoError::other("cli"));
+        assert_eq!(err.kind, Kind::Cli);
+
+        let err = internal_error(IoError::other("internal"));
+        assert_eq!(err.kind, Kind::Internal);
+
+        let err = internal_error_with_message("internal msg", IoError::other("source"));
+        assert_eq!(err.kind, Kind::Internal);
+        assert_eq!(err.to_string(), "internal msg");
+        assert!(err.source().is_some());
     }
 }

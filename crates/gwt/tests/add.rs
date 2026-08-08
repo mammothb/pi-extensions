@@ -215,3 +215,53 @@ fn add_outside_a_repo_hints_to_run_inside_worktree() {
         .stderr(predicate::str::contains("not inside a git worktree"))
         .stderr(predicate::str::contains("Hint:"));
 }
+
+#[rstest]
+fn add_with_absolute_path_uses_it_verbatim() {
+    let tmp = TempDir::new().unwrap();
+    init_repo(tmp.path());
+
+    let abs = tmp.path().join("absolute-slot");
+    gwt()
+        .current_dir(tmp.path())
+        .arg("add")
+        .arg(&abs)
+        .args(["-b", "feat/abs"])
+        .assert()
+        .success();
+
+    assert!(
+        abs.join(".git").exists(),
+        "absolute path used verbatim as the worktree"
+    );
+}
+
+#[rstest]
+fn add_can_start_from_a_specific_commit() {
+    let tmp = TempDir::new().unwrap();
+    init_repo(tmp.path());
+
+    gwt()
+        .current_dir(tmp.path())
+        .args(["add", "feat/pinned", "-b", "feat/pinned", "HEAD"])
+        .assert()
+        .success();
+
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "refs/heads/feat/pinned"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    let head = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    let branch = String::from_utf8_lossy(&out.stdout);
+    let head = String::from_utf8_lossy(&head.stdout);
+    assert_eq!(
+        branch.trim(),
+        head.trim(),
+        "worktree branch starts at the requested commit"
+    );
+}

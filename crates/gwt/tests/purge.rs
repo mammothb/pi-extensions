@@ -91,3 +91,54 @@ fn purge_outside_a_repo_hints_like_other_commands() {
         .stderr(predicate::str::contains("not inside a git worktree"))
         .stderr(predicate::str::contains("Hint:"));
 }
+
+#[rstest]
+fn purge_with_nothing_tracked_is_a_noop() {
+    let tmp = TempDir::new().unwrap();
+    init_repo(tmp.path()); // no branch.* tracking config at all
+
+    gwt()
+        .current_dir(tmp.path())
+        .arg("purge")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "No stale branch configuration to purge",
+        ));
+}
+
+#[rstest]
+fn purge_warns_and_continues_when_section_removal_fails() {
+    let tmp = TempDir::new().unwrap();
+    let ws = scaffold_workspace(&tmp);
+
+    // Make the bare dir read-only: config reads still work, but the
+    // lock+rename write of `--remove-section` fails. purge must warn and
+    // keep going.
+    let bare = ws.join(".bare");
+    let status = std::process::Command::new("chmod")
+        .args(["555", bare.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(status.success(), "chmod made the bare dir read-only");
+
+    gwt()
+        .current_dir(&ws)
+        .arg("purge")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "Failed to remove config section branch.dead",
+        ));
+
+    // Restore permissions so the TempDir can clean up, then verify the
+    // section is still there.
+    std::process::Command::new("chmod")
+        .args(["755", bare.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(
+        config_value(&ws, "branch.dead.merge").is_some(),
+        "blocked removal leaves the section in place"
+    );
+}

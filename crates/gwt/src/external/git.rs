@@ -204,12 +204,18 @@ impl Git {
     }
 
     /// List the repository's worktrees, main first, via
-    /// `git worktree list --porcelain`. Fails with a [`GitError::Parse`] when
-    /// git produces output we cannot interpret.
-    pub fn list_worktrees(&self) -> Result<Worktrees, GitError> {
-        let output = self.run(&["worktree", "list", "--porcelain"])?;
+    /// `git worktree list --porcelain`, from `dir` when given. Fails with a
+    /// [`GitError::Parse`] when git produces output we cannot interpret.
+    pub fn list_worktrees(&self, dir: Option<&Path>) -> Result<Worktrees, GitError> {
+        let output = self.run_at(dir, &["worktree", "list", "--porcelain"])?;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        parse::parse_worktrees(&stdout).map_err(|message| GitError::Parse {
+        self.parse_worktrees_output(&stdout)
+    }
+
+    /// Parse porcelain worktree output into the [`Worktrees`] model, mapping
+    /// parse failures onto the spawning command for a reproducible error.
+    fn parse_worktrees_output(&self, stdout: &str) -> Result<Worktrees, GitError> {
+        parse::parse_worktrees(stdout).map_err(|message| GitError::Parse {
             command: format!(
                 "{} worktree list --porcelain",
                 self.executable_path.display()
@@ -494,5 +500,135 @@ mod tests {
                 "/ws/.bare"
             ]
         );
+    }
+
+    #[rstest]
+    fn exit_code_is_none_for_non_exit_errors() {
+        assert_eq!(error_like_parse().exit_code(), None);
+        assert_eq!(git_error_version_too_old().exit_code(), None);
+    }
+
+    #[rstest]
+    fn default_matches_new() {
+        assert_eq!(Git::default().executable_path, Git::new().executable_path);
+    }
+
+    #[rstest]
+    fn check_version_rejects_unparseable_output() {
+        // `true` ignores all args, exits 0, prints nothing: unparseable.
+        let git = dummy_git("true");
+        assert!(matches!(git.check_version(), Err(GitError::Parse { .. })));
+    }
+
+    #[rstest]
+    fn workspace_root_parse_requires_path_output() {
+        let git = dummy_git("true");
+        assert!(matches!(
+            git.get_workspace_root(),
+            Err(GitError::Parse { .. })
+        ));
+    }
+
+    #[rstest]
+    fn list_worktrees_parses_porcelain_from_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let init = std::process::Command::new("git")
+            .args(["init", "-q", "-b", "main"])
+            .current_dir(tmp.path())
+            .status()
+            .unwrap();
+        assert!(init.success(), "git init failed");
+
+        let git = dummy_git("git");
+        let ws = git.list_worktrees(Some(tmp.path())).unwrap();
+        assert_eq!(ws.list.len(), 1, "fresh repo has exactly the main worktree");
+        assert_eq!(ws.main().unwrap().path, tmp.path());
+    }
+
+    #[rstest]
+    fn parse_worktrees_output_rejects_garbage_with_command() {
+        let git = dummy_git("git");
+        let err = git
+            .parse_worktrees_output("not porcelain at all")
+            .unwrap_err();
+        match err {
+            GitError::Parse { command, .. } => {
+                assert!(command.contains("worktree list --porcelain"), "{command}")
+            }
+            other => panic!("expected Parse, got {other:?}"),
+        }
+    }
+
+    #[rstest]
+    fn clone_args_reject_non_utf8_dir() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let bad = PathBuf::from(OsString::from_vec(vec![0xff]));
+        let args = GitCloneArgs {
+            url: "https://x/y.git",
+            dir: &bad,
+            bare: false,
+            config: vec![],
+        };
+        let err = args.to_args().unwrap_err();
+        assert!(matches!(err, GitError::Parse { .. }));
+    }
+
+    #[rstest]
+    fn add_worktree_rejects_non_utf8_path() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let git = dummy_git("git");
+        let bad = PathBuf::from(OsString::from_vec(vec![0xff]));
+        assert!(matches!(
+            git.add_worktree(None, "feat/x", &bad, None),
+            Err(GitError::Parse { .. })
+        ));
+    }
+
+    #[rstest]
+    fn run_optional_treats_exit_1_as_none() {
+        // `git config --get` on a missing key exits 1 inside a repository.
+        let git = dummy_git("git");
+        let out = git
+            .run_optional(&["config", "--get", "__gwt.no.such.key"])
+            .unwrap();
+        assert!(out.is_none());
+    }
+
+    #[rstest]
+    fn run_optional_propagates_other_exits() {
+        // An invalid revision exits 128 (not 1) — must surface as an error.
+        let git = dummy_git("git");
+        let err = git
+            .run_optional_at(None, &["rev-parse", "__gwt_no_such_rev__"])
+            .unwrap_err();
+        match err {
+            GitError::NonZeroExit { code, .. } => assert_ne!(code, 1),
+            other => panic!("expected NonZeroExit, got {other:?}"),
+        }
+    }
+
+    /// A `Git` pinned to `exe` without touching the `GWT_GIT` env var.
+    fn dummy_git(exe: &str) -> Git {
+        Git {
+            executable_path: PathBuf::from(exe),
+        }
+    }
+
+    fn error_like_parse() -> GitError {
+        GitError::Parse {
+            command: "git --version".to_owned(),
+            message: "unrecognized".to_owned(),
+        }
+    }
+
+    fn git_error_version_too_old() -> GitError {
+        GitError::VersionTooOld {
+            current: "2.30.0".to_owned(),
+            required: "2.40.0".to_owned(),
+        }
     }
 }
