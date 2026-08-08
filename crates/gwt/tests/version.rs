@@ -9,6 +9,7 @@ use tempfile::TempDir;
 
 use common::gwt;
 
+#[cfg(unix)]
 #[rstest]
 fn version_guard_rejects_old_git_with_hint() {
     let tmp = TempDir::new().unwrap();
@@ -31,6 +32,7 @@ fn version_guard_rejects_old_git_with_hint() {
         .stderr(predicate::str::contains("Hint:"));
 }
 
+#[cfg(unix)]
 #[rstest]
 fn version_guard_reports_unparseable_version_output() {
     // A stub that echoes args instead of a version string: the guard must
