@@ -7,6 +7,7 @@
 //! [`CommandError::render`].
 
 use std::io::Write;
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -42,6 +43,15 @@ fn run(git: &Git, cli: Cli) -> Result<(), CommandError> {
     match cli.command {
         Commands::Add { path, args } => {
             commands::add::execute(git, &path, &args.branch, args.commit.as_deref())
+        }
+        Commands::AddFeat(args) => {
+            commands::add::execute(git, Path::new("feat"), &args.branch, args.commit.as_deref())
+        }
+        Commands::AddFix(args) => {
+            commands::add::execute(git, Path::new("fix"), &args.branch, args.commit.as_deref())
+        }
+        Commands::AddPr(args) => {
+            commands::add::execute(git, Path::new("pr"), &args.branch, args.commit.as_deref())
         }
         Commands::Init(args) => commands::init::execute(git, &args.url, args.name.as_deref()),
         Commands::Purge(args) => commands::purge::execute(git, args.dry_run),

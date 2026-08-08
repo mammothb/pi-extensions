@@ -22,6 +22,12 @@ pub enum Commands {
         #[command(flatten)]
         args: AddArgs,
     },
+    /// Add a worktree in the feat folder on a new branch
+    AddFeat(AddArgs),
+    /// Add a worktree in the fix folder on a new branch
+    AddFix(AddArgs),
+    /// Add a worktree in the pr folder on a new branch
+    AddPr(AddArgs),
     /// Initialize a new workspace
     Init(InitArgs),
     /// Remove config sections for branches whose branch no longer exists

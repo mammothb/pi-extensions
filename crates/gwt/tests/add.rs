@@ -130,6 +130,60 @@ fn add_from_inside_a_worktree_resolves_relative_to_workspace_root() {
 }
 
 #[rstest]
+fn shortcut_commands_fill_the_three_slots() {
+    let tmp = TempDir::new().unwrap();
+    let src = tmp.path().join("src-repo");
+    init_repo(&src);
+    gwt()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(src.to_str().unwrap())
+        .assert()
+        .success();
+    let ws = tmp.path().join("src-repo-workspace");
+
+    gwt()
+        .current_dir(&ws)
+        .args(["add-feat", "-b", "feat/q"])
+        .assert()
+        .success();
+    gwt()
+        .current_dir(&ws)
+        .args(["add-fix", "-b", "fix/r"])
+        .assert()
+        .success();
+    gwt()
+        .current_dir(&ws)
+        .args(["add-pr", "-b", "pr/s"])
+        .assert()
+        .success();
+
+    for folder in ["feat", "fix", "pr"] {
+        let slot = ws.join(folder);
+        assert!(
+            slot.join(".git").exists(),
+            "{folder}/ worktree exists at the slot path"
+        );
+        assert!(
+            !slot.join(folder).exists(),
+            "{folder} must not nest inside itself"
+        );
+    }
+    let out = std::process::Command::new("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(ws.join(".bare"))
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    for branch in ["feat/q", "fix/r", "pr/s"] {
+        assert!(
+            text.contains(&format!("branch refs/heads/{branch}")),
+            "{branch} registered in bare repo: {text}"
+        );
+    }
+}
+
+#[rstest]
 fn add_second_time_reports_conflict_with_hint() {
     let tmp = TempDir::new().unwrap();
     init_repo(tmp.path());
