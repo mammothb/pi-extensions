@@ -125,6 +125,61 @@ impl Git {
         Ok(root)
     }
 
+    /// List branches that have tracking config (`branch.<name>.merge`) in
+    /// the repo config. `dir` is where git should run (the bare repo at a
+    /// workspace root, or `None` for cwd). Exits 1 when no entries exist,
+    /// which maps to an empty list.
+    pub fn get_tracked_branches(&self, dir: Option<&Path>) -> Result<Vec<String>, GitError> {
+        let output = match self.run_optional_at(
+            dir,
+            &[
+                "config",
+                "get",
+                "--all",
+                "--show-names",
+                "--regexp",
+                "^branch.*merge$",
+            ],
+        )? {
+            Some(output) => output,
+            None => return Ok(Vec::new()),
+        };
+        let branches = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                line.split_whitespace()
+                    .next()
+                    .and_then(|s| s.strip_prefix("branch."))
+                    .and_then(|s| s.strip_suffix(".merge"))
+                    .map(String::from)
+            })
+            .collect();
+        Ok(branches)
+    }
+
+    /// List existing local branch refs (`refs/heads/*` names without the
+    /// `refs/heads/` prefix), from `dir` when given.
+    pub fn list_branch_refs(&self, dir: Option<&Path>) -> Result<Vec<String>, GitError> {
+        let output = self.run_at(
+            dir,
+            &["for-each-ref", "--format=%(refname:strip=2)", "refs/heads"],
+        )?;
+        let branches = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        Ok(branches)
+    }
+
+    /// Remove the `branch.<name>` section from the repo config.
+    pub fn remove_branch_config(&self, dir: Option<&Path>, name: &str) -> Result<(), GitError> {
+        self.run_at(
+            dir,
+            &["config", "--remove-section", &format!("branch.{name}")],
+        )?;
+        Ok(())
+    }
+
     /// Create a worktree at `path` on a new branch `branch`, optionally at
     /// `commit` instead of HEAD. `run_dir` sets the git process's working
     /// directory (the `.bare` repo for workspace-root invocation); `None`

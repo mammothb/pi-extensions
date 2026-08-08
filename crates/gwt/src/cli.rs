@@ -24,6 +24,18 @@ pub enum Commands {
     },
     /// Initialize a new workspace
     Init(InitArgs),
+    /// Remove config sections for branches whose branch no longer exists
+    Purge(PurgeArgs),
+}
+
+#[derive(Args)]
+pub struct AddArgs {
+    /// Create a new branch named <BRANCH> and check it out in the new worktree.
+    #[arg(short)]
+    pub branch: String,
+    /// Start at <COMMIT-ISH> instead of HEAD.
+    #[arg(value_name = "COMMIT-ISH")]
+    pub commit: Option<String>,
 }
 
 #[derive(Args)]
@@ -36,11 +48,8 @@ pub struct InitArgs {
 }
 
 #[derive(Args)]
-pub struct AddArgs {
-    /// Create a new branch named <BRANCH> and check it out in the new worktree.
-    #[arg(short)]
-    pub branch: String,
-    /// Start at <COMMIT-ISH> instead of HEAD.
-    #[arg(value_name = "COMMIT-ISH")]
-    pub commit: Option<String>,
+pub struct PurgeArgs {
+    /// Report what would be removed without removing anything.
+    #[arg(short, long)]
+    pub dry_run: bool,
 }

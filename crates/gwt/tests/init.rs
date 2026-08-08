@@ -2,16 +2,12 @@
 
 mod common;
 
-use assert_cmd::Command;
 use predicates::prelude::*;
 use rstest::rstest;
 use tempfile::TempDir;
 
+use common::gwt;
 use common::init_repo;
-
-fn gwt() -> Command {
-    Command::cargo_bin("gwt").unwrap()
-}
 
 #[rstest]
 fn init_derives_workspace_name_and_clones_bare_with_fetch_mirror() {

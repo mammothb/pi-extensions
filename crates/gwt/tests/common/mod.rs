@@ -2,6 +2,13 @@
 
 use std::path::Path;
 
+use assert_cmd::Command;
+
+/// Build a `gwt` command instance from the binary under test.
+pub fn gwt() -> Command {
+    Command::cargo_bin("gwt").unwrap()
+}
+
 /// Run git in `dir`, panicking on failure.
 pub fn run_git(dir: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
