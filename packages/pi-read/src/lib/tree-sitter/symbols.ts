@@ -99,7 +99,7 @@ function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
 }
 
 function resolveName(node: Node, kind: SymbolKind): string | null {
-  let nameNode: Node | null;
+  let nameNode: Node | null = null;
 
   if (kind.fromDeclarator) {
     const declarator = node.namedChild(0);
@@ -112,8 +112,6 @@ function resolveName(node: Node, kind: SymbolKind): string | null {
     nameNode = declarator?.childForFieldName("name") ?? null;
   } else if (kind.nameField !== undefined) {
     nameNode = node.childForFieldName(kind.nameField);
-  } else {
-    return null;
   }
 
   if (nameNode === null || nameNode.isMissing || nameNode.text.trim() === "") {

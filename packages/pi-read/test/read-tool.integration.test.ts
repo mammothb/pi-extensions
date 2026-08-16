@@ -115,4 +115,11 @@ describe("createSmartReadTool.execute", () => {
       { type: "text", text: expect.stringContaining("class App") },
     ]);
   });
+
+  it("delegates when the parser finds no symbols", async () => {
+    fakeParseSymbols.mockResolvedValueOnce([]);
+    await run("large.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).toHaveBeenCalledTimes(1);
+  });
 });

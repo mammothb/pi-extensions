@@ -58,6 +58,14 @@ describe("loadConfig", () => {
     expect(config.enabled).toBe(true);
   });
 
+  it("applies enabled and thresholdBytes overrides", () => {
+    writeProjectFile(JSON.stringify({ enabled: false, thresholdBytes: 1234 }));
+    const config = loadConfig(projectDir);
+
+    expect(config.enabled).toBe(false);
+    expect(config.thresholdBytes).toBe(1234);
+  });
+
   it("prefers project config over global", () => {
     writeGlobalFile(JSON.stringify({ thresholdLines: 500 }));
     writeProjectFile(JSON.stringify({ thresholdLines: 100 }));
