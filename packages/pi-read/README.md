@@ -37,6 +37,7 @@ When any is missing, large files fall through to the built-in read.
   "enabled": true,
   "thresholdLines": 2000,
   "thresholdBytes": 51200,
+  "maxBytes": 10485760,
   "maxDepth": 10,
   "languages": {
     "typescript": true,

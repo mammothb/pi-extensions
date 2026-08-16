@@ -30,8 +30,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool(createSmartReadTool({ getConfig }));
 
-  pi.on("session_start", async (_event, ctx) => {
-    // Reload config each session so project/global changes take effect.
-    configCache.delete(ctx.cwd);
+  pi.on("session_start", async () => {
+    // Reload config fresh each session. Clearing (rather than deleting only
+    // the current cwd) keeps the cache bounded across session switches.
+    configCache.clear();
   });
 }

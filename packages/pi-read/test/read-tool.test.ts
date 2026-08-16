@@ -3,12 +3,6 @@ import { DEFAULT_CONFIG } from "../src/config.js";
 import { detectLanguage } from "../src/lib/tree-sitter/languages.js";
 import { decideRead } from "../src/read-tool.js";
 
-const STAT = {
-  isDirectory: false,
-  lineCount: 5000,
-  byteLength: 400_000,
-};
-
 describe("detectLanguage", () => {
   it("maps known extensions", () => {
     expect(detectLanguage("src/server.ts")).toBe("typescript");
@@ -26,66 +20,19 @@ describe("detectLanguage", () => {
 });
 
 describe("decideRead", () => {
-  it("outlines large, supported, enabled files", () => {
-    expect(
-      decideRead({ path: "a.ts" }, DEFAULT_CONFIG, "typescript", STAT),
-    ).toBe("outline");
+  it("outlines when over the line threshold", () => {
+    expect(decideRead(DEFAULT_CONFIG, 5000, 100)).toBe("outline");
   });
 
-  it("delegates small files", () => {
-    expect(
-      decideRead({ path: "a.ts" }, DEFAULT_CONFIG, "typescript", {
-        isDirectory: false,
-        lineCount: 100,
-        byteLength: 2000,
-      }),
-    ).toBe("delegate");
+  it("outlines when over the byte threshold", () => {
+    expect(decideRead(DEFAULT_CONFIG, 100, 100_000)).toBe("outline");
   });
 
-  it("delegates when disabled", () => {
-    const config = { ...DEFAULT_CONFIG, enabled: false };
-    expect(decideRead({ path: "a.ts" }, config, "typescript", STAT)).toBe(
-      "delegate",
-    );
+  it("delegates when under both thresholds", () => {
+    expect(decideRead(DEFAULT_CONFIG, 100, 1000)).toBe("delegate");
   });
 
-  it("delegates disabled languages", () => {
-    const config = {
-      ...DEFAULT_CONFIG,
-      languages: { ...DEFAULT_CONFIG.languages, python: false },
-    };
-    expect(decideRead({ path: "a.py" }, config, "python", STAT)).toBe(
-      "delegate",
-    );
-  });
-
-  it("delegates unsupported languages", () => {
-    expect(decideRead({ path: "a.md" }, DEFAULT_CONFIG, null, STAT)).toBe(
-      "delegate",
-    );
-  });
-
-  it("delegates offset/limit drill-downs", () => {
-    expect(
-      decideRead(
-        { path: "a.ts", offset: 10, limit: 20 },
-        DEFAULT_CONFIG,
-        "typescript",
-        STAT,
-      ),
-    ).toBe("delegate");
-  });
-
-  it("delegates directories and missing files", () => {
-    expect(
-      decideRead({ path: "src" }, DEFAULT_CONFIG, "typescript", {
-        isDirectory: true,
-        lineCount: 0,
-        byteLength: 0,
-      }),
-    ).toBe("delegate");
-    expect(
-      decideRead({ path: "a.ts" }, DEFAULT_CONFIG, "typescript", null),
-    ).toBe("delegate");
+  it("delegates at exactly the thresholds", () => {
+    expect(decideRead(DEFAULT_CONFIG, 2000, 50 * 1024)).toBe("delegate");
   });
 });

@@ -135,10 +135,12 @@ describe("mergeConfig validation", () => {
     const config = mergeConfig(DEFAULT_CONFIG, {
       thresholdLines: 0,
       thresholdBytes: 0,
+      maxBytes: 4096,
       maxDepth: 1,
     });
     expect(config.thresholdLines).toBe(0);
     expect(config.thresholdBytes).toBe(0);
+    expect(config.maxBytes).toBe(4096);
     expect(config.maxDepth).toBe(1);
   });
 });

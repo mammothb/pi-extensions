@@ -23,6 +23,8 @@ export interface ReadConfig {
   thresholdLines: number;
   /** …or this many bytes (outline when either limit is exceeded). */
   thresholdBytes: number;
+  /** Hard safety cap — files larger than this delegate to the built-in read. */
+  maxBytes: number;
   /** Maximum nesting depth shown in the outline. */
   maxDepth: number;
   /** Per-language enable flag. Disabled languages delegate to the built-in read. */

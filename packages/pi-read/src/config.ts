@@ -1,13 +1,17 @@
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+} from "@earendil-works/pi-coding-agent";
 import { loadPiConfig } from "@mammothb/pi-shared";
 import type { LanguageId, ReadConfig } from "./types.js";
 
 export const DEFAULT_CONFIG: ReadConfig = {
   enabled: true,
-  // Aligned with the built-in read truncation limits (2000 lines / 50KB):
-  // below both, the original read returns the full file anyway, so outlining
-  // only adds value past these.
-  thresholdLines: 2000,
-  thresholdBytes: 50 * 1024,
+  // Aligned with the built-in read truncation limits: below both, the built-in
+  // read returns the full file anyway, so outlining only adds value past these.
+  thresholdLines: DEFAULT_MAX_LINES,
+  thresholdBytes: DEFAULT_MAX_BYTES,
+  maxBytes: 10 * 1024 * 1024,
   maxDepth: 10,
   languages: {
     typescript: true,
@@ -24,7 +28,7 @@ function isNonNegativeSafeInt(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-/** Positive safe integer (maxDepth). */
+/** Positive safe integer (maxBytes, maxDepth). */
 function isPositiveSafeInt(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
@@ -43,6 +47,9 @@ export function mergeConfig(
   }
   if (isNonNegativeSafeInt(override.thresholdBytes)) {
     merged.thresholdBytes = override.thresholdBytes;
+  }
+  if (isPositiveSafeInt(override.maxBytes)) {
+    merged.maxBytes = override.maxBytes;
   }
   if (isPositiveSafeInt(override.maxDepth)) {
     merged.maxDepth = override.maxDepth;

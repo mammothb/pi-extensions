@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -30,19 +30,22 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   })),
 }));
 
+const ALL_LANGUAGES: ReadConfig["languages"] = {
+  typescript: true,
+  tsx: true,
+  javascript: true,
+  csharp: true,
+  python: true,
+  rust: true,
+};
+
 const config: ReadConfig = {
   enabled: true,
   thresholdLines: 3,
   thresholdBytes: 1000,
+  maxBytes: 100_000,
   maxDepth: 10,
-  languages: {
-    typescript: true,
-    tsx: true,
-    javascript: true,
-    csharp: true,
-    python: true,
-    rust: true,
-  },
+  languages: ALL_LANGUAGES,
 };
 
 const fakeParseSymbols = vi.fn(
@@ -57,6 +60,7 @@ beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), "pi-read-"));
   writeFileSync(join(dir, "small.ts"), "const a = 1;");
   writeFileSync(join(dir, "large.ts"), "a\nb\nc\nd\ne");
+  mkdirSync(join(dir, "dir.ts"));
 });
 
 afterAll(() => {
@@ -78,6 +82,9 @@ function run(path: string, extra: { offset?: number; limit?: number } = {}) {
 
 describe("createSmartReadTool.execute", () => {
   beforeEach(() => {
+    config.enabled = true;
+    config.maxBytes = 100_000;
+    config.languages = ALL_LANGUAGES;
     builtinExecute.mockClear();
     fakeParseSymbols.mockClear();
   });
@@ -93,6 +100,15 @@ describe("createSmartReadTool.execute", () => {
     await run("binary.ts");
     expect(builtinExecute).toHaveBeenCalledTimes(1);
     expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("resolves @-prefixed paths like the built-in read", async () => {
+    const result = await run("@large.ts");
+    expect(builtinExecute).not.toHaveBeenCalled();
+    expect(fakeParseSymbols).toHaveBeenCalledTimes(1);
+    expect(result.content).toEqual([
+      { type: "text", text: expect.stringContaining("class App") },
+    ]);
   });
 
   it("delegates unsupported extensions", async () => {
@@ -113,6 +129,41 @@ describe("createSmartReadTool.execute", () => {
     expect(fakeParseSymbols).not.toHaveBeenCalled();
   });
 
+  it("delegates when disabled", async () => {
+    config.enabled = false;
+    await run("large.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("delegates disabled languages", async () => {
+    config.languages = { ...ALL_LANGUAGES, python: false };
+    writeFileSync(join(dir!, "test.py"), "def f(): pass\n");
+    await run("test.py");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("delegates directories", async () => {
+    await run("dir.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("delegates missing files", async () => {
+    await run("nope.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("delegates files over the size cap", async () => {
+    config.maxBytes = 10;
+    writeFileSync(join(dir!, "big.ts"), "x".repeat(100));
+    await run("big.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
   it("outlines large supported files without delegating", async () => {
     const result = await run("large.ts");
     expect(builtinExecute).not.toHaveBeenCalled();
@@ -128,5 +179,17 @@ describe("createSmartReadTool.execute", () => {
     await run("large.ts");
     expect(builtinExecute).toHaveBeenCalledTimes(1);
     expect(fakeParseSymbols).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      tool.execute("id", { path: "large.ts" }, controller.signal, undefined, {
+        cwd: dir,
+      } as never),
+    ).rejects.toThrow("Operation aborted");
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
   });
 });

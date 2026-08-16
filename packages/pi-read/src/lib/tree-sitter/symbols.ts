@@ -65,17 +65,25 @@ export const SYMBOL_KINDS: Record<LanguageId, SymbolKind[]> = {
 
 /** Collect structural symbols from a parsed tree, nesting at symbol boundaries. */
 export function collectSymbols(root: Node, id: LanguageId): OutlineSymbol[] {
-  const kinds = SYMBOL_KINDS[id] ?? [];
+  // Precompute a nodeType → kind map once per language; `walk` does a lookup
+  // per node, so a hash map beats a linear `find` over the small kind list.
+  const kindByType = new Map(
+    (SYMBOL_KINDS[id] ?? []).map((k) => [k.nodeType, k]),
+  );
   const out: OutlineSymbol[] = [];
-  walk(root, kinds, out);
+  walk(root, kindByType, out);
   return out;
 }
 
-function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
-  const kind = kinds.find((k) => k.nodeType === node.type);
+function walk(
+  node: Node,
+  kindByType: Map<string, SymbolKind>,
+  out: OutlineSymbol[],
+): void {
+  const kind = kindByType.get(node.type);
   if (kind !== undefined) {
     if ("arrowDeclarators" in kind) {
-      emitArrowDeclarators(node, kinds, out);
+      emitArrowDeclarators(node, kindByType, out);
       return;
     }
     const name = resolveName(node, kind);
@@ -88,14 +96,14 @@ function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
         children: [],
       };
       for (const child of node.children) {
-        walk(child, kinds, symbol.children);
+        walk(child, kindByType, symbol.children);
       }
       out.push(symbol);
       return;
     }
   }
   for (const child of node.children) {
-    walk(child, kinds, out);
+    walk(child, kindByType, out);
   }
 }
 
@@ -110,7 +118,7 @@ function resolveName(node: Node, kind: { nameField: string }): string | null {
 /** Emit one symbol per arrow-function declarator (label from `const`/`let`). */
 function emitArrowDeclarators(
   node: Node,
-  kinds: SymbolKind[],
+  kindByType: Map<string, SymbolKind>,
   out: OutlineSymbol[],
 ): void {
   const label = node.child(0)?.text ?? "const";
@@ -137,13 +145,20 @@ function emitArrowDeclarators(
       children: [],
     };
     for (const child of declarator.children) {
-      walk(child, kinds, symbol.children);
+      walk(child, kindByType, symbol.children);
     }
     out.push(symbol);
   }
 }
 
-/** 1-indexed, inclusive last line of a node (endPosition is exclusive). */
+/**
+ * 1-indexed, inclusive last line of a node.
+ *
+ * `endPosition` is exclusive (points one past the last byte), so a mid-line
+ * end (`column > 0`) lands on `row`, while an end at a line boundary
+ * (`column === 0`) has already rolled onto the next row — the node really
+ * ended on `row - 1`.
+ */
 function endLine(node: Node): number {
   const { row, column } = node.endPosition;
   return column > 0 ? row + 1 : row;
