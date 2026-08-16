@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-read",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Smart read for pi — AST outlines for large files via optional tree-sitter WASM grammars, delegating everything else to the built-in read",
   "keywords": [
     "pi-package"
