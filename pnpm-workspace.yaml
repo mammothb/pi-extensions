@@ -3,6 +3,11 @@ packages:
 allowBuilds:
   "@google/genai": true
   protobufjs: true
+  tree-sitter-c-sharp: false
+  tree-sitter-javascript: false
+  tree-sitter-python: false
+  tree-sitter-rust: false
+  tree-sitter-typescript: false
 overrides:
   "@earendil-works/pi-agent-core": "0.83.0"
   "@earendil-works/pi-ai": "0.83.0"

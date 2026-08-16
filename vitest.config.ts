@@ -102,6 +102,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-read",
+          root: "./packages/pi-read",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });
