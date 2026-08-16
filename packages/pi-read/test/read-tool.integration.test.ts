@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -146,6 +147,14 @@ describe("createSmartReadTool.execute", () => {
 
   it("delegates directories", async () => {
     await run("dir.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
+  it("delegates FIFOs without blocking", async () => {
+    const fifo = join(dir!, "pipe.ts");
+    execFileSync("mkfifo", [fifo]);
+    await run("pipe.ts");
     expect(builtinExecute).toHaveBeenCalledTimes(1);
     expect(fakeParseSymbols).not.toHaveBeenCalled();
   });

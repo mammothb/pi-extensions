@@ -140,7 +140,10 @@ export function createSmartReadTool(deps: SmartReadDeps): BaseReadTool {
       } catch {
         return delegate();
       }
-      if (fileStat.isDirectory()) {
+      // Only regular files can be outlined — delegate anything else
+      // (directory, FIFO, socket, device). `readFile` on a FIFO would block
+      // indefinitely waiting for a writer.
+      if (!fileStat.isFile()) {
         return delegate();
       }
       // Hard safety cap — don't slurp + parse files beyond this; the built-in
