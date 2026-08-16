@@ -3,16 +3,48 @@ import type { LanguageId } from "../../types.js";
 
 export interface GrammarSpec {
   id: LanguageId;
+  package: string;
+  wasmFile: string;
   extensions: string[];
 }
 
 export const GRAMMARS: GrammarSpec[] = [
-  { id: "typescript", extensions: [".ts", ".mts", ".cts"] },
-  { id: "tsx", extensions: [".tsx"] },
-  { id: "javascript", extensions: [".js", ".mjs", ".cjs", ".jsx"] },
-  { id: "csharp", extensions: [".cs"] },
-  { id: "python", extensions: [".py"] },
-  { id: "rust", extensions: [".rs"] },
+  {
+    id: "typescript",
+    package: "tree-sitter-typescript",
+    wasmFile: "tree-sitter-typescript.wasm",
+    extensions: [".ts", ".mts", ".cts"],
+  },
+  {
+    id: "tsx",
+    package: "tree-sitter-typescript",
+    wasmFile: "tree-sitter-tsx.wasm",
+    extensions: [".tsx"],
+  },
+  {
+    id: "javascript",
+    package: "tree-sitter-javascript",
+    wasmFile: "tree-sitter-javascript.wasm",
+    extensions: [".js", ".mjs", ".cjs", ".jsx"],
+  },
+  {
+    id: "csharp",
+    package: "tree-sitter-c-sharp",
+    wasmFile: "tree-sitter-c_sharp.wasm",
+    extensions: [".cs"],
+  },
+  {
+    id: "python",
+    package: "tree-sitter-python",
+    wasmFile: "tree-sitter-python.wasm",
+    extensions: [".py"],
+  },
+  {
+    id: "rust",
+    package: "tree-sitter-rust",
+    wasmFile: "tree-sitter-rust.wasm",
+    extensions: [".rs"],
+  },
 ];
 
 const EXTENSION_MAP = new Map<string, LanguageId>(
