@@ -127,7 +127,13 @@ export function createSmartReadTool(deps: SmartReadDeps): BaseReadTool {
 
       let content: string;
       try {
-        content = readFileSync(absolutePath, "utf-8");
+        const buffer = readFileSync(absolutePath);
+        // A NUL byte marks binary content (e.g. an image mislabeled with a
+        // code extension) — delegate so the built-in read MIME-sniffs it.
+        if (buffer.includes(0)) {
+          return delegate();
+        }
+        content = buffer.toString("utf-8");
       } catch {
         return delegate();
       }

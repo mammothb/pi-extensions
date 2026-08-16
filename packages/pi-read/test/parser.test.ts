@@ -121,6 +121,29 @@ describe("parseSymbols", () => {
     });
   });
 
+  it("emits every arrow declarator with its let/const kind", async () => {
+    const source = [
+      "let run = () => 1;",
+      "const x = 2, y = () => 3;",
+      "const z = 4;",
+    ].join("\n");
+    const symbols = await parseSymbols("typescript", source);
+
+    expect(symbols).toHaveLength(2);
+    expect(symbols[0]).toMatchObject({
+      name: "run",
+      type: "let",
+      startLine: 1,
+      endLine: 1,
+    });
+    expect(symbols[1]).toMatchObject({
+      name: "y",
+      type: "const",
+      startLine: 2,
+      endLine: 2,
+    });
+  });
+
   it("returns [] for empty, comment-only, and invalid input", async () => {
     expect(await parseSymbols("typescript", "")).toEqual([]);
     expect(await parseSymbols("typescript", "// just a comment\n")).toEqual([]);

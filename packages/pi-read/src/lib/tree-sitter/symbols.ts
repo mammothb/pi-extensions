@@ -1,17 +1,19 @@
 import type { Node } from "web-tree-sitter";
 import type { LanguageId, OutlineSymbol } from "../../types.js";
 
-export interface SymbolKind {
-  nodeType: string;
-  /** Friendly label shown in the outline (e.g. "class", "function"). */
-  label: string;
-  /** Field holding the identifier (e.g. "name", "type"). */
-  nameField?: string;
-  /** Resolve the name from the first named child's `name` field instead. */
-  fromDeclarator?: boolean;
-  /** With `fromDeclarator`: only emit when the declarator's `value` is this type. */
-  valueNodeType?: string;
-}
+export type SymbolKind =
+  | {
+      nodeType: string;
+      /** Friendly label shown in the outline (e.g. "class", "function"). */
+      label: string;
+      /** Field holding the identifier (e.g. "name", "type"). */
+      nameField: string;
+    }
+  | {
+      nodeType: string;
+      /** Emit one symbol per arrow-function declarator; label from `const`/`let`. */
+      arrowDeclarators: true;
+    };
 
 const TS_KINDS: SymbolKind[] = [
   { nodeType: "class_declaration", label: "class", nameField: "name" },
@@ -20,12 +22,7 @@ const TS_KINDS: SymbolKind[] = [
   { nodeType: "interface_declaration", label: "interface", nameField: "name" },
   { nodeType: "enum_declaration", label: "enum", nameField: "name" },
   { nodeType: "type_alias_declaration", label: "type", nameField: "name" },
-  {
-    nodeType: "lexical_declaration",
-    label: "const",
-    fromDeclarator: true,
-    valueNodeType: "arrow_function",
-  },
+  { nodeType: "lexical_declaration", arrowDeclarators: true },
 ];
 
 export const SYMBOL_KINDS: Record<LanguageId, SymbolKind[]> = {
@@ -77,6 +74,10 @@ export function collectSymbols(root: Node, id: LanguageId): OutlineSymbol[] {
 function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
   const kind = kinds.find((k) => k.nodeType === node.type);
   if (kind !== undefined) {
+    if ("arrowDeclarators" in kind) {
+      emitArrowDeclarators(node, out);
+      return;
+    }
     const name = resolveName(node, kind);
     if (name !== null) {
       const symbol: OutlineSymbol = {
@@ -98,26 +99,40 @@ function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
   }
 }
 
-function resolveName(node: Node, kind: SymbolKind): string | null {
-  let nameNode: Node | null = null;
-
-  if (kind.fromDeclarator) {
-    const declarator = node.namedChild(0);
-    if (kind.valueNodeType !== undefined) {
-      const value = declarator?.childForFieldName("value");
-      if (value?.type !== kind.valueNodeType) {
-        return null;
-      }
-    }
-    nameNode = declarator?.childForFieldName("name") ?? null;
-  } else if (kind.nameField !== undefined) {
-    nameNode = node.childForFieldName(kind.nameField);
-  }
-
+function resolveName(node: Node, kind: { nameField: string }): string | null {
+  const nameNode = node.childForFieldName(kind.nameField);
   if (nameNode === null || nameNode.isMissing || nameNode.text.trim() === "") {
     return null;
   }
   return nameNode.text;
+}
+
+/** Emit one symbol per arrow-function declarator (label from `const`/`let`). */
+function emitArrowDeclarators(node: Node, out: OutlineSymbol[]): void {
+  const label = node.child(0)?.text ?? "const";
+  for (const declarator of node.namedChildren) {
+    if (declarator.type !== "variable_declarator") {
+      continue;
+    }
+    if (declarator.childForFieldName("value")?.type !== "arrow_function") {
+      continue;
+    }
+    const nameNode = declarator.childForFieldName("name");
+    if (
+      nameNode === null ||
+      nameNode.isMissing ||
+      nameNode.text.trim() === ""
+    ) {
+      continue;
+    }
+    out.push({
+      name: nameNode.text,
+      type: label,
+      startLine: declarator.startPosition.row + 1,
+      endLine: endLine(declarator),
+      children: [],
+    });
+  }
 }
 
 /** 1-indexed, inclusive last line of a node (endPosition is exclusive). */

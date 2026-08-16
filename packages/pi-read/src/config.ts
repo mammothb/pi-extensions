@@ -19,7 +19,17 @@ export const DEFAULT_CONFIG: ReadConfig = {
   },
 };
 
-function mergeConfig(
+/** Non-negative safe integer (thresholds). */
+function isNonNegativeSafeInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/** Positive safe integer (maxDepth). */
+function isPositiveSafeInt(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+export function mergeConfig(
   base: ReadConfig,
   override: Record<string, unknown>,
 ): ReadConfig {
@@ -28,13 +38,13 @@ function mergeConfig(
   if (typeof override.enabled === "boolean") {
     merged.enabled = override.enabled;
   }
-  if (typeof override.thresholdLines === "number") {
+  if (isNonNegativeSafeInt(override.thresholdLines)) {
     merged.thresholdLines = override.thresholdLines;
   }
-  if (typeof override.thresholdBytes === "number") {
+  if (isNonNegativeSafeInt(override.thresholdBytes)) {
     merged.thresholdBytes = override.thresholdBytes;
   }
-  if (typeof override.maxDepth === "number") {
+  if (isPositiveSafeInt(override.maxDepth)) {
     merged.maxDepth = override.maxDepth;
   }
 

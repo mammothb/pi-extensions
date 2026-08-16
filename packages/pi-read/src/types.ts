@@ -19,9 +19,9 @@ export interface OutlineSymbol {
 
 export interface ReadConfig {
   enabled: boolean;
-  /** Outline only when the file exceeds this many lines. */
+  /** Outline when the file exceeds this many lines. */
   thresholdLines: number;
-  /** …or this many bytes (both must be exceeded). */
+  /** …or this many bytes (outline when either limit is exceeded). */
   thresholdBytes: number;
   /** Maximum nesting depth shown in the outline. */
   maxDepth: number;

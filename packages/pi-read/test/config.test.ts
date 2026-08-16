@@ -2,9 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_CONFIG, loadConfig } from "../src/config.js";
+import { DEFAULT_CONFIG, loadConfig, mergeConfig } from "../src/config.js";
 
-const GLOBAL_DIR = join(tmpdir(), "pi-read-test-global-agent");
+const { GLOBAL_DIR } = vi.hoisted(() => ({
+  // process is a Node global (no import), so it's safe inside vi.hoisted's
+  // pre-import callback — imported bindings (tmpdir/join) would be in TDZ here.
+  GLOBAL_DIR: `${process.env.TMPDIR ?? "/tmp"}/pi-read-test-global-agent`,
+}));
 const projectDir = mkdtempSync(join(tmpdir(), "pi-read-project-"));
 const projectPiDir = join(projectDir, ".pi");
 
@@ -99,5 +103,42 @@ describe("loadConfig", () => {
     expect(spy).toHaveBeenCalled();
 
     spy.mockRestore();
+  });
+});
+
+describe("mergeConfig validation", () => {
+  it("rejects invalid thresholdLines (falls back to default)", () => {
+    for (const value of [-1, 1.5, Infinity, -Infinity, NaN]) {
+      expect(
+        mergeConfig(DEFAULT_CONFIG, { thresholdLines: value }).thresholdLines,
+      ).toBe(DEFAULT_CONFIG.thresholdLines);
+    }
+  });
+
+  it("rejects invalid thresholdBytes (falls back to default)", () => {
+    for (const value of [-1, 1.5, Infinity, NaN]) {
+      expect(
+        mergeConfig(DEFAULT_CONFIG, { thresholdBytes: value }).thresholdBytes,
+      ).toBe(DEFAULT_CONFIG.thresholdBytes);
+    }
+  });
+
+  it("rejects non-positive or non-integer maxDepth (falls back to default)", () => {
+    for (const value of [-1, 0, 1.5, Infinity, NaN]) {
+      expect(mergeConfig(DEFAULT_CONFIG, { maxDepth: value }).maxDepth).toBe(
+        DEFAULT_CONFIG.maxDepth,
+      );
+    }
+  });
+
+  it("accepts valid thresholds and depth (including zero thresholds)", () => {
+    const config = mergeConfig(DEFAULT_CONFIG, {
+      thresholdLines: 0,
+      thresholdBytes: 0,
+      maxDepth: 1,
+    });
+    expect(config.thresholdLines).toBe(0);
+    expect(config.thresholdBytes).toBe(0);
+    expect(config.maxDepth).toBe(1);
   });
 });

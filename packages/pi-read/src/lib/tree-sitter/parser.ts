@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { Language } from "web-tree-sitter";
+import type { Language, Tree } from "web-tree-sitter";
 import type { LanguageId, OutlineSymbol } from "../../types.js";
 import { GRAMMARS } from "./languages.js";
 import { collectSymbols } from "./symbols.js";
@@ -78,15 +78,21 @@ export async function parseSymbols(
     return [];
   }
 
+  const parser = new mod.Parser();
+  let tree: Tree | null = null;
   try {
-    const parser = new mod.Parser();
     parser.setLanguage(language);
-    const tree = parser.parse(source);
+    tree = parser.parse(source);
     if (tree === null) {
       return [];
     }
     return collectSymbols(tree.rootNode, id);
   } catch {
     return [];
+  } finally {
+    // web-tree-sitter wraps WASM pointers that are not GC'd — release both
+    // explicitly, after collectSymbols has finished reading the tree.
+    tree?.delete();
+    parser.delete();
   }
 }

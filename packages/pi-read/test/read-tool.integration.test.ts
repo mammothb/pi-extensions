@@ -88,6 +88,13 @@ describe("createSmartReadTool.execute", () => {
     expect(result.content).toEqual([{ type: "text", text: "BUILTIN" }]);
   });
 
+  it("delegates NUL-containing binary mislabeled with a code extension", async () => {
+    writeFileSync(join(dir!, "binary.ts"), "fake \u0000 text");
+    await run("binary.ts");
+    expect(builtinExecute).toHaveBeenCalledTimes(1);
+    expect(fakeParseSymbols).not.toHaveBeenCalled();
+  });
+
   it("delegates unsupported extensions", async () => {
     await run("README.md");
     expect(builtinExecute).toHaveBeenCalledTimes(1);
