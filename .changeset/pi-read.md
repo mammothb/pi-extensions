@@ -1,5 +1,0 @@
----
-"@mammothb/pi-read": minor
----
-
-Add `@mammothb/pi-read` — a smart `read` tool that returns AST structural outlines for large files via optional tree-sitter WASM grammars, delegating everything else to the built-in read.
