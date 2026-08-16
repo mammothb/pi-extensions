@@ -75,7 +75,7 @@ function walk(node: Node, kinds: SymbolKind[], out: OutlineSymbol[]): void {
   const kind = kinds.find((k) => k.nodeType === node.type);
   if (kind !== undefined) {
     if ("arrowDeclarators" in kind) {
-      emitArrowDeclarators(node, out);
+      emitArrowDeclarators(node, kinds, out);
       return;
     }
     const name = resolveName(node, kind);
@@ -108,7 +108,11 @@ function resolveName(node: Node, kind: { nameField: string }): string | null {
 }
 
 /** Emit one symbol per arrow-function declarator (label from `const`/`let`). */
-function emitArrowDeclarators(node: Node, out: OutlineSymbol[]): void {
+function emitArrowDeclarators(
+  node: Node,
+  kinds: SymbolKind[],
+  out: OutlineSymbol[],
+): void {
   const label = node.child(0)?.text ?? "const";
   for (const declarator of node.namedChildren) {
     if (declarator.type !== "variable_declarator") {
@@ -125,13 +129,17 @@ function emitArrowDeclarators(node: Node, out: OutlineSymbol[]): void {
     ) {
       continue;
     }
-    out.push({
+    const symbol: OutlineSymbol = {
       name: nameNode.text,
       type: label,
       startLine: declarator.startPosition.row + 1,
       endLine: endLine(declarator),
       children: [],
-    });
+    };
+    for (const child of declarator.children) {
+      walk(child, kinds, symbol.children);
+    }
+    out.push(symbol);
   }
 }
 

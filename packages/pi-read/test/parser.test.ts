@@ -144,6 +144,31 @@ describe("parseSymbols", () => {
     });
   });
 
+  it("collects nested symbols inside arrow-function declarators", async () => {
+    const source = [
+      "const factory = () => {",
+      "  class Inner {}",
+      "  return Inner;",
+      "};",
+    ].join("\n");
+    const symbols = await parseSymbols("typescript", source);
+
+    expect(symbols).toHaveLength(1);
+    expect(symbols[0]).toMatchObject({
+      name: "factory",
+      type: "const",
+      startLine: 1,
+      endLine: 4,
+    });
+    expect(symbols[0]!.children).toHaveLength(1);
+    expect(symbols[0]!.children[0]).toMatchObject({
+      name: "Inner",
+      type: "class",
+      startLine: 2,
+      endLine: 2,
+    });
+  });
+
   it("returns [] for empty, comment-only, and invalid input", async () => {
     expect(await parseSymbols("typescript", "")).toEqual([]);
     expect(await parseSymbols("typescript", "// just a comment\n")).toEqual([]);
