@@ -75,23 +75,23 @@ export interface SmartReadDeps {
 }
 
 /**
- * Build the smart `read` tool: spread the native definition (name, schema,
+ * Build the smart `read` tool: spread the built-in definition (name, schema,
  * prompt metadata, renderers) and override only `execute`. Fallback paths
- * delegate to a per-cwd native read, preserving exact output shape.
+ * delegate to a per-cwd built-in read, preserving exact output shape.
  */
 export function createSmartReadTool(deps: SmartReadDeps): BaseReadTool {
   const base = createReadToolDefinition(process.cwd());
   const parse = deps.parseSymbols ?? defaultParseSymbols;
 
-  // Keyed by session cwd — the native read resolves paths against the cwd it
+  // Keyed by session cwd — the built-in read resolves paths against the cwd it
   // was constructed with, so one definition per cwd is required.
-  const nativeByCwd = new Map<string, BaseReadTool>();
+  const builtinReadByCwd = new Map<string, BaseReadTool>();
 
-  function native(cwd: string): BaseReadTool {
-    let definition = nativeByCwd.get(cwd);
+  function builtinRead(cwd: string): BaseReadTool {
+    let definition = builtinReadByCwd.get(cwd);
     if (definition === undefined) {
       definition = createReadToolDefinition(cwd);
-      nativeByCwd.set(cwd, definition);
+      builtinReadByCwd.set(cwd, definition);
     }
     return definition;
   }
@@ -100,7 +100,7 @@ export function createSmartReadTool(deps: SmartReadDeps): BaseReadTool {
     ...base,
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const delegate = () =>
-        native(ctx.cwd).execute(toolCallId, params, signal, onUpdate, ctx);
+        builtinRead(ctx.cwd).execute(toolCallId, params, signal, onUpdate, ctx);
 
       const config = deps.getConfig(ctx.cwd);
 
