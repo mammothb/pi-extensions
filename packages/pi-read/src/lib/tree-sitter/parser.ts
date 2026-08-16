@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import type { Language } from "web-tree-sitter";
 import type { LanguageId, OutlineSymbol } from "../../types.js";
 import { GRAMMARS } from "./languages.js";
+import { collectSymbols } from "./symbols.js";
 
 const require = createRequire(import.meta.url);
 
@@ -64,11 +65,28 @@ export async function loadGrammar(id: LanguageId): Promise<Language | null> {
 
 /**
  * Parse a source file into structural symbols.
- * Phase 2: walk the tree; for now returns [] so the read tool delegates.
+ * Returns [] when the runtime/grammar is unavailable or parsing fails, so the
+ * read tool delegates to the built-in read.
  */
 export async function parseSymbols(
-  _id: LanguageId,
-  _source: string,
+  id: LanguageId,
+  source: string,
 ): Promise<OutlineSymbol[]> {
-  return [];
+  const mod = await loadRuntime();
+  const language = await loadGrammar(id);
+  if (mod === null || language === null) {
+    return [];
+  }
+
+  try {
+    const parser = new mod.Parser();
+    parser.setLanguage(language);
+    const tree = parser.parse(source);
+    if (tree === null) {
+      return [];
+    }
+    return collectSymbols(tree.rootNode, id);
+  } catch {
+    return [];
+  }
 }
