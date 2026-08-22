@@ -469,4 +469,94 @@ describe("SpanTracker", () => {
     expect(chat.attributes["pi.provider.request"]).toBeUndefined();
     expect(chat.attributes["pi.provider.response"]).toBeUndefined();
   });
+
+  it("marks chat span as ERROR on message-derived error without HTTP status", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat({
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      stopReason: "error",
+      usage: { input: 0, output: 0 },
+      errorMessage: "provider exploded",
+    });
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
+    expect(chat.status.code).toBe(SpanStatusCode.ERROR);
+    expect(chat.status.message).toBe("provider exploded");
+    expect(chat.attributes["error.type"]).toBe("anthropic");
+  });
+
+  it("marks chat span as ERROR on abort with no error message", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat({
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      stopReason: "aborted",
+      usage: { input: 0, output: 0 },
+    });
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
+    expect(chat.status.code).toBe(SpanStatusCode.ERROR);
+    expect(chat.attributes["error.type"]).toBe("anthropic");
+  });
+
+  it("recordAgentEvent no-ops when no interaction is open", () => {
+    tracker.recordAgentEvent("model_select", { model: "claude" });
+    provider.forceFlush();
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+  });
+
+  it("recordPrompt no-ops on an empty stack even when capture.prompts is on", () => {
+    const t = makeTracker({ prompts: true });
+    t.recordPrompt("hello");
+    provider.forceFlush();
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+  });
+
+  it("closeAll ends spans left dangling on the stack", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.closeAll();
+    provider.forceFlush();
+
+    const names = exporter.getFinishedSpans().map((s) => s.name);
+    expect(names).toContain(SPAN_NAME.INTERACTION);
+    expect(names).toContain(SPAN_NAME.TURN);
+    expect(names).toContain(SPAN_NAME.CHAT);
+  });
+
+  it("endTool no-ops when no tool span is open", () => {
+    tracker.endTool("orphan result", false);
+    provider.forceFlush();
+    expect(exporter.getFinishedSpans()).toHaveLength(0);
+  });
+
+  it("emits truncated raw tool result when capture.toolResults is on", () => {
+    tracker = makeTracker({ toolResults: true });
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginTool("call-1", "read", {});
+    tracker.endTool("r".repeat(2000), false);
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const tool = findSpan(exporter.getFinishedSpans(), "execute_tool read");
+    const rawResult = tool.attributes["pi.tool.result"] as string;
+    expect(rawResult).toBe(`${"r".repeat(DEFAULT_SUMMARY_LENGTH)}…`);
+    expect(tool.attributes["pi.tool.result_sha256"]).toBe(
+      sha256("r".repeat(2000)),
+    );
+  });
 });

@@ -93,5 +93,10 @@ describe("content", () => {
       obj.self = obj;
       expect(toContent(obj)).toBe(String(obj));
     });
+
+    it("stringifies numbers and booleans", () => {
+      expect(toContent(42)).toBe("42");
+      expect(toContent(true)).toBe("true");
+    });
   });
 });

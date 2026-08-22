@@ -51,6 +51,12 @@ describe("resolveSecret", () => {
     expect(resolveSecret(`file:${file}`)).toBe(`file:${file}`);
   });
 
+  it("falls back to the literal when the file cannot be read", () => {
+    const dir = join(tmpDir, "a-directory");
+    mkdirSync(dir);
+    expect(resolveSecret(`file:${dir}`)).toBe(`file:${dir}`);
+  });
+
   it("expands a leading tilde in a file: path", () => {
     // `~` is expanded via expandTilde; assert the prefix survives when the
     // file does not exist (resolution attempts the expanded path).

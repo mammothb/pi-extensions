@@ -32,6 +32,7 @@ vi.mock("../src/sdk.js", () => ({
 
 // Imported after the mock so the factory binds to the stubbed sdk module.
 import piOtelExtension from "../index.js";
+import { Metrics } from "../src/metrics.js";
 
 const SESSION_ID = "metrics-session-1";
 
@@ -349,5 +350,18 @@ describe("Metrics", () => {
     expect(byType.get("no_finish_reason")).toBe(1);
     expect(byType.get("aborted")).toBe(1);
     expect(byType.get("none")).toBeUndefined();
+  });
+
+  it("ignores non-finite or negative values", async () => {
+    const m = new Metrics();
+    m.recordTokenUsage("input", "claude", "anthropic", -1);
+    m.recordTokenUsage("output", "claude", "anthropic", Number.NaN);
+    m.recordOperationDuration("chat", -5);
+    m.recordToolDuration("read", -5);
+    await provider.forceFlush();
+    const rms = exporter.getMetrics();
+    expect(findMetric(rms, "gen_ai.client.token.usage")).toBeUndefined();
+    expect(findMetric(rms, "gen_ai.client.operation.duration")).toBeUndefined();
+    expect(findMetric(rms, "pi.tool.duration")).toBeUndefined();
   });
 });

@@ -60,6 +60,25 @@ describe("mergeConfig", () => {
     });
     expect(merged.headers).toEqual({ Authorization: "Bearer abc" });
   });
+
+  it("merges serviceName and sampleRatio", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, {
+      serviceName: "my-service",
+      sampleRatio: 0.5,
+    });
+    expect(merged.serviceName).toBe("my-service");
+    expect(merged.sampleRatio).toBe(0.5);
+  });
+
+  it("merges every capture flag individually", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, {
+      capture: { prompts: true, toolArgs: true, providerPayloads: true },
+    });
+    expect(merged.capture.prompts).toBe(true);
+    expect(merged.capture.toolArgs).toBe(true);
+    expect(merged.capture.toolResults).toBe(false);
+    expect(merged.capture.providerPayloads).toBe(true);
+  });
 });
 
 describe("applyEnv", () => {
@@ -95,6 +114,11 @@ describe("applyEnv", () => {
       },
     );
     expect(cfg.enabled).toBe(false);
+  });
+
+  it("ignores unparseable PI_OTEL_ENABLED values", () => {
+    const cfg = applyEnv(DEFAULT_CONFIG, { PI_OTEL_ENABLED: "maybe" });
+    expect(cfg.enabled).toBe(DEFAULT_CONFIG.enabled);
   });
 
   it("lets OTEL_SERVICE_NAME override serviceName", () => {
