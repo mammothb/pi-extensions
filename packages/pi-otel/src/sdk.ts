@@ -32,6 +32,8 @@ import {
   AggregationTemporality,
   MeterProvider,
   PeriodicExportingMetricReader,
+  type PushMetricExporter,
+  type ResourceMetrics,
 } from "@opentelemetry/sdk-metrics";
 import {
   AlwaysOffSampler,
@@ -39,6 +41,7 @@ import {
   BasicTracerProvider,
   BatchSpanProcessor,
   ParentBasedSampler,
+  type SpanExporter,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 
@@ -64,12 +67,24 @@ export interface OtelSdkConfig {
   resourceAttributes?: Record<string, string | number | boolean>;
 }
 
+/** Cumulative export stats, surfaced by `/otel-status`. */
+export interface OtelExportStats {
+  /** Spans handed to the trace exporter. */
+  exportedSpans: number;
+  /** Metric data points handed to the metric exporter. */
+  exportedDataPoints: number;
+  /** Message of the most recent export failure, if any. */
+  lastError?: string;
+}
+
 /** Public handle to a constructed SDK. */
 export interface OtelSdk {
   readonly tracerProvider: BasicTracerProvider;
   readonly meterProvider: MeterProvider;
   readonly traceExporter: OTLPTraceExporter;
   readonly metricReader: PeriodicExportingMetricReader;
+  /** Snapshot of cumulative export stats. */
+  getStats(): OtelExportStats;
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -79,6 +94,59 @@ const METRIC_EXPORT_INTERVAL_MS = 60_000;
 /** Clamp a sampling ratio to [0, 1]. */
 function clampRatio(ratio: number): number {
   return Math.min(1, Math.max(0, ratio));
+}
+
+/** Count the total number of metric data points in one collection. */
+function countDataPoints(rm: ResourceMetrics): number {
+  let count = 0;
+  for (const sm of rm.scopeMetrics) {
+    for (const metric of sm.metrics) {
+      count += metric.dataPoints.length;
+    }
+  }
+  return count;
+}
+
+/** Wrap the trace exporter to count spans + record failures. */
+function wrapTraceExporter(
+  inner: OTLPTraceExporter,
+  stats: OtelExportStats,
+): SpanExporter {
+  return {
+    export(spans, resultCallback) {
+      stats.exportedSpans += spans.length;
+      inner.export(spans, (result) => {
+        if (result.error) {
+          stats.lastError = result.error.message;
+        }
+        resultCallback(result);
+      });
+    },
+    shutdown: () => inner.shutdown(),
+    forceFlush: () => inner.forceFlush(),
+  };
+}
+
+/** Wrap the metric exporter to count data points + record failures. */
+function wrapMetricExporter(
+  inner: OTLPMetricExporter,
+  stats: OtelExportStats,
+): PushMetricExporter {
+  return {
+    export(metrics, resultCallback) {
+      stats.exportedDataPoints += countDataPoints(metrics);
+      inner.export(metrics, (result) => {
+        if (result.error) {
+          stats.lastError = result.error.message;
+        }
+        resultCallback(result);
+      });
+    },
+    forceFlush: () => inner.forceFlush(),
+    shutdown: () => inner.shutdown(),
+    selectAggregationTemporality: (t) => inner.selectAggregationTemporality(t),
+    selectAggregation: (t) => inner.selectAggregation(t),
+  };
 }
 
 let active: OtelSdk | null = null;
@@ -104,6 +172,11 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
       ...(config.resourceAttributes ?? {}),
     });
 
+    const stats: OtelExportStats = {
+      exportedSpans: 0,
+      exportedDataPoints: 0,
+    };
+
     const traceExporter = new OTLPTraceExporter({
       url: config.tracesEndpoint,
       headers: config.headers,
@@ -118,7 +191,7 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
     });
 
     const metricReader = new PeriodicExportingMetricReader({
-      exporter: metricExporter,
+      exporter: wrapMetricExporter(metricExporter, stats),
       exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS,
     });
 
@@ -133,7 +206,9 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
             : new ParentBasedSampler({
                 root: new TraceIdRatioBasedSampler(sampleRatio),
               }),
-      spanProcessors: [new BatchSpanProcessor(traceExporter)],
+      spanProcessors: [
+        new BatchSpanProcessor(wrapTraceExporter(traceExporter, stats)),
+      ],
     });
 
     const meterProvider = new MeterProvider({
@@ -146,6 +221,9 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
       meterProvider,
       traceExporter,
       metricReader,
+      getStats() {
+        return { ...stats };
+      },
       async forceFlush() {
         await Promise.allSettled([
           tracerProvider.forceFlush(),

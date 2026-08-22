@@ -1,0 +1,231 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Token usage by model (tokens/s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "tokens"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum by (gen_ai_token_type, gen_ai_request_model) (rate(gen_ai_client_token_usage_sum[5m]))",
+          "legendFormat": "{{gen_ai_token_type}} {{gen_ai_request_model}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Operation duration p95 (ms)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_bucket[5m])))",
+          "legendFormat": "p95 {{gen_ai_operation_name}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_bucket[5m])))",
+          "legendFormat": "p50 {{gen_ai_operation_name}}",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool calls by name (calls/s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "sum by (pi_tool_name) (rate(pi_tool_calls[5m]))",
+          "legendFormat": "{{pi_tool_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool error rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1 },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum by (pi_tool_name) (rate(pi_tool_calls{pi_tool_is_error=\"true\"}[5m])) / clamp_min(sum by (pi_tool_name) (rate(pi_tool_calls[5m])), 0.0001)",
+          "legendFormat": "{{pi_tool_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prompts / turns (rate)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(rate(pi_prompt_count[5m]))",
+          "legendFormat": "prompts",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(pi_turn_count[5m]))",
+          "legendFormat": "turns",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Session duration p50/p95 (s)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pi_session_duration_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(pi_session_duration_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "traces",
+      "title": "Traces",
+      "datasource": { "type": "tempo", "uid": "${tempo}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 24 },
+      "id": 7,
+      "targets": [
+        {
+          "query": "{}",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showSearch": true
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 40,
+  "tags": ["pi", "otel", "llm"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0
+      },
+      {
+        "name": "tempo",
+        "label": "Tempo datasource",
+        "type": "datasource",
+        "query": "tempo",
+        "current": { "text": "Tempo", "value": "Tempo" },
+        "hide": 0
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "pi-otel",
+  "uid": "pi-otel",
+  "version": 1
+}

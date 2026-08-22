@@ -46,6 +46,9 @@ function createMockPi(): { pi: unknown; handlers: Handlers } {
       list.push(handler);
       handlers.set(event, list);
     },
+    registerCommand() {
+      // no-op: command registration is not under test here
+    },
   };
   return { pi, handlers };
 }

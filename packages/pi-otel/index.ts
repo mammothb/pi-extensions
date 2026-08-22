@@ -48,11 +48,13 @@ interface ModelSelectEvent {
   source: string;
 }
 
+import { registerOtelCommands } from "./src/commands/otel.js";
 import { loadConfig, type ResolvedConfig } from "./src/config.js";
 import { Metrics } from "./src/metrics.js";
 import {
   initSdk,
   isInitialized,
+  type OtelSdk,
   type OtelSdkConfig,
   shutdownSdk,
   startSdk,
@@ -105,12 +107,18 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   // each extension instance clean state.
   const metrics = new Metrics();
   let resolvedConfig: ResolvedConfig | null = null;
+  let sdk: OtelSdk | null = null;
   let tracker: SpanTracker | null = null;
   let lastResponseStatus: number | undefined;
   let lastRequestPayload: unknown;
   let chatStartedAt: number | undefined;
   let toolStartedAt: number | undefined;
   let sessionStartedAt: number | undefined;
+
+  registerOtelCommands(pi, {
+    getConfig: () => resolvedConfig,
+    getSdk: () => sdk,
+  });
 
   // ── SDK lifecycle ─────────────────────────────────────────────────
   pi.on(
@@ -129,7 +137,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
         sampleRatio: resolvedConfig.sampleRatio,
         resourceAttributes: buildResourceAttributes(resolvedConfig.serviceName),
       };
-      const sdk = await initSdk(config);
+      sdk = await initSdk(config);
       startSdk(sdk);
     },
   );
@@ -145,6 +153,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       tracker?.closeAll();
       tracker = null;
       await shutdownSdk();
+      sdk = null;
     }
   });
 
