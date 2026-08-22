@@ -138,7 +138,7 @@ export function mergeConfig(
 ): ResolvedConfig {
   const merged: ResolvedConfig = {
     ...base,
-    capture: { ...base.capture },
+    capture: mergeCapture(base.capture, overrides.capture),
   };
 
   if (typeof overrides.enabled === "boolean") {
@@ -164,24 +164,34 @@ export function mergeConfig(
     merged.summaryLength = overrides.summaryLength;
   }
 
-  const capture = overrides.capture;
-  if (capture !== null && typeof capture === "object") {
-    const c = capture as Record<string, unknown>;
-    if (typeof c.prompts === "boolean") {
-      merged.capture.prompts = c.prompts;
-    }
-    if (typeof c.toolArgs === "boolean") {
-      merged.capture.toolArgs = c.toolArgs;
-    }
-    if (typeof c.toolResults === "boolean") {
-      merged.capture.toolResults = c.toolResults;
-    }
-    if (typeof c.providerPayloads === "boolean") {
-      merged.capture.providerPayloads = c.providerPayloads;
-    }
-  }
-
   return merged;
+}
+
+/** Merge the `capture` block of a `pi-otel.json` object over a base. Wrong-
+ * typed or absent fields are ignored. Returns a new object. */
+function mergeCapture(base: CaptureConfig, capture: unknown): CaptureConfig {
+  if (
+    capture === null ||
+    typeof capture !== "object" ||
+    Array.isArray(capture)
+  ) {
+    return { ...base };
+  }
+  const c = capture as Record<string, unknown>;
+  const result: CaptureConfig = { ...base };
+  if (typeof c.prompts === "boolean") {
+    result.prompts = c.prompts;
+  }
+  if (typeof c.toolArgs === "boolean") {
+    result.toolArgs = c.toolArgs;
+  }
+  if (typeof c.toolResults === "boolean") {
+    result.toolResults = c.toolResults;
+  }
+  if (typeof c.providerPayloads === "boolean") {
+    result.providerPayloads = c.providerPayloads;
+  }
+  return result;
 }
 
 /**
@@ -220,12 +230,10 @@ export function applyEnv(
   // Per-signal endpoints: an explicit `…_TRACES_ENDPOINT` / `…_METRICS_ENDPOINT`
   // wins and is used as-is (no path appended); otherwise the base gets the
   // signal path appended.
-  const tracesEndpoint = otelTracesEndpoint
-    ? otelTracesEndpoint
-    : `${trimTrailingSlash(endpoint)}${TRACES_PATH}`;
-  const metricsEndpoint = otelMetricsEndpoint
-    ? otelMetricsEndpoint
-    : `${trimTrailingSlash(endpoint)}${METRICS_PATH}`;
+  const tracesEndpoint =
+    otelTracesEndpoint ?? `${trimTrailingSlash(endpoint)}${TRACES_PATH}`;
+  const metricsEndpoint =
+    otelMetricsEndpoint ?? `${trimTrailingSlash(endpoint)}${METRICS_PATH}`;
 
   return {
     enabled,

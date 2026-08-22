@@ -79,6 +79,9 @@ export function toContent(value: unknown): string {
   try {
     return JSON.stringify(value);
   } catch {
-    return String(value);
+    // Circular reference or other non-serializable value — `String()` on an
+    // object would yield the useless "[object Object]", so fall back to a
+    // type-tagged marker instead.
+    return `[unserializable ${typeof value}]`;
   }
 }

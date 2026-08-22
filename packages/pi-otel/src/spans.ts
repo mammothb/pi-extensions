@@ -62,6 +62,9 @@ import {
 import type { CaptureConfig } from "./config.js";
 import { applyCaptureMode, toContent } from "./content.js";
 
+/** Span attribute value type (mirrors the OTel attribute value union). */
+type SpanAttrValue = string | number | boolean;
+
 /** Subset of an assistant message that endChat needs. */
 export interface ChatMessageInfo {
   provider: string;
@@ -88,13 +91,13 @@ export interface SpanTrackerOptions {
  * via `endInteraction()`.
  */
 export class SpanTracker {
-  private _tracer: Tracer;
-  private _sessionId: string;
-  private _interactionId: string;
-  private _capture: CaptureConfig;
-  private _summaryLength: number;
+  private readonly _tracer: Tracer;
+  private readonly _sessionId: string;
+  private readonly _interactionId: string;
+  private readonly _capture: CaptureConfig;
+  private readonly _summaryLength: number;
   /** Active-span stack. The top is the current parent for new spans. */
-  private _stack: Span[] = [];
+  private readonly _stack: Span[] = [];
   /** Most recent turn span — used so chat/tool children pick the right
    * parent even when a chat ends before its tools start. */
   private _turn: Span | undefined;
@@ -152,7 +155,7 @@ export class SpanTracker {
 
   /** Start a `chat <model>` child of the active turn. */
   beginChat(): Span {
-    const attrs: Record<string, string | number | boolean> = {
+    const attrs: Record<string, SpanAttrValue> = {
       [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.CHAT,
     };
     if (this._compacted) {
@@ -258,7 +261,7 @@ export class SpanTracker {
       this._capture.toolArgs ? "summary" : "off",
       this._summaryLength,
     );
-    const attrs: Record<string, string | number | boolean> = {
+    const attrs: Record<string, SpanAttrValue> = {
       [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.EXECUTE_TOOL,
       [GEN_AI_TOOL_NAME]: toolName,
       [PI_TOOL_NAME]: toolName,
@@ -313,7 +316,7 @@ export class SpanTracker {
   beginNestedAgent(name: string, sessionId?: string): Span {
     const parent =
       this._stack[this._stack.length - 1] ?? this._turn ?? undefined;
-    const attrs: Record<string, string | number | boolean> = {
+    const attrs: Record<string, SpanAttrValue> = {
       [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.INVOKE_AGENT,
       [GEN_AI_AGENT_NAME]: name,
     };
@@ -342,7 +345,7 @@ export class SpanTracker {
    */
   recordAgentEvent(
     name: string,
-    attrs?: Record<string, string | number | boolean | string[]>,
+    attrs?: Record<string, SpanAttrValue | string[]>,
   ): void {
     // The interaction root is the bottom of the stack; tools/chats may
     // still be above it. We attach the event to the root by walking to
@@ -394,9 +397,9 @@ export class SpanTracker {
     name: string,
     kind: SpanKind,
     parent: Span | undefined,
-    extraAttrs?: Record<string, string | number | boolean>,
+    extraAttrs?: Record<string, SpanAttrValue>,
   ): Span {
-    const attrs: Record<string, string | number | boolean> = {
+    const attrs: Record<string, SpanAttrValue> = {
       [PI_SESSION_ID]: this._sessionId,
       [GEN_AI_CONVERSATION_ID]: this._sessionId,
       [PI_INTERACTION_ID]: this._interactionId,

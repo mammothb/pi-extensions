@@ -20,7 +20,7 @@
  *     provider without `disable()` first).
  *   - Resource attributes and headers are config-driven, not env-only.
  */
-import { metrics, trace } from "@opentelemetry/api";
+import { metrics, type Sampler, trace } from "@opentelemetry/api";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
@@ -90,6 +90,21 @@ const METRIC_EXPORT_INTERVAL_MS = 10_000;
 /** Clamp a sampling ratio to [0, 1]. */
 function clampRatio(ratio: number): number {
   return Math.min(1, Math.max(0, ratio));
+}
+
+/** Build a sampler from a 0.0–1.0 ratio. Ratio ≥ 1 traces everything, ≤ 0
+ * traces nothing, and in between traces a fraction of traces while always
+ * keeping spans whose parent was already sampled (ParentBasedSampler). */
+function createSampler(ratio: number): Sampler {
+  if (ratio >= 1) {
+    return new AlwaysOnSampler();
+  }
+  if (ratio <= 0) {
+    return new AlwaysOffSampler();
+  }
+  return new ParentBasedSampler({
+    root: new TraceIdRatioBasedSampler(ratio),
+  });
 }
 
 /** Count the total number of metric data points in one collection. */
@@ -191,17 +206,9 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
       exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS,
     });
 
-    const sampleRatio = clampRatio(config.sampleRatio ?? 1.0);
     const tracerProvider = new BasicTracerProvider({
       resource,
-      sampler:
-        sampleRatio >= 1
-          ? new AlwaysOnSampler()
-          : sampleRatio <= 0
-            ? new AlwaysOffSampler()
-            : new ParentBasedSampler({
-                root: new TraceIdRatioBasedSampler(sampleRatio),
-              }),
+      sampler: createSampler(clampRatio(config.sampleRatio ?? 1.0)),
       spanProcessors: [
         new BatchSpanProcessor(wrapTraceExporter(traceExporter, stats)),
       ],

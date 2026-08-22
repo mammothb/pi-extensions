@@ -8,14 +8,13 @@ import { metrics } from "@opentelemetry/api";
 import {
   AggregationTemporality,
   type DataPoint,
+  DataPointType,
   type Histogram,
-  type HistogramMetricData,
   InMemoryMetricExporter,
   MeterProvider,
   type MetricData,
   PeriodicExportingMetricReader,
   type ResourceMetrics,
-  type SumMetricData,
 } from "@opentelemetry/sdk-metrics";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -87,13 +86,19 @@ function findMetric(
 }
 
 function sumPoints(metric: MetricData | undefined): DataPoint<number>[] {
-  return (metric as SumMetricData | undefined)?.dataPoints ?? [];
+  if (!metric || metric.dataPointType !== DataPointType.SUM) {
+    return [];
+  }
+  return metric.dataPoints;
 }
 
 function histogramPoints(
   metric: MetricData | undefined,
 ): DataPoint<Histogram>[] {
-  return (metric as HistogramMetricData | undefined)?.dataPoints ?? [];
+  if (!metric || metric.dataPointType !== DataPointType.HISTOGRAM) {
+    return [];
+  }
+  return metric.dataPoints;
 }
 
 // ===========================================================================

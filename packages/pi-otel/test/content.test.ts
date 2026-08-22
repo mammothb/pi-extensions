@@ -88,10 +88,10 @@ describe("content", () => {
       expect(toContent(null)).toBe("");
     });
 
-    it("falls back to String() for circular refs", () => {
+    it("falls back to a type-tagged marker for circular refs", () => {
       const obj: Record<string, unknown> = {};
       obj.self = obj;
-      expect(toContent(obj)).toBe(String(obj));
+      expect(toContent(obj)).toBe("[unserializable object]");
     });
 
     it("stringifies numbers and booleans", () => {
