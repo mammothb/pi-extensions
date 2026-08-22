@@ -1,5 +1,12 @@
 # @mammothb/pi-web
 
+## 6.0.3
+
+### Patch Changes
+
+- Updated dependencies [ab5640c]
+  - @mammothb/pi-shared@1.5.0
+
 ## 6.0.2
 
 ### Patch Changes

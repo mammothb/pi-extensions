@@ -1,5 +1,11 @@
 # @mammothb/pi-shared
 
+## 1.5.0
+
+### Minor Changes
+
+- ab5640c: Add `resolveSecret` / `resolveSecrets` helpers for `env:` / `file:` indirection in config values, re-exported from `pi-shared` entry.
+
 ## 1.4.1
 
 ### Patch Changes
