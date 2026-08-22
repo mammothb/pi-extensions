@@ -21,8 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stub the SDK lifecycle: initSdk returns a dummy handle, startSdk is a
 // no-op (so the test's MeterProvider stays the global one), shutdownSdk
-// resolves, and isInitialized reports true so session_shutdown records the
-// session duration and tears the tracker down.
+// resolves, and isInitialized reports true so session_shutdown tears the
+// tracker down.
 vi.mock("../src/sdk.js", () => ({
   initSdk: vi.fn().mockResolvedValue({}),
   startSdk: vi.fn(),
@@ -244,12 +244,8 @@ describe("Metrics", () => {
     expect(chatPoints).toHaveLength(1);
     expect(toolDurationPoints).toHaveLength(1);
 
-    // pi.session.duration — exactly one observation with a positive value
-    const sessionDuration = findMetric(rms, "pi.session.duration");
-    const sessionPoints = histogramPoints(sessionDuration);
-    expect(sessionPoints).toHaveLength(1);
-    expect(sessionPoints[0]?.value.count).toBe(1);
-    expect(sessionPoints[0]?.value.sum).toBeGreaterThanOrEqual(0);
+    // no pi.session.duration — removed (completed-session metric was unused)
+    expect(findMetric(rms, "pi.session.duration")).toBeUndefined();
   });
 
   it("records an errored tool call with is_error=true", async () => {

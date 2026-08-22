@@ -113,7 +113,6 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   let lastRequestPayload: unknown;
   let chatStartedAt: number | undefined;
   let toolStartedAt: number | undefined;
-  let sessionStartedAt: number | undefined;
   // The model the user selected/configured, captured from `model_select`.
   // `message.model` on the response is the *resolved backend* model (e.g. an
   // alias like `hy3-free` routes to `deepseek-v4-pro`), which is the wrong
@@ -129,7 +128,6 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   pi.on(
     "session_start",
     async (_event: SessionStartEvent, ctx: ExtensionContext) => {
-      sessionStartedAt = Date.now();
       resolvedConfig = loadConfig(ctx.cwd);
       if (!resolvedConfig.enabled) {
         return;
@@ -148,12 +146,6 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   );
 
   pi.on("session_shutdown", async (_event: SessionShutdownEvent) => {
-    // Session duration is recorded regardless of SDK state — it must not
-    // be lost if the exporter is already down.
-    if (sessionStartedAt !== undefined) {
-      metrics.recordSessionDuration((Date.now() - sessionStartedAt) / 1000);
-      sessionStartedAt = undefined;
-    }
     if (isInitialized()) {
       tracker?.closeAll();
       tracker = null;

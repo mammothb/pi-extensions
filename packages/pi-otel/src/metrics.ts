@@ -38,9 +38,6 @@ const DURATION_MS_BUCKETS = [
   1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000,
   300000,
 ];
-const DURATION_S_BUCKETS = [
-  60, 300, 600, 1800, 3600, 7200, 14400, 28800, 86400,
-];
 
 export class Metrics {
   private _meter: Meter | undefined;
@@ -49,7 +46,6 @@ export class Metrics {
   private _promptCount: Counter | undefined;
   private _turnCount: Counter | undefined;
   private _toolCalls: Counter | undefined;
-  private _sessionDuration: Histogram | undefined;
   private _toolDuration: Histogram | undefined;
   private _chatCalls: Counter | undefined;
 
@@ -135,21 +131,6 @@ export class Metrics {
     return this._toolDuration;
   }
 
-  /** `pi.session.duration` — histogram (s). One observation per session.
-   * No unit so Prometheus keeps the bare name `pi_session_duration_bucket`. */
-  private sessionDuration(): Histogram {
-    if (!this._sessionDuration) {
-      this._sessionDuration = this.getMeter().createHistogram(
-        "pi.session.duration",
-        {
-          description: "Session wall-clock duration in seconds.",
-          advice: { explicitBucketBoundaries: DURATION_S_BUCKETS },
-        },
-      );
-    }
-    return this._sessionDuration;
-  }
-
   // ── recording entry points ───────────────────────────────────────────
 
   /** Record one token-usage datum for a single chat. `tokenType` is
@@ -230,13 +211,5 @@ export class Metrics {
     this.toolDuration().record(durationMs, {
       [PI_TOOL_NAME]: toolName,
     });
-  }
-
-  /** Observe the session duration in seconds. */
-  recordSessionDuration(durationSec: number): void {
-    if (!Number.isFinite(durationSec) || durationSec < 0) {
-      return;
-    }
-    this.sessionDuration().record(durationSec);
   }
 }

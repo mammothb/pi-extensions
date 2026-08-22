@@ -39,6 +39,24 @@ To change anything, drop a `pi-otel.json` file:
 Loaded through `@mammothb/pi-shared`'s `loadPiConfig` — the same loader every
 other `@mammothb/` extension uses.
 
+### Secrets in headers
+
+Header values support `env:` / `file:` indirection, so API keys can live
+outside the (often committed) config file:
+
+```jsonc
+{ "headers": { "X-API-Key": "file:~/.pi/secrets/otel-api-key" } }
+// or:        { "X-API-Key": "env:PI_OTEL_API_KEY" }
+```
+
+- `env:VAR_NAME` — read the value from an environment variable
+- `file:/path` — read the value from a file (a leading `~` is expanded; contents are trimmed)
+- anything else — used literally
+
+A missing file / env var falls back to the literal string (visible in the
+header, rather than a silently empty secret). Resolution happens at config
+load time via `@mammothb/pi-shared`'s `resolveSecrets`.
+
 ### Env vars
 
 | Var | Purpose |
@@ -73,9 +91,10 @@ Hashes stay on regardless, so spans remain correlatable without leaking content.
 
 ## Grafana dashboard
 
-Import `dashboards/pi-otel.json` into Grafana. Panels: token usage by model,
-operation duration p50/p95, tool-call counts with error rate, prompt/turn
-counters, session-duration histogram, and a trace exemplar linking to Tempo.
+Import `dashboards/pi-otel.json` into Grafana. Panels: token rate by model,
+operation duration p95, chat error rate, tool-call distribution + rate +
+error rate, tool-duration distribution, prompt/turn rate, and a traces table
+linking to Tempo.
 
 ## Local dev stack
 

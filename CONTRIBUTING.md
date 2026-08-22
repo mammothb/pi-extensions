@@ -80,6 +80,7 @@ independently under the `@mammothb/` scope.
 | `@mammothb/pi-eval` | Execute JavaScript and Python code in isolated subprocesses |
 | `@mammothb/pi-ghsearch` | Typed GitHub search, fetch, and auth-status tools via the `gh` CLI |
 | `@mammothb/pi-memory` | Persistent agent memory across sessions |
+| `@mammothb/pi-otel` | OpenTelemetry traces + metrics for pi — OTLP/HTTP export, Grafana dashboard, `/otel-status` + `/otel-flush` |
 | `@mammothb/pi-toast` | Desktop toast notifications on agent events (tmux-aware) |
 | `@mammothb/pi-tokyonight-storm` | Tokyo Night Storm theme — colors corrected to match folke/tokyonight.nvim |
 | `@mammothb/pi-web` | Fetch and search the web — `WebFetch` + `WebSearch` tools |
