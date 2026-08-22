@@ -1,5 +1,12 @@
 # @mammothb/pi-subagents
 
+## 1.1.1
+
+### Patch Changes
+
+- Updated dependencies [ab5640c]
+  - @mammothb/pi-shared@1.5.0
+
 ## 1.1.0
 
 ### Minor Changes
