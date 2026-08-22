@@ -1,16 +1,15 @@
 /**
  * @mammothb/pi-otel — OpenTelemetry traces + metrics for the pi coding harness.
  *
- * Phase 2 wiring: lifecycle events from pi drive the SpanTracker. The SDK
- * lifecycle (init on `session_start`, shutdown on `session_shutdown`) and
- * resource attributes are also handled here. Config resolution lands in
- * Phase 4 — Phase 2 uses minimal defaults so the wiring is testable.
+ * Phase 2+3 wiring: lifecycle events from pi drive the SpanTracker and the
+ * Metrics recorder. The SDK lifecycle (init on `session_start`, shutdown on
+ * `session_shutdown`) and resource attributes are also handled here. Config
+ * resolution lands in Phase 4 — for now minimal defaults keep the wiring
+ * testable.
  */
-
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import * as path from "node:path";
 import type {
   AgentEndEvent,
   BeforeAgentStartEvent,
@@ -28,6 +27,7 @@ import type {
   TurnEndEvent,
   TurnStartEvent,
 } from "@earendil-works/pi-coding-agent";
+import { trace } from "@opentelemetry/api";
 
 /**
  * The two event types below are not re-exported from
@@ -50,6 +50,7 @@ interface ModelSelectEvent {
   source: string;
 }
 
+import { Metrics } from "./src/metrics.js";
 import {
   initSdk,
   isInitialized,
@@ -58,8 +59,11 @@ import {
   startSdk,
 } from "./src/sdk.js";
 import { SpanTracker } from "./src/spans.js";
+import { PI_OTEL_VERSION } from "./src/version.js";
 
-/** Phase 2 default config; replaced by `config.ts` resolution in Phase 4. */
+const TRACER_NAME = "@mammothb/pi-otel";
+
+/** Phase 2/3 default config; replaced by `config.ts` resolution in Phase 4. */
 const DEFAULT_ENDPOINT =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318";
 const DEFAULT_SERVICE_NAME = "pi";
@@ -79,8 +83,8 @@ function gitConfig(key: string): string | undefined {
 /**
  * Build the resource attributes (service.name, host.name, user.*) for the
  * SDK. Order: explicit env > `git config` > hostname fallback. `user.*`
- * env vars follow the `PI_OTEL_USER_*` convention; not part of Phase 4
- * config (which will read OTEL_RESOURCE_ATTRIBUTES too).
+ * env vars follow the `PI_OTEL_USER_*` convention; Phase 4 will also read
+ * `OTEL_RESOURCE_ATTRIBUTES`.
  */
 function buildResourceAttributes(): Record<string, string> {
   const userName =
@@ -103,16 +107,22 @@ function buildResourceAttributes(): Record<string, string> {
   return attrs;
 }
 
-/** Module-level state. One tracker per active interaction; one cached
- * provider-response status per active chat. */
-let tracker: SpanTracker | null = null;
-let lastResponseStatus: number | undefined;
-
 export default function piOtelExtension(pi: ExtensionAPI): void {
+  // Per-instance state (factory closure). pi tears down and re-runs the
+  // factory on /reload, /new, /fork, and /resume; a fresh closure gives
+  // each extension instance clean state.
+  const metrics = new Metrics();
+  let tracker: SpanTracker | null = null;
+  let lastResponseStatus: number | undefined;
+  let chatStartedAt: number | undefined;
+  let toolStartedAt: number | undefined;
+  let sessionStartedAt: number | undefined;
+
   // ── SDK lifecycle ─────────────────────────────────────────────────
   pi.on(
     "session_start",
     async (_event: SessionStartEvent, ctx: ExtensionContext) => {
+      sessionStartedAt = Date.now();
       // Re-init on every session_start. The SDK's initOnce guard tears down
       // any prior SDK first, so this is safe across `/new`, `/reload`,
       // `/resume`, and `/fork`.
@@ -124,14 +134,17 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       };
       const sdk = await initSdk(config);
       startSdk(sdk);
-      // Make session id resolvable for downstream wiring (it is also
-      // available via ctx.sessionManager.getSessionId()).
-      const sessionId = ctx.sessionManager.getSessionId();
-      void sessionId; // Phase 4 will thread this through the config; for now we read it per event
+      void ctx; // session id is read per-event from the ExtensionContext
     },
   );
 
   pi.on("session_shutdown", async (_event: SessionShutdownEvent) => {
+    // Session duration is recorded regardless of SDK state — it must not
+    // be lost if the exporter is already down.
+    if (sessionStartedAt !== undefined) {
+      metrics.recordSessionDuration((Date.now() - sessionStartedAt) / 1000);
+      sessionStartedAt = undefined;
+    }
     if (isInitialized()) {
       tracker?.closeAll();
       tracker = null;
@@ -173,14 +186,15 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   pi.on(
     "before_agent_start",
     (event: BeforeAgentStartEvent, ctx: ExtensionContext) => {
-      // One tracker per interaction. The session id is read at SDK init
-      // (resource attributes don't include it); we thread it explicitly
-      // into the tracker so it can be set as a span attribute.
+      // One tracker per interaction. The session id is read from the
+      // context here (the resource attributes don't carry it — the tracker
+      // sets it as a span attribute on every span).
       const sessionId = ctx.sessionManager.getSessionId();
       const interactionId = randomUUID();
-      void event; // prompt/image are not used in Phase 2; capture lands in Phase 4
+      void event; // prompt/image are not used until Phase 4 capture
+      metrics.recordPrompt();
       tracker = new SpanTracker({
-        tracer: getTracer(),
+        tracer: trace.getTracer(TRACER_NAME, PI_OTEL_VERSION),
         sessionId,
         interactionId,
       });
@@ -193,10 +207,12 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("turn_end", (_event: TurnEndEvent) => {
+    metrics.recordTurn();
     tracker?.endTurn();
   });
 
   pi.on("before_provider_request", (_event: BeforeProviderRequestEvent) => {
+    chatStartedAt = Date.now();
     tracker?.beginChat();
     lastResponseStatus = undefined;
   });
@@ -208,7 +224,6 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
 
   pi.on("message_end", (event: MessageEndEvent) => {
     // The assistant message carries model / provider / usage / stop reason.
-    // `endChat` is a no-op if no chat is open (defensive).
     const message = event.message as {
       role?: string;
       provider?: string;
@@ -220,6 +235,22 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     };
     if (message.role !== "assistant" || !message.provider || !message.model) {
       return;
+    }
+    metrics.recordTokenUsage(
+      "input",
+      message.model,
+      message.provider,
+      message.usage?.input ?? 0,
+    );
+    metrics.recordTokenUsage(
+      "output",
+      message.model,
+      message.provider,
+      message.usage?.output ?? 0,
+    );
+    if (chatStartedAt !== undefined) {
+      metrics.recordOperationDuration("chat", Date.now() - chatStartedAt);
+      chatStartedAt = undefined;
     }
     tracker?.endChat(
       {
@@ -239,12 +270,21 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", (event: ToolExecutionStartEvent) => {
+    toolStartedAt = Date.now();
     // Placeholder hashes until Phase 4's content.ts supplies the real
     // sha256 of args/result.
     tracker?.beginTool(event.toolCallId, event.toolName, "");
   });
 
   pi.on("tool_execution_end", (event: ToolExecutionEndEvent) => {
+    if (toolStartedAt !== undefined) {
+      metrics.recordOperationDuration(
+        "execute_tool",
+        Date.now() - toolStartedAt,
+      );
+      toolStartedAt = undefined;
+    }
+    metrics.recordToolCall(event.toolName, event.isError);
     tracker?.endTool("", event.isError);
     void event.result; // Phase 4 will hash the result and pass it through
   });
@@ -254,21 +294,3 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     tracker = null;
   });
 }
-
-// ── helpers ─────────────────────────────────────────────────────────────
-
-/** Get the OTel tracer from the global provider. Lazy because the SDK
- * init happens on `session_start`, not in the factory. */
-function getTracer() {
-  // Lazy import to keep the extension's top-level imports small and
-  // because the global trace is only set up after `startSdk`.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { trace } =
-    require("@opentelemetry/api") as typeof import("@opentelemetry/api");
-  return trace.getTracer("@mammothb/pi-otel", "0.0.0");
-}
-
-// `path` is reserved for Phase 5 (commands/ARTIFACTS) and Phase 4
-// (config file path resolution). Keep the import so the module surface
-// stays predictable for the next phase.
-void path;
