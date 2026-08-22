@@ -11,7 +11,7 @@
  *
  *   `PI_OTEL_*` > `OTEL_*` > `pi-otel.json` > defaults
  */
-import { loadPiConfig } from "@mammothb/pi-shared";
+import { loadPiConfig, resolveSecrets } from "@mammothb/pi-shared";
 
 export interface CaptureConfig {
   /** Emit prompt text as a span event attribute. */
@@ -254,5 +254,11 @@ export function loadConfig(
     DEFAULT_CONFIG,
     mergeConfig,
   );
-  return applyEnv(fileConfig, env);
+  const resolved = applyEnv(fileConfig, env);
+  // Resolve `env:` / `file:` indirection in header values so secrets can
+  // live outside the committed config file.
+  return {
+    ...resolved,
+    headers: resolveSecrets(resolved.headers),
+  };
 }

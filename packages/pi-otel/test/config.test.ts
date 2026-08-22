@@ -191,6 +191,28 @@ describe("loadConfig", () => {
     });
     expect(cfg.endpoint).toBe("http://env:4318");
   });
+
+  it("resolves env:/file: indirection in header values", () => {
+    writeFileSync(join(tmpDir, "key.txt"), "file-secret");
+    process.env.PI_OTEL_TEST_SECRET = "env-secret";
+    try {
+      writeGlobal({
+        headers: {
+          "X-From-File": `file:${join(tmpDir, "key.txt")}`,
+          "X-From-Env": "env:PI_OTEL_TEST_SECRET",
+          "X-Literal": "plain",
+        },
+      });
+      const cfg = loadConfig(projectDir, EMPTY_ENV);
+      expect(cfg.headers).toEqual({
+        "X-From-File": "file-secret",
+        "X-From-Env": "env-secret",
+        "X-Literal": "plain",
+      });
+    } finally {
+      delete process.env.PI_OTEL_TEST_SECRET;
+    }
+  });
 });
 
 describe("parseHeaders", () => {
