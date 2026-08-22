@@ -109,6 +109,13 @@ export default defineConfig({
           include: ["test/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "pi-otel",
+          root: "./packages/pi-otel",
+          include: ["test/**/*.test.ts"],
+        },
+      },
     ],
   },
 });

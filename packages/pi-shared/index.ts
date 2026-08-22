@@ -17,3 +17,4 @@ export { isTextContent } from "./src/is-text-content.js";
 export { loadPiConfig, readConfigFile } from "./src/load-config.js";
 export { PREVIEW_LINES } from "./src/preview-lines.js";
 export { renderError } from "./src/render-error.js";
+export { resolveSecret, resolveSecrets } from "./src/resolve-secret.js";

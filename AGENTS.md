@@ -12,6 +12,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development, testing, and release i
 | `@mammothb/pi-eval` | Execute JavaScript and Python code in isolated subprocesses |
 | `@mammothb/pi-ghsearch` | Typed GitHub search, fetch, and auth-status tools via the `gh` CLI |
 | `@mammothb/pi-memory` | VCC conversation compaction backed by mm-cli (`/mm-compact`, `/mm-recall`, `mm_recall`) |
+| `@mammothb/pi-otel` | OpenTelemetry traces + metrics for pi — OTLP/HTTP export, Grafana dashboard, `/otel-status` + `/otel-flush` |
 | `@mammothb/pi-permissions` | Permission enforcement — gates tool calls, bash commands (via arbiter executable), and file paths |
 | `@mammothb/pi-read` | Smart `read` — AST outlines for large files (optional tree-sitter WASM), delegating everything else to the built-in read |
 | `@mammothb/pi-shared` | Shared utilities for pi extensions (text extraction, config loading, error rendering) |
