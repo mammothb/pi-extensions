@@ -199,6 +199,13 @@ describe("Metrics", () => {
     expect(toolPoint?.attributes["pi.tool.name"]).toBe("read");
     expect(toolPoint?.attributes["pi.tool.is_error"]).toBe(false);
 
+    // pi.tool.duration — one observation per tool execution, keyed by name
+    // (no unit, so Prometheus keeps the bare name `pi_tool_duration_bucket`).
+    const toolDuration = findMetric(rms, "pi.tool.duration");
+    const toolDurPoints = histogramPoints(toolDuration);
+    expect(toolDurPoints).toHaveLength(1);
+    expect(toolDurPoints[0]?.attributes["pi.tool.name"]).toBe("read");
+
     // gen_ai.client.token.usage — two data points: input (100) and output (50)
     const tokenUsage = findMetric(rms, "gen_ai.client.token.usage");
     const tokenPoints = histogramPoints(tokenUsage);

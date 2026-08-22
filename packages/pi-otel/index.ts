@@ -114,6 +114,11 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   let chatStartedAt: number | undefined;
   let toolStartedAt: number | undefined;
   let sessionStartedAt: number | undefined;
+  // The model the user selected/configured, captured from `model_select`.
+  // `message.model` on the response is the *resolved backend* model (e.g. an
+  // alias like `hy3-free` routes to `deepseek-v4-pro`), which is the wrong
+  // label for `gen_ai.request.model` (\"model asked by the client\").
+  let currentModelId: string | undefined;
 
   registerOtelCommands(pi, {
     getConfig: () => resolvedConfig,
@@ -167,6 +172,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("model_select", (event: ModelSelectEvent) => {
+    currentModelId = event.model.id;
     tracker?.recordAgentEvent("model_select", {
       from: event.previousModel?.id ?? "",
       to: event.model.id,
@@ -247,16 +253,20 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     if (message.role !== "assistant" || !message.provider || !message.model) {
       return;
     }
+    // Prefer the client-requested model (from model_select) over the
+    // backend-resolved message.model, so gen_ai.request.model reflects the
+    // model the user actually selected (e.g. an alias like `hy3-free`).
+    const modelLabel = currentModelId ?? message.model ?? "";
     metrics.recordTokenUsage(
       "input",
-      message.model,
-      message.provider,
+      modelLabel,
+      message.provider ?? "",
       message.usage?.input ?? 0,
     );
     metrics.recordTokenUsage(
       "output",
-      message.model,
-      message.provider,
+      modelLabel,
+      message.provider ?? "",
       message.usage?.output ?? 0,
     );
     if (chatStartedAt !== undefined) {
@@ -266,7 +276,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     tracker?.endChat(
       {
         provider: message.provider,
-        model: message.model,
+        model: modelLabel,
         responseModel: message.responseModel,
         stopReason: message.stopReason ?? "stop",
         usage: {
@@ -292,10 +302,9 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
 
   pi.on("tool_execution_end", (event: ToolExecutionEndEvent) => {
     if (toolStartedAt !== undefined) {
-      metrics.recordOperationDuration(
-        "execute_tool",
-        Date.now() - toolStartedAt,
-      );
+      const toolDurationMs = Date.now() - toolStartedAt;
+      metrics.recordOperationDuration("execute_tool", toolDurationMs);
+      metrics.recordToolDuration(event.toolName, toolDurationMs);
       toolStartedAt = undefined;
     }
     metrics.recordToolCall(event.toolName, event.isError);

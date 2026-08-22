@@ -1,6 +1,6 @@
 services:
   otel-lgtm:
-    image: grafana/otel-lgtm:latest
+    image: grafana/otel-lgtm:0.29.1
     container_name: otel-lgtm
     ports:
       - "3000:3000" # Grafana
@@ -12,6 +12,5 @@ services:
       - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - otel-lgtm-data:/data
-
 volumes:
   otel-lgtm-data:

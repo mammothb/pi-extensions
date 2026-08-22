@@ -89,7 +89,7 @@ export interface OtelSdk {
   shutdown(): Promise<void>;
 }
 
-const METRIC_EXPORT_INTERVAL_MS = 60_000;
+const METRIC_EXPORT_INTERVAL_MS = 10_000;
 
 /** Clamp a sampling ratio to [0, 1]. */
 function clampRatio(ratio: number): number {

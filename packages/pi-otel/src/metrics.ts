@@ -49,6 +49,7 @@ export class Metrics {
   private _turnCount: Counter | undefined;
   private _toolCalls: Counter | undefined;
   private _sessionDuration: Histogram | undefined;
+  private _toolDuration: Histogram | undefined;
 
   /** Fetch (and cache) the meter lazily. */
   private getMeter(): Meter {
@@ -82,7 +83,6 @@ export class Metrics {
         "gen_ai.client.operation.duration",
         {
           description: "Duration of LLM chats and tool executions.",
-          unit: "ms",
           advice: { explicitBucketBoundaries: DURATION_MS_BUCKETS },
         },
       );
@@ -120,14 +120,27 @@ export class Metrics {
     return this._toolCalls;
   }
 
-  /** `pi.session.duration` — histogram (s). One observation per session. */
+  /** `pi.tool.duration` — histogram (ms), dim `pi.tool.name`. One observation
+   * per tool execution; backs the dashboard's tool-duration heatmap. No unit so
+   * Prometheus keeps the bare name `pi_tool_duration_bucket`. */
+  private toolDuration(): Histogram {
+    if (!this._toolDuration) {
+      this._toolDuration = this.getMeter().createHistogram("pi.tool.duration", {
+        description: "Tool execution duration in milliseconds.",
+        advice: { explicitBucketBoundaries: DURATION_MS_BUCKETS },
+      });
+    }
+    return this._toolDuration;
+  }
+
+  /** `pi.session.duration` — histogram (s). One observation per session.
+   * No unit so Prometheus keeps the bare name `pi_session_duration_bucket`. */
   private sessionDuration(): Histogram {
     if (!this._sessionDuration) {
       this._sessionDuration = this.getMeter().createHistogram(
         "pi.session.duration",
         {
           description: "Session wall-clock duration in seconds.",
-          unit: "s",
           advice: { explicitBucketBoundaries: DURATION_S_BUCKETS },
         },
       );
@@ -186,6 +199,16 @@ export class Metrics {
     this.toolCalls().add(1, {
       [PI_TOOL_NAME]: toolName,
       [PI_TOOL_IS_ERROR]: isError,
+    });
+  }
+
+  /** Observe the wall-clock duration of one tool execution, in ms. */
+  recordToolDuration(toolName: string, durationMs: number): void {
+    if (!Number.isFinite(durationMs) || durationMs < 0) {
+      return;
+    }
+    this.toolDuration().record(durationMs, {
+      [PI_TOOL_NAME]: toolName,
     });
   }
 
