@@ -66,7 +66,7 @@ If a theme author wants to improve contrast further, they can brighten
 ### Tests
 
 The vitest workspace (`vitest.config.ts`) covers all packages with tests:
-`pi-ask`, `pi-eval`, `pi-ghsearch`, `pi-memory`, `pi-toast`, `pi-web`,
+`pi-ask`, `pi-eval`, `pi-ghsearch`, `pi-memory`, `pi-otel`, `pi-toast`, `pi-web`,
 `pi-webfetch`, and `pi-websearch`.
 
 ## Packages

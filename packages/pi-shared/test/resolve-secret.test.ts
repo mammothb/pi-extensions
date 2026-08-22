@@ -58,11 +58,21 @@ describe("resolveSecret", () => {
   });
 
   it("expands a leading tilde in a file: path", () => {
-    // `~` is expanded via expandTilde; assert the prefix survives when the
-    // file does not exist (resolution attempts the expanded path).
-    expect(resolveSecret("file:~/definitely-not-a-real-file")).toBe(
-      "file:~/definitely-not-a-real-file",
-    );
+    const prevHome = process.env.HOME;
+    process.env.HOME = tmpDir;
+    try {
+      // `~` is expanded via expandTilde (which uses os.homedir(), honoring
+      // $HOME on POSIX), so file:~/... resolves under the temp HOME.
+      const file = join(tmpDir, "home-secret.txt");
+      writeFileSync(file, "home-key-value");
+      expect(resolveSecret("file:~/home-secret.txt")).toBe("home-key-value");
+    } finally {
+      if (prevHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = prevHome;
+      }
+    }
   });
 });
 

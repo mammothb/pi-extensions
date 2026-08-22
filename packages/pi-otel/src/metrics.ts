@@ -38,6 +38,8 @@ const DURATION_MS_BUCKETS = [
   1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000,
   300000,
 ];
+// Second-scaled copy for the GenAI-semantic `gen_ai.client.operation.duration`.
+const DURATION_S_BUCKETS = DURATION_MS_BUCKETS.map((b) => b / 1000);
 
 export class Metrics {
   private _meter: Meter | undefined;
@@ -73,15 +75,17 @@ export class Metrics {
     return this._tokenUsage;
   }
 
-  /** `gen_ai.client.operation.duration` — histogram (ms), dim
-   * `gen_ai.operation.name` (`chat` | `execute_tool`). */
+  /** `gen_ai.client.operation.duration` — histogram (seconds), dim
+   * `gen_ai.operation.name` (`chat` | `execute_tool`). Follows the GenAI
+   * semantic convention (duration in seconds). */
   private opDuration(): Histogram {
     if (!this._opDuration) {
       this._opDuration = this.getMeter().createHistogram(
         "gen_ai.client.operation.duration",
         {
-          description: "Duration of LLM chats and tool executions.",
-          advice: { explicitBucketBoundaries: DURATION_MS_BUCKETS },
+          description: "Duration of LLM chats and tool executions (seconds).",
+          unit: "s",
+          advice: { explicitBucketBoundaries: DURATION_S_BUCKETS },
         },
       );
     }
@@ -154,7 +158,9 @@ export class Metrics {
     });
   }
 
-  /** Record the wall-clock duration of one `chat` or `execute_tool`. */
+  /** Record the wall-clock duration of one `chat` or `execute_tool`.
+   * `durationMs` is converted to seconds before recording to follow the
+   * GenAI semantic convention. Negative/NaN values are ignored. */
   recordOperationDuration(
     operation: "chat" | "execute_tool",
     durationMs: number,
@@ -162,7 +168,7 @@ export class Metrics {
     if (!Number.isFinite(durationMs) || durationMs < 0) {
       return;
     }
-    this.opDuration().record(durationMs, {
+    this.opDuration().record(durationMs / 1000, {
       [GEN_AI_OPERATION_NAME]: operation,
     });
   }

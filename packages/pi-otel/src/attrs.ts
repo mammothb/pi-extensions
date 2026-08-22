@@ -118,8 +118,14 @@ export const PI_TOOL_RESULT = "pi.tool.result";
 /** Captured provider request body (truncated). */
 export const PI_PROVIDER_REQUEST = "pi.provider.request";
 
+/** sha256 of the raw provider request body. Always emitted. */
+export const PI_PROVIDER_REQUEST_SHA256 = "pi.provider.request_sha256";
+
 /** Captured provider response body (truncated). */
 export const PI_PROVIDER_RESPONSE = "pi.provider.response";
+
+/** sha256 of the raw provider response body. Always emitted. */
+export const PI_PROVIDER_RESPONSE_SHA256 = "pi.provider.response_sha256";
 
 // ── Span names ────────────────────────────────────────────────────────────
 

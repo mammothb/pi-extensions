@@ -44,10 +44,13 @@ import {
   GEN_AI_USAGE_INPUT_TOKENS,
   GEN_AI_USAGE_OUTPUT_TOKENS,
   PI_AGENT_SESSION_ID,
+  PI_CHAT_ERROR_TYPE,
   PI_INTERACTION_ID,
   PI_PROMPT_TEXT,
   PI_PROVIDER_REQUEST,
+  PI_PROVIDER_REQUEST_SHA256,
   PI_PROVIDER_RESPONSE,
+  PI_PROVIDER_RESPONSE_SHA256,
   PI_SESSION_ID,
   PI_TOOL_ARGS,
   PI_TOOL_ARGS_SHA256,
@@ -64,6 +67,18 @@ import { applyCaptureMode, toContent } from "./content.js";
 
 /** Span attribute value type (mirrors the OTel attribute value union). */
 type SpanAttrValue = string | number | boolean;
+
+/** Kind of span held on the tracker stack, used to match end events. */
+type StackKind = "interaction" | "turn" | "chat" | "tool" | "nestedAgent";
+
+/** A span on the tracker stack, tagged with its kind so end events can
+ * remove the matching entry rather than relying on LIFO order. Tool spans
+ * also carry `toolCallId` for direct lookup on completion. */
+interface StackEntry {
+  span: Span;
+  kind: StackKind;
+  toolCallId?: string;
+}
 
 /** Subset of an assistant message that endChat needs. */
 export interface ChatMessageInfo {
@@ -96,8 +111,12 @@ export class SpanTracker {
   private readonly _interactionId: string;
   private readonly _capture: CaptureConfig;
   private readonly _summaryLength: number;
-  /** Active-span stack. The top is the current parent for new spans. */
-  private readonly _stack: Span[] = [];
+  /** Active-span stack. Each entry is tagged with its kind so end events
+   * remove the matching span instead of assuming strict LIFO nesting.
+   * The top entry is the current parent for new spans. */
+  private readonly _stack: StackEntry[] = [];
+  /** Open tool spans, keyed by `toolCallId`, for completion-by-id lookup. */
+  private readonly _tools = new Map<string, StackEntry>();
   /** Most recent turn span — used so chat/tool children pick the right
    * parent even when a chat ends before its tools start. */
   private _turn: Span | undefined;
@@ -122,33 +141,33 @@ export class SpanTracker {
         [PI_INTERACTION_ID]: this._interactionId,
       },
     );
-    this._stack.push(span);
+    this._stack.push({ span, kind: "interaction" });
     return span;
   }
 
-  /** Close the interaction root. Pops the stack. */
+  /** Close the interaction root. Removes the matching entry from the stack. */
   endInteraction(): void {
-    this._stack.pop()?.end();
+    this._removeByKind("interaction")?.span.end();
   }
 
   /** Start a `pi.turn` child of the active interaction. */
   beginTurn(turnIndex: number): Span {
-    const parent = this._stack[this._stack.length - 1];
+    const parent = this._stack[this._stack.length - 1]?.span;
     const span = this._startSpan(SPAN_NAME.TURN, SpanKind.INTERNAL, parent, {
       [PI_TURN_INDEX]: turnIndex,
     });
     this._turn = span;
-    this._stack.push(span);
+    this._stack.push({ span, kind: "turn" });
     return span;
   }
 
-  /** Close the active turn. */
+  /** Close the active turn. Removes the matching entry from the stack. */
   endTurn(): void {
-    const span = this._stack.pop();
-    if (span) {
-      span.end();
+    const entry = this._removeByKind("turn");
+    if (entry) {
+      entry.span.end();
     }
-    if (this._turn === span) {
+    if (this._turn === entry?.span) {
       this._turn = undefined;
     }
   }
@@ -162,14 +181,14 @@ export class SpanTracker {
       attrs[GEN_AI_CONVERSATION_COMPACTED] = true;
       this._compacted = false;
     }
-    const parent = this._stack[this._stack.length - 1];
+    const parent = this._stack[this._stack.length - 1]?.span;
     const span = this._startSpan(
       SPAN_NAME.CHAT,
       SpanKind.CLIENT,
       parent,
       attrs,
     );
-    this._stack.push(span);
+    this._stack.push({ span, kind: "chat" });
     return span;
   }
 
@@ -185,10 +204,11 @@ export class SpanTracker {
     responseStatus?: number,
     providerPayload?: { request?: unknown; response?: unknown },
   ): void {
-    const span = this._stack.pop();
-    if (!span) {
+    const entry = this._removeByKind("chat");
+    if (!entry) {
       return;
     }
+    const span = entry.span;
 
     span.setAttribute(GEN_AI_REQUEST_MODEL, message.model);
     span.setAttribute(
@@ -211,12 +231,17 @@ export class SpanTracker {
         code: SpanStatusCode.ERROR,
         message: `HTTP ${responseStatus}`,
       });
-    } else if (
-      message.isError ||
-      message.stopReason === "error" ||
-      message.stopReason === "aborted"
-    ) {
-      span.setAttribute(ATTR_ERROR_TYPE, message.provider);
+    } else if (message.stopReason === "aborted") {
+      // Abort is its own category: the turn ended early (e.g. stream
+      // closed) rather than a provider failure. Classify as `aborted`
+      // to match the chat error-type metric, not the provider name.
+      span.setAttribute(ATTR_ERROR_TYPE, "aborted");
+      span.setAttribute(PI_CHAT_ERROR_TYPE, "aborted");
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    } else if (message.isError || message.stopReason === "error") {
+      // Other provider-side failures classify as `error`.
+      span.setAttribute(ATTR_ERROR_TYPE, "error");
+      span.setAttribute(PI_CHAT_ERROR_TYPE, "error");
       if (message.errorMessage) {
         span.setStatus({
           code: SpanStatusCode.ERROR,
@@ -227,22 +252,28 @@ export class SpanTracker {
       }
     }
 
-    if (this._capture.providerPayloads) {
-      if (providerPayload?.request !== undefined) {
-        const captured = applyCaptureMode(
-          toContent(providerPayload.request),
-          "summary",
-          this._summaryLength,
-        );
-        span.setAttribute(PI_PROVIDER_REQUEST, captured.content ?? "");
+    if (providerPayload?.request !== undefined) {
+      const captured = applyCaptureMode(
+        toContent(providerPayload.request),
+        this._capture.providerPayloads ? "summary" : "off",
+        this._summaryLength,
+      );
+      // Hash is always emitted (matches beginTool/endTool), so payloads are
+      // attributable even when raw content capture is off.
+      span.setAttribute(PI_PROVIDER_REQUEST_SHA256, captured.sha256);
+      if (captured.content !== undefined) {
+        span.setAttribute(PI_PROVIDER_REQUEST, captured.content);
       }
-      if (providerPayload?.response !== undefined) {
-        const captured = applyCaptureMode(
-          toContent(providerPayload.response),
-          "summary",
-          this._summaryLength,
-        );
-        span.setAttribute(PI_PROVIDER_RESPONSE, captured.content ?? "");
+    }
+    if (providerPayload?.response !== undefined) {
+      const captured = applyCaptureMode(
+        toContent(providerPayload.response),
+        this._capture.providerPayloads ? "summary" : "off",
+        this._summaryLength,
+      );
+      span.setAttribute(PI_PROVIDER_RESPONSE_SHA256, captured.sha256);
+      if (captured.content !== undefined) {
+        span.setAttribute(PI_PROVIDER_RESPONSE, captured.content);
       }
     }
 
@@ -277,18 +308,23 @@ export class SpanTracker {
       this._turn,
       attrs,
     );
-    this._stack.push(span);
+    const entry: StackEntry = { span, kind: "tool", toolCallId };
+    this._stack.push(entry);
+    this._tools.set(toolCallId, entry);
     return span;
   }
 
   /** Close the active tool. Sets `pi.tool.result_sha256` always (raw result
    * only when `capture.toolResults` is on), `pi.tool.is_error`, and ERROR
    * status on failure. */
-  endTool(result: unknown, isError: boolean): void {
-    const span = this._stack.pop();
-    if (!span) {
+  endTool(toolCallId: string, result: unknown, isError: boolean): void {
+    const entry = this._tools.get(toolCallId);
+    if (!entry) {
       return;
     }
+    this._tools.delete(toolCallId);
+    this._removeEntry(entry);
+    const span = entry.span;
     const captured = applyCaptureMode(
       toContent(result),
       this._capture.toolResults ? "summary" : "off",
@@ -315,7 +351,7 @@ export class SpanTracker {
    */
   beginNestedAgent(name: string, sessionId?: string): Span {
     const parent =
-      this._stack[this._stack.length - 1] ?? this._turn ?? undefined;
+      this._stack[this._stack.length - 1]?.span ?? this._turn ?? undefined;
     const attrs: Record<string, SpanAttrValue> = {
       [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.INVOKE_AGENT,
       [GEN_AI_AGENT_NAME]: name,
@@ -329,13 +365,13 @@ export class SpanTracker {
       parent,
       attrs,
     );
-    this._stack.push(span);
+    this._stack.push({ span, kind: "nestedAgent" });
     return span;
   }
 
-  /** Close the active nested agent span. */
+  /** Close the active nested agent span (matched by kind). */
   endNestedAgent(): void {
-    this._stack.pop()?.end();
+    this._removeByKind("nestedAgent")?.span.end();
   }
 
   /**
@@ -350,7 +386,7 @@ export class SpanTracker {
     // The interaction root is the bottom of the stack; tools/chats may
     // still be above it. We attach the event to the root by walking to
     // the first span in the stack.
-    const root = this._stack[0];
+    const root = this._stack[0]?.span;
     if (!root) {
       return;
     }
@@ -365,7 +401,7 @@ export class SpanTracker {
     if (!this._capture.prompts) {
       return;
     }
-    const root = this._stack[0];
+    const root = this._stack[0]?.span;
     if (!root) {
       return;
     }
@@ -383,9 +419,34 @@ export class SpanTracker {
    * a hard exit may leave dangling spans. */
   closeAll(): void {
     while (this._stack.length > 0) {
-      this._stack.pop()?.end();
+      this._stack.pop()?.span.end();
     }
+    this._tools.clear();
     this._turn = undefined;
+  }
+
+  // ── internals ────────────────────────────────────────────────────────
+
+  /** Find the topmost stack entry of the given kind and remove it. Returns
+   * the removed entry, or `undefined` if none matches (leaving the stack
+   * unchanged). This avoids corrupting the stack when an end event arrives
+   * without a matching open span. */
+  private _removeByKind(kind: StackKind): StackEntry | undefined {
+    for (let i = this._stack.length - 1; i >= 0; i--) {
+      const entry = this._stack[i];
+      if (entry && entry.kind === kind) {
+        return this._stack.splice(i, 1)[0];
+      }
+    }
+    return undefined;
+  }
+
+  /** Remove a specific entry (e.g. a tool span closed by call id). */
+  private _removeEntry(entry: StackEntry): void {
+    const i = this._stack.indexOf(entry);
+    if (i >= 0) {
+      this._stack.splice(i, 1);
+    }
   }
 
   // ── internals ────────────────────────────────────────────────────────

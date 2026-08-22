@@ -61,6 +61,13 @@ describe("mergeConfig", () => {
     expect(merged.headers).toEqual({ Authorization: "Bearer abc" });
   });
 
+  it("ignores non-string header values", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, {
+      headers: { "X-Good": "v", "X-Bad": 123, "X-AlsoBad": true },
+    });
+    expect(merged.headers).toEqual({ "X-Good": "v" });
+  });
+
   it("merges serviceName and sampleRatio", () => {
     const merged = mergeConfig(DEFAULT_CONFIG, {
       serviceName: "my-service",
@@ -68,6 +75,20 @@ describe("mergeConfig", () => {
     });
     expect(merged.serviceName).toBe("my-service");
     expect(merged.sampleRatio).toBe(0.5);
+  });
+
+  it("rejects invalid sampleRatio values", () => {
+    for (const bad of [NaN, Infinity, -0.5, 2, 1.5]) {
+      const merged = mergeConfig(DEFAULT_CONFIG, { sampleRatio: bad });
+      expect(merged.sampleRatio).toBe(DEFAULT_CONFIG.sampleRatio);
+    }
+  });
+
+  it("rejects invalid summaryLength values", () => {
+    for (const bad of [NaN, Infinity, -1]) {
+      const merged = mergeConfig(DEFAULT_CONFIG, { summaryLength: bad });
+      expect(merged.summaryLength).toBe(DEFAULT_CONFIG.summaryLength);
+    }
   });
 
   it("merges every capture flag individually", () => {
@@ -253,6 +274,21 @@ describe("parseHeaders", () => {
 
   it("skips malformed pairs", () => {
     expect(parseHeaders("noequals,=val,ok=1")).toEqual({ ok: "1" });
+  });
+
+  it("percent-decodes values", () => {
+    expect(parseHeaders("X-Space=a%20b,Comma=a%2Cb")).toEqual({
+      "X-Space": "a b",
+      Comma: "a,b",
+    });
+  });
+
+  it("preserves keys and keeps malformed percent values as-is", () => {
+    // Trailing % is malformed; the value is retained, not thrown.
+    expect(parseHeaders("Key=BAD%,Still=ok%20val")).toEqual({
+      Key: "BAD%",
+      Still: "ok val",
+    });
   });
 
   it("returns empty record for undefined/empty", () => {

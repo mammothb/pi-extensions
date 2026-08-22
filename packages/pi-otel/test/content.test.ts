@@ -94,6 +94,11 @@ describe("content", () => {
       expect(toContent(obj)).toBe("[unserializable object]");
     });
 
+    it("returns a string marker for functions and symbols", () => {
+      expect(toContent(() => {})).toBe("[unserializable function]");
+      expect(toContent(Symbol("x"))).toBe("[unserializable symbol]");
+    });
+
     it("stringifies numbers and booleans", () => {
       expect(toContent(42)).toBe("42");
       expect(toContent(true)).toBe("true");

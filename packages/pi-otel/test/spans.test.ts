@@ -10,7 +10,7 @@ import {
   type ReadableSpan,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SPAN_NAME } from "../src/attrs.js";
 import { DEFAULT_CAPTURE, DEFAULT_SUMMARY_LENGTH } from "../src/config.js";
 import { sha256 } from "../src/content.js";
@@ -19,12 +19,18 @@ import { SpanTracker } from "../src/spans.js";
 const SESSION_ID = "session-abc-123";
 const INTERACTION_ID = "interaction-xyz-789";
 
+/** All BasicTracerProvider instances created during a test, including
+ * ones replaced by `makeTracker`, so the test lifecycle can flush and shut
+ * them all down without leaking span processors / floating promises. */
+const providers: BasicTracerProvider[] = [];
+
 /** Build a fresh in-memory tracer + exporter pair for each test. */
 function setupTracer() {
   const exporter = new InMemorySpanExporter();
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+  providers.push(provider);
   const tracer = provider.getTracer("@mammothb/pi-otel-test");
   return { exporter, provider, tracer };
 }
@@ -84,6 +90,19 @@ describe("SpanTracker", () => {
     });
   });
 
+  afterEach(async () => {
+    // Flush every provider (including ones replaced by makeTracker) so any
+    // buffered spans are exported, then shut them down to release the span
+    // processors. Awaiting both prevents floating promises at teardown.
+    await Promise.all(
+      providers.map((p) => p.forceFlush().catch(() => undefined)),
+    );
+    await Promise.all(
+      providers.map((p) => p.shutdown().catch(() => undefined)),
+    );
+    providers.length = 0;
+  });
+
   /** Rebuild the tracker with an overridden capture config. */
   function makeTracker(
     captureOverrides: Partial<typeof DEFAULT_CAPTURE>,
@@ -111,7 +130,7 @@ describe("SpanTracker", () => {
       usage: { input: 100, output: 50 },
     });
     tracker.beginTool("call-1", "read", { path: "/tmp/x" });
-    tracker.endTool({ ok: true }, false);
+    tracker.endTool("call-1", { ok: true }, false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -221,7 +240,7 @@ describe("SpanTracker", () => {
       usage: { input: 1, output: 1 },
     });
     tracker.beginTool("call-fail", "bash", { cmd: "rm -rf /" });
-    tracker.endTool("permission denied", true);
+    tracker.endTool("call-fail", "permission denied", true);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -243,7 +262,7 @@ describe("SpanTracker", () => {
       usage: { input: 1, output: 1 },
     });
     tracker.beginTool("call-42", "grep", "pattern=foo");
-    tracker.endTool("no matches", false);
+    tracker.endTool("call-42", "no matches", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -273,7 +292,7 @@ describe("SpanTracker", () => {
     tracker.beginTool("call-task", "task", { subagent: true });
     tracker.beginNestedAgent("researcher", "sub-session-1");
     tracker.endNestedAgent();
-    tracker.endTool("done", false);
+    tracker.endTool("call-task", "done", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -357,7 +376,7 @@ describe("SpanTracker", () => {
       usage: { input: 1, output: 1 },
     });
     tracker.beginTool("call-1", "read", "secret args");
-    tracker.endTool("secret result", false);
+    tracker.endTool("call-1", "secret result", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -377,7 +396,7 @@ describe("SpanTracker", () => {
     tracker.beginInteraction();
     tracker.beginTurn(0);
     tracker.beginTool("call-1", "read", "x".repeat(2000));
-    tracker.endTool("ok", false);
+    tracker.endTool("call-1", "ok", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -445,6 +464,13 @@ describe("SpanTracker", () => {
     const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
     expect(chat.attributes["pi.provider.request"]).toBe('{"system":"sys"}');
     expect(chat.attributes["pi.provider.response"]).toBe('{"text":"hello"}');
+    // hash is always emitted, even when raw content is also captured
+    expect(chat.attributes["pi.provider.request_sha256"]).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(chat.attributes["pi.provider.response_sha256"]).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
   });
 
   it("does not emit provider payloads when capture.providerPayloads is off", () => {
@@ -468,6 +494,13 @@ describe("SpanTracker", () => {
     const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
     expect(chat.attributes["pi.provider.request"]).toBeUndefined();
     expect(chat.attributes["pi.provider.response"]).toBeUndefined();
+    // hash is emitted unconditionally, regardless of the capture flag
+    expect(chat.attributes["pi.provider.request_sha256"]).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    expect(chat.attributes["pi.provider.response_sha256"]).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
   });
 
   it("marks chat span as ERROR on message-derived error without HTTP status", () => {
@@ -488,7 +521,7 @@ describe("SpanTracker", () => {
     const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
     expect(chat.status.code).toBe(SpanStatusCode.ERROR);
     expect(chat.status.message).toBe("provider exploded");
-    expect(chat.attributes["error.type"]).toBe("anthropic");
+    expect(chat.attributes["error.type"]).toBe("error");
   });
 
   it("marks chat span as ERROR on abort with no error message", () => {
@@ -507,7 +540,7 @@ describe("SpanTracker", () => {
 
     const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
     expect(chat.status.code).toBe(SpanStatusCode.ERROR);
-    expect(chat.attributes["error.type"]).toBe("anthropic");
+    expect(chat.attributes["error.type"]).toBe("aborted");
   });
 
   it("recordAgentEvent no-ops when no interaction is open", () => {
@@ -536,8 +569,34 @@ describe("SpanTracker", () => {
     expect(names).toContain(SPAN_NAME.CHAT);
   });
 
+  it("endTool closes the span matching the completion event, not LIFO order", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginTool("call-a", "read", {});
+    tracker.beginTool("call-b", "bash", {});
+    // call-a's completion arrives first, though call-b was started last
+    tracker.endTool("call-a", "result-a", false);
+    tracker.endTool("call-b", "result-b", false);
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const spans = exporter.getFinishedSpans();
+    const a = findSpan(spans, "execute_tool read");
+    const b = findSpan(spans, "execute_tool bash");
+    expect(a.attributes["pi.tool.call_id"]).toBe("call-a");
+    expect(a.attributes["pi.tool.result_sha256"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(b.attributes["pi.tool.call_id"]).toBe("call-b");
+    expect(b.attributes["pi.tool.result_sha256"]).toMatch(/^[0-9a-f]{64}$/);
+    // Each span carries its own result's hash, proving completion-by-id
+    // (call-a's span did not absorb call-b's result, and vice versa).
+    expect(a.attributes["pi.tool.result_sha256"]).not.toBe(
+      b.attributes["pi.tool.result_sha256"],
+    );
+  });
+
   it("endTool no-ops when no tool span is open", () => {
-    tracker.endTool("orphan result", false);
+    tracker.endTool("orphan-call", "orphan result", false);
     provider.forceFlush();
     expect(exporter.getFinishedSpans()).toHaveLength(0);
   });
@@ -547,7 +606,7 @@ describe("SpanTracker", () => {
     tracker.beginInteraction();
     tracker.beginTurn(0);
     tracker.beginTool("call-1", "read", {});
-    tracker.endTool("r".repeat(2000), false);
+    tracker.endTool("call-1", "r".repeat(2000), false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();

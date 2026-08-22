@@ -26,6 +26,7 @@ describe("registerOtelCommands", () => {
     registerOtelCommands({ registerCommand } as never, {
       getConfig: () => DEFAULT_CONFIG,
       getSdk: () => null,
+      getSdkError: () => null,
     });
     expect(commands.has("otel-status")).toBe(true);
     expect(commands.has("otel-flush")).toBe(true);
@@ -36,6 +37,7 @@ describe("registerOtelCommands", () => {
     registerOtelCommands({ registerCommand } as never, {
       getConfig: () => null,
       getSdk: () => null,
+      getSdkError: () => null,
     });
     const ctx = makeCtx();
     await commands.get("otel-status")!.handler("", ctx);
@@ -57,6 +59,7 @@ describe("registerOtelCommands", () => {
             lastError: undefined,
           }),
         }) as never,
+      getSdkError: () => null,
     });
     const ctx = makeCtx();
     await commands.get("otel-status")!.handler("", ctx);
@@ -68,6 +71,39 @@ describe("registerOtelCommands", () => {
     expect(msg).toContain("exported spans: 3");
     expect(msg).toContain("exported data points: 12");
     expect(msg).toContain("last export error: none");
+    expect(msg).toContain("init error: none");
+  });
+
+  it("/otel-status never leaks header secrets into the notification text", async () => {
+    const { commands, registerCommand } = makePi();
+    const secret = "super-secret-value-XYZ";
+    registerOtelCommands({ registerCommand } as never, {
+      getConfig: () => ({
+        ...DEFAULT_CONFIG,
+        headers: { "X-API-Key": secret },
+      }),
+      getSdk: () => null,
+      getSdkError: () => null,
+    });
+    const ctx = makeCtx();
+    await commands.get("otel-status")!.handler("", ctx);
+    const msg = ctx.ui.notify.mock.calls[0]![0] as string;
+    expect(msg).toContain("enabled: true");
+    // The resolved secret value must never appear in the status text.
+    expect(msg).not.toContain(secret);
+  });
+
+  it("/otel-status reports a non-null init error", async () => {
+    const { commands, registerCommand } = makePi();
+    registerOtelCommands({ registerCommand } as never, {
+      getConfig: () => DEFAULT_CONFIG,
+      getSdk: () => null,
+      getSdkError: () => "ECONNREFUSED 127.0.0.1:4318",
+    });
+    const ctx = makeCtx();
+    await commands.get("otel-status")!.handler("", ctx);
+    const msg = ctx.ui.notify.mock.calls[0]![0] as string;
+    expect(msg).toContain("init error: ECONNREFUSED 127.0.0.1:4318");
   });
 
   it("/otel-flush warns when no SDK started", async () => {
@@ -75,6 +111,7 @@ describe("registerOtelCommands", () => {
     registerOtelCommands({ registerCommand } as never, {
       getConfig: () => DEFAULT_CONFIG,
       getSdk: () => null,
+      getSdkError: () => null,
     });
     const ctx = makeCtx();
     await commands.get("otel-flush")!.handler("", ctx);
@@ -90,11 +127,33 @@ describe("registerOtelCommands", () => {
     registerOtelCommands({ registerCommand } as never, {
       getConfig: () => DEFAULT_CONFIG,
       getSdk: () => ({ forceFlush }) as never,
+      getSdkError: () => null,
     });
     const ctx = makeCtx();
     await commands.get("otel-flush")!.handler("", ctx);
     expect(forceFlush).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "pi-otel: flush complete.",
+      "info",
+    );
+  });
+
+  it("/otel-flush reports a failure without a success notice", async () => {
+    const forceFlush = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    const { commands, registerCommand } = makePi();
+    registerOtelCommands({ registerCommand } as never, {
+      getConfig: () => DEFAULT_CONFIG,
+      getSdk: () => ({ forceFlush }) as never,
+      getSdkError: () => null,
+    });
+    const ctx = makeCtx();
+    await commands.get("otel-flush")!.handler("", ctx);
+    expect(forceFlush).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "pi-otel: flush failed: ECONNREFUSED",
+      "warning",
+    );
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
       "pi-otel: flush complete.",
       "info",
     );

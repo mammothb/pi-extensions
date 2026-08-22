@@ -114,7 +114,15 @@ export function parseHeaders(raw: string | undefined): Record<string, string> {
       continue; // no key, or empty key
     }
     const key = pair.slice(0, eq).trim();
-    const value = pair.slice(eq + 1).trim();
+    const rawValue = pair.slice(eq + 1).trim();
+    // Percent-decode the value (%20 -> space, %2C -> comma, ...). Malformed
+    // sequences are kept as-is rather than throwing.
+    let value = rawValue;
+    try {
+      value = decodeURIComponent(rawValue);
+    } catch {
+      // leave value as the undecoded rawValue
+    }
     if (key) {
       headers[key] = value;
     }
@@ -152,15 +160,30 @@ export function mergeConfig(
     typeof overrides.headers === "object" &&
     !Array.isArray(overrides.headers)
   ) {
-    merged.headers = { ...(overrides.headers as Record<string, string>) };
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(overrides.headers)) {
+      if (typeof value === "string") {
+        headers[key] = value;
+      }
+    }
+    merged.headers = headers;
   }
   if (typeof overrides.serviceName === "string") {
     merged.serviceName = overrides.serviceName;
   }
-  if (typeof overrides.sampleRatio === "number") {
+  if (
+    typeof overrides.sampleRatio === "number" &&
+    Number.isFinite(overrides.sampleRatio) &&
+    overrides.sampleRatio >= 0 &&
+    overrides.sampleRatio <= 1
+  ) {
     merged.sampleRatio = overrides.sampleRatio;
   }
-  if (typeof overrides.summaryLength === "number") {
+  if (
+    typeof overrides.summaryLength === "number" &&
+    Number.isFinite(overrides.summaryLength) &&
+    overrides.summaryLength >= 0
+  ) {
     merged.summaryLength = overrides.summaryLength;
   }
 

@@ -77,7 +77,14 @@ export function toContent(value: unknown): string {
     return String(value);
   }
   try {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      // Functions, symbols, and other unsupported top-level values make
+      // JSON.stringify return `undefined` (without throwing). Fall back to a
+      // type-tagged marker so callers still receive a string.
+      return `[unserializable ${typeof value}]`;
+    }
+    return serialized;
   } catch {
     // Circular reference or other non-serializable value — `String()` on an
     // object would yield the useless "[object Object]", so fall back to a

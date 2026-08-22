@@ -173,7 +173,7 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
   if (inflight) {
     return inflight;
   }
-  inflight = (async () => {
+  const initPromise = (async () => {
     if (active) {
       await shutdownActive();
     }
@@ -244,6 +244,13 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
     active = sdk;
     return sdk;
   })();
+  // Clear `inflight` only once the init settles, so a later call can
+  // rebuild from fresh config. While init is in flight, concurrent calls
+  // return this same promise (the guard above), preventing duplicate SDK
+  // construction and leaked metric-reader timers.
+  inflight = initPromise.finally(() => {
+    inflight = null;
+  });
   return inflight;
 }
 
@@ -272,7 +279,6 @@ export async function shutdownSdk(): Promise<void> {
 async function shutdownActive(): Promise<void> {
   const sdk = active;
   active = null;
-  inflight = null;
   if (!sdk) {
     return;
   }

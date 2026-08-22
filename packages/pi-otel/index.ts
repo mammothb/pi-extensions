@@ -5,7 +5,6 @@
  * recorder. Config is loaded from `pi-otel.json` + env at `session_start`
  * (see `src/config.ts`), which also controls SDK init and content capture.
  */
-import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import type {
@@ -64,30 +63,13 @@ import { PI_OTEL_VERSION } from "./src/version.js";
 
 const TRACER_NAME = "@mammothb/pi-otel";
 
-/** Run `git config <key>` and return stdout, or `undefined` on any failure. */
-function gitConfig(key: string): string | undefined {
-  try {
-    const out = execSync(`git config --get ${key}`, {
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return out.toString().trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Build the resource attributes (service.name, host.name, user.*) for the
- * SDK. Order: explicit env > `git config` > hostname fallback.
+ * SDK. Order: explicit env > hostname/USER fallback.
  */
 function buildResourceAttributes(serviceName: string): Record<string, string> {
-  const userName =
-    process.env.PI_OTEL_USER_NAME ??
-    gitConfig("user.name") ??
-    process.env.USER ??
-    "";
-  const userEmail =
-    process.env.PI_OTEL_USER_EMAIL ?? gitConfig("user.email") ?? "";
+  const userName = process.env.PI_OTEL_USER_NAME ?? process.env.USER ?? "";
+  const userEmail = process.env.PI_OTEL_USER_EMAIL ?? "";
   const attrs: Record<string, string> = {
     "service.name": serviceName,
     "host.name": hostname(),
@@ -108,11 +90,12 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   const metrics = new Metrics();
   let resolvedConfig: ResolvedConfig | null = null;
   let sdk: OtelSdk | null = null;
+  let sdkInitError: string | null = null;
   let tracker: SpanTracker | null = null;
   let lastResponseStatus: number | undefined;
   let lastRequestPayload: unknown;
   let chatStartedAt: number | undefined;
-  let toolStartedAt: number | undefined;
+  const toolStartTimes = new Map<string, number>();
   // The model the user selected/configured, captured from `model_select`.
   // `message.model` on the response is the *resolved backend* model (e.g. an
   // alias like `hy3-free` routes to `deepseek-v4-pro`), which is the wrong
@@ -122,6 +105,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   registerOtelCommands(pi, {
     getConfig: () => resolvedConfig,
     getSdk: () => sdk,
+    getSdkError: () => sdkInitError,
   });
 
   // ── SDK lifecycle ─────────────────────────────────────────────────
@@ -140,8 +124,16 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
         sampleRatio: resolvedConfig.sampleRatio,
         resourceAttributes: buildResourceAttributes(resolvedConfig.serviceName),
       };
-      sdk = await initSdk(config);
-      startSdk(sdk);
+      try {
+        sdk = await initSdk(config);
+        startSdk(sdk);
+        sdkInitError = null;
+      } catch (err) {
+        // Exporter construction can fail (e.g. unreachable endpoint). Don't
+        // reject session startup over telemetry — degrade to a no-op.
+        sdk = null;
+        sdkInitError = err instanceof Error ? err.message : String(err);
+      }
     },
   );
 
@@ -151,6 +143,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       tracker = null;
       await shutdownSdk();
       sdk = null;
+      sdkInitError = null;
     }
   });
 
@@ -305,22 +298,24 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", (event: ToolExecutionStartEvent) => {
-    toolStartedAt = Date.now();
+    toolStartTimes.set(event.toolCallId, Date.now());
     tracker?.beginTool(event.toolCallId, event.toolName, event.args);
   });
 
   pi.on("tool_execution_end", (event: ToolExecutionEndEvent) => {
+    const toolStartedAt = toolStartTimes.get(event.toolCallId);
     if (toolStartedAt !== undefined) {
       const toolDurationMs = Date.now() - toolStartedAt;
       metrics.recordOperationDuration("execute_tool", toolDurationMs);
       metrics.recordToolDuration(event.toolName, toolDurationMs);
-      toolStartedAt = undefined;
+      toolStartTimes.delete(event.toolCallId);
     }
     metrics.recordToolCall(event.toolName, event.isError);
-    tracker?.endTool(event.result, event.isError);
+    tracker?.endTool(event.toolCallId, event.result, event.isError);
   });
 
   pi.on("agent_end", (_event: AgentEndEvent) => {
+    toolStartTimes.clear();
     tracker?.endInteraction();
     tracker = null;
   });

@@ -29,7 +29,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "tokens"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -60,14 +60,14 @@
     },
     {
       "type": "timeseries",
-      "title": "Operation duration p95 (ms)",
+      "title": "Operation duration p95 (s)",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -80,12 +80,12 @@
       "id": 2,
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_bucket[1h])))",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_seconds_bucket[1h])))",
           "legendFormat": "p95 {{gen_ai_operation_name}}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_bucket[1h])))",
+          "expr": "histogram_quantile(0.50, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_seconds_bucket[1h])))",
           "legendFormat": "p50 {{gen_ai_operation_name}}",
           "refId": "B"
         }
@@ -416,7 +416,7 @@
           "refId": "A4"
         },
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"300000\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10000\"}[1h]))",
+          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"+Inf\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10000\"}[1h]))",
           "format": "table",
           "instant": true,
           "refId": "A5"
@@ -509,7 +509,7 @@
             "uid": "${tempo}"
           },
           "limit": 20,
-          "query": "{ resource.service.name = \"pi\" }",
+          "query": "{ resource.service.name = \"${serviceName}\" }",
           "queryType": "traceql",
           "refId": "A"
         }
@@ -545,6 +545,16 @@
         "current": {
           "text": "Tempo",
           "value": "Tempo"
+        },
+        "hide": 0
+      },
+      {
+        "name": "serviceName",
+        "label": "Service name",
+        "type": "textbox",
+        "current": {
+          "text": "pi",
+          "value": "pi"
         },
         "hide": 0
       }

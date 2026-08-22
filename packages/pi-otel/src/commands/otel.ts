@@ -15,6 +15,27 @@ import type { OtelSdk } from "../sdk.js";
 export interface OtelCommandDeps {
   getConfig(): ResolvedConfig | null;
   getSdk(): OtelSdk | null;
+  getSdkError(): string | null;
+}
+
+/** Reject `promise` if it does not settle within `ms`. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`timeout after ${ms}ms`)),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function formatCapture(config: ResolvedConfig): string {
@@ -27,7 +48,11 @@ function formatCapture(config: ResolvedConfig): string {
   ].join(" ");
 }
 
-function formatStatus(config: ResolvedConfig, sdk: OtelSdk | null): string {
+function formatStatus(
+  config: ResolvedConfig,
+  sdk: OtelSdk | null,
+  sdkError: string | null,
+): string {
   const stats = sdk?.getStats();
   return [
     `enabled: ${config.enabled}`,
@@ -41,6 +66,7 @@ function formatStatus(config: ResolvedConfig, sdk: OtelSdk | null): string {
     `exported spans: ${stats?.exportedSpans ?? 0}`,
     `exported data points: ${stats?.exportedDataPoints ?? 0}`,
     `last export error: ${stats?.lastError ?? "none"}`,
+    `init error: ${sdkError ?? "none"}`,
   ].join("\n");
 }
 
@@ -57,7 +83,10 @@ export function registerOtelCommands(
         ctx.ui.notify("pi-otel: not active (no session started).", "warning");
         return;
       }
-      ctx.ui.notify(formatStatus(config, deps.getSdk()), "info");
+      ctx.ui.notify(
+        formatStatus(config, deps.getSdk(), deps.getSdkError()),
+        "info",
+      );
     },
   });
 
@@ -69,8 +98,17 @@ export function registerOtelCommands(
         ctx.ui.notify("pi-otel: not active (no SDK started).", "warning");
         return;
       }
-      await sdk.forceFlush();
-      ctx.ui.notify("pi-otel: flush complete.", "info");
+      try {
+        await withTimeout(sdk.forceFlush(), 10_000);
+        ctx.ui.notify("pi-otel: flush complete.", "info");
+      } catch (err) {
+        ctx.ui.notify(
+          `pi-otel: flush failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          "warning",
+        );
+      }
     },
   });
 }
