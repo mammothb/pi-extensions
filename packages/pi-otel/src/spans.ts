@@ -16,10 +16,10 @@
  * Resource attributes (service.name, host.name, user.*) are set on the
  * OTel `Resource` at SDK init and inherit automatically.
  *
- * Phase 2 scope: shape, parent resolution, gen_ai attribute mapping, error
- * status. Content capture (hashes, raw payloads) is wired but always emits
- * the placeholder hashes for now — the real hashing + capture-mode gating
- * lives in `content.ts` (Phase 4).
+ * Phase 2/4 scope: shape, parent resolution, gen_ai attribute mapping, error
+ * status, and content capture. Hashing and capture-mode gating live in
+ * `content.ts`; the tracker emits sha256 hashes always, and raw (truncated)
+ * content only when the matching `capture.*` flag is on.
  */
 import {
   context,
@@ -45,15 +45,22 @@ import {
   GEN_AI_USAGE_OUTPUT_TOKENS,
   PI_AGENT_SESSION_ID,
   PI_INTERACTION_ID,
+  PI_PROMPT_TEXT,
+  PI_PROVIDER_REQUEST,
+  PI_PROVIDER_RESPONSE,
   PI_SESSION_ID,
+  PI_TOOL_ARGS,
   PI_TOOL_ARGS_SHA256,
   PI_TOOL_CALL_ID,
   PI_TOOL_IS_ERROR,
   PI_TOOL_NAME,
+  PI_TOOL_RESULT,
   PI_TOOL_RESULT_SHA256,
   PI_TURN_INDEX,
   SPAN_NAME,
 } from "./attrs.js";
+import type { CaptureConfig } from "./config.js";
+import { applyCaptureMode, toContent } from "./content.js";
 
 /** Subset of an assistant message that endChat needs. */
 export interface ChatMessageInfo {
@@ -70,6 +77,10 @@ export interface SpanTrackerOptions {
   tracer: Tracer;
   sessionId: string;
   interactionId: string;
+  /** Content-capture flags (from resolved config). */
+  capture: CaptureConfig;
+  /** Max chars of captured content before truncation. */
+  summaryLength: number;
 }
 
 /**
@@ -80,6 +91,8 @@ export class SpanTracker {
   private _tracer: Tracer;
   private _sessionId: string;
   private _interactionId: string;
+  private _capture: CaptureConfig;
+  private _summaryLength: number;
   /** Active-span stack. The top is the current parent for new spans. */
   private _stack: Span[] = [];
   /** Most recent turn span — used so chat/tool children pick the right
@@ -92,6 +105,8 @@ export class SpanTracker {
     this._tracer = options.tracer;
     this._sessionId = options.sessionId;
     this._interactionId = options.interactionId;
+    this._capture = options.capture;
+    this._summaryLength = options.summaryLength;
   }
 
   /** Start the `pi.interaction` root span. Call once per user prompt. */
@@ -159,8 +174,14 @@ export class SpanTracker {
    * Close the active chat. Pulls model / provider / usage / finish reasons
    * from the assistant message and sets the appropriate status. If the
    * provider returned a non-2xx HTTP status, the span is marked ERROR.
+   * When `capture.providerPayloads` is on, the request/response bodies are
+   * emitted (truncated).
    */
-  endChat(message: ChatMessageInfo, responseStatus?: number): void {
+  endChat(
+    message: ChatMessageInfo,
+    responseStatus?: number,
+    providerPayload?: { request?: unknown; response?: unknown },
+  ): void {
     const span = this._stack.pop();
     if (!span) {
       return;
@@ -203,39 +224,77 @@ export class SpanTracker {
       }
     }
 
+    if (this._capture.providerPayloads) {
+      if (providerPayload?.request !== undefined) {
+        const captured = applyCaptureMode(
+          toContent(providerPayload.request),
+          "summary",
+          this._summaryLength,
+        );
+        span.setAttribute(PI_PROVIDER_REQUEST, captured.content ?? "");
+      }
+      if (providerPayload?.response !== undefined) {
+        const captured = applyCaptureMode(
+          toContent(providerPayload.response),
+          "summary",
+          this._summaryLength,
+        );
+        span.setAttribute(PI_PROVIDER_RESPONSE, captured.content ?? "");
+      }
+    }
+
     span.end();
   }
 
   /**
    * Start an `execute_tool <toolName>` child of the active turn (not the
    * chat — tools execute *after* the LLM responds, so the turn is the
-   * correct parent).
+   * correct parent). Always sets `pi.tool.args_sha256`; the raw (truncated)
+   * args are emitted only when `capture.toolArgs` is on.
    */
-  beginTool(toolCallId: string, toolName: string, argsHash: string): Span {
+  beginTool(toolCallId: string, toolName: string, args: unknown): Span {
+    const captured = applyCaptureMode(
+      toContent(args),
+      this._capture.toolArgs ? "summary" : "off",
+      this._summaryLength,
+    );
+    const attrs: Record<string, string | number | boolean> = {
+      [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.EXECUTE_TOOL,
+      [GEN_AI_TOOL_NAME]: toolName,
+      [PI_TOOL_NAME]: toolName,
+      [PI_TOOL_CALL_ID]: toolCallId,
+      [PI_TOOL_ARGS_SHA256]: captured.sha256,
+    };
+    if (captured.content !== undefined) {
+      attrs[PI_TOOL_ARGS] = captured.content;
+    }
     const span = this._startSpan(
       `${SPAN_NAME.EXECUTE_TOOL} ${toolName}`,
       SpanKind.CLIENT,
       this._turn,
-      {
-        [GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION.EXECUTE_TOOL,
-        [GEN_AI_TOOL_NAME]: toolName,
-        [PI_TOOL_NAME]: toolName,
-        [PI_TOOL_CALL_ID]: toolCallId,
-        [PI_TOOL_ARGS_SHA256]: argsHash,
-      },
+      attrs,
     );
     this._stack.push(span);
     return span;
   }
 
-  /** Close the active tool. Sets `pi.tool.is_error` and ERROR status on
-   * failure, plus the result hash (placeholder in Phase 2). */
-  endTool(resultHash: string, isError: boolean): void {
+  /** Close the active tool. Sets `pi.tool.result_sha256` always (raw result
+   * only when `capture.toolResults` is on), `pi.tool.is_error`, and ERROR
+   * status on failure. */
+  endTool(result: unknown, isError: boolean): void {
     const span = this._stack.pop();
     if (!span) {
       return;
     }
-    span.setAttribute(PI_TOOL_RESULT_SHA256, resultHash);
+    const captured = applyCaptureMode(
+      toContent(result),
+      this._capture.toolResults ? "summary" : "off",
+      this._summaryLength,
+    );
+    span.setAttribute(PI_TOOL_RESULT_SHA256, captured.sha256);
+    if (captured.content !== undefined) {
+      span.setAttribute(PI_TOOL_RESULT, captured.content);
+    }
     span.setAttribute(PI_TOOL_IS_ERROR, isError);
     if (isError) {
       span.setAttribute(ATTR_ERROR_TYPE, "tool_error");
@@ -293,6 +352,22 @@ export class SpanTracker {
       return;
     }
     root.addEvent(name, attrs);
+  }
+
+  /**
+   * Capture the user prompt as a span event on the interaction root. Only
+   * emits when `capture.prompts` is on.
+   */
+  recordPrompt(prompt: string): void {
+    if (!this._capture.prompts) {
+      return;
+    }
+    const root = this._stack[0];
+    if (!root) {
+      return;
+    }
+    const captured = applyCaptureMode(prompt, "summary", this._summaryLength);
+    root.addEvent("prompt", { [PI_PROMPT_TEXT]: captured.content ?? "" });
   }
 
   /** Flag the next chat span with `gen_ai.conversation.compacted = true`. */

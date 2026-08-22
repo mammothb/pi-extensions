@@ -12,6 +12,8 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SPAN_NAME } from "../src/attrs.js";
+import { DEFAULT_CAPTURE, DEFAULT_SUMMARY_LENGTH } from "../src/config.js";
+import { sha256 } from "../src/content.js";
 import { SpanTracker } from "../src/spans.js";
 
 const SESSION_ID = "session-abc-123";
@@ -77,8 +79,26 @@ describe("SpanTracker", () => {
       tracer: setup.tracer,
       sessionId: SESSION_ID,
       interactionId: INTERACTION_ID,
+      capture: { ...DEFAULT_CAPTURE },
+      summaryLength: DEFAULT_SUMMARY_LENGTH,
     });
   });
+
+  /** Rebuild the tracker with an overridden capture config. */
+  function makeTracker(
+    captureOverrides: Partial<typeof DEFAULT_CAPTURE>,
+  ): SpanTracker {
+    const setup = setupTracer();
+    exporter = setup.exporter;
+    provider = setup.provider;
+    return new SpanTracker({
+      tracer: setup.tracer,
+      sessionId: SESSION_ID,
+      interactionId: INTERACTION_ID,
+      capture: { ...DEFAULT_CAPTURE, ...captureOverrides },
+      summaryLength: DEFAULT_SUMMARY_LENGTH,
+    });
+  }
 
   it("builds interaction > turn > {chat, tool} tree with tool parented to turn (not chat)", () => {
     tracker.beginInteraction();
@@ -90,8 +110,8 @@ describe("SpanTracker", () => {
       stopReason: "toolUse",
       usage: { input: 100, output: 50 },
     });
-    tracker.beginTool("call-1", "read", "deadbeef");
-    tracker.endTool("cafebabe", false);
+    tracker.beginTool("call-1", "read", { path: "/tmp/x" });
+    tracker.endTool({ ok: true }, false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -200,8 +220,8 @@ describe("SpanTracker", () => {
       stopReason: "toolUse",
       usage: { input: 1, output: 1 },
     });
-    tracker.beginTool("call-fail", "bash", "sha-args");
-    tracker.endTool("sha-result", true);
+    tracker.beginTool("call-fail", "bash", { cmd: "rm -rf /" });
+    tracker.endTool("permission denied", true);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -222,8 +242,8 @@ describe("SpanTracker", () => {
       stopReason: "toolUse",
       usage: { input: 1, output: 1 },
     });
-    tracker.beginTool("call-42", "grep", "hash-of-args");
-    tracker.endTool("hash-of-result", false);
+    tracker.beginTool("call-42", "grep", "pattern=foo");
+    tracker.endTool("no matches", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -233,8 +253,8 @@ describe("SpanTracker", () => {
     expect(tool.attributes["gen_ai.tool.name"]).toBe("grep");
     expect(tool.attributes["pi.tool.name"]).toBe("grep");
     expect(tool.attributes["pi.tool.call_id"]).toBe("call-42");
-    expect(tool.attributes["pi.tool.args_sha256"]).toBe("hash-of-args");
-    expect(tool.attributes["pi.tool.result_sha256"]).toBe("hash-of-result");
+    expect(tool.attributes["pi.tool.args_sha256"]).toBe(sha256("pattern=foo"));
+    expect(tool.attributes["pi.tool.result_sha256"]).toBe(sha256("no matches"));
     expect(tool.attributes["pi.tool.is_error"]).toBe(false);
   });
 
@@ -250,10 +270,10 @@ describe("SpanTracker", () => {
       stopReason: "toolUse",
       usage: { input: 1, output: 1 },
     });
-    tracker.beginTool("call-task", "task", "sha");
+    tracker.beginTool("call-task", "task", { subagent: true });
     tracker.beginNestedAgent("researcher", "sub-session-1");
     tracker.endNestedAgent();
-    tracker.endTool("sha", false);
+    tracker.endTool("done", false);
     tracker.endTurn();
     tracker.endInteraction();
     provider.forceFlush();
@@ -322,5 +342,131 @@ describe("SpanTracker", () => {
     expect(interactions[0]?.events.some((e) => e.name === "compaction")).toBe(
       true,
     );
+  });
+
+  // ── content capture gating ─────────────────────────────────────────
+
+  it("emits tool args hash but no raw args when capture.toolArgs is off (default)", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat({
+      provider: "anthropic",
+      model: "claude-opus-4-5",
+      stopReason: "toolUse",
+      usage: { input: 1, output: 1 },
+    });
+    tracker.beginTool("call-1", "read", "secret args");
+    tracker.endTool("secret result", false);
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const tool = findSpan(exporter.getFinishedSpans(), "execute_tool read");
+    expect(tool.attributes["pi.tool.args_sha256"]).toBe(sha256("secret args"));
+    expect(tool.attributes["pi.tool.result_sha256"]).toBe(
+      sha256("secret result"),
+    );
+    // raw content absent — hashes only
+    expect(tool.attributes["pi.tool.args"]).toBeUndefined();
+    expect(tool.attributes["pi.tool.result"]).toBeUndefined();
+  });
+
+  it("emits truncated raw tool args when capture.toolArgs is on", () => {
+    tracker = makeTracker({ toolArgs: true });
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginTool("call-1", "read", "x".repeat(2000));
+    tracker.endTool("ok", false);
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const tool = findSpan(exporter.getFinishedSpans(), "execute_tool read");
+    const rawArgs = tool.attributes["pi.tool.args"] as string;
+    expect(rawArgs).toBeDefined();
+    expect(rawArgs).toBe(`${"x".repeat(DEFAULT_SUMMARY_LENGTH)}…`);
+    // hash is of the *untruncated* input
+    expect(tool.attributes["pi.tool.args_sha256"]).toBe(
+      sha256("x".repeat(2000)),
+    );
+  });
+
+  it("emits prompt as a span event when capture.prompts is on", () => {
+    tracker = makeTracker({ prompts: true });
+    tracker.beginInteraction();
+    tracker.recordPrompt("tell me a secret");
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const interaction = findSpan(
+      exporter.getFinishedSpans(),
+      SPAN_NAME.INTERACTION,
+    );
+    const promptEvent = interaction.events.find((e) => e.name === "prompt");
+    expect(promptEvent).toBeDefined();
+    expect(promptEvent?.attributes?.["pi.prompt.text"]).toBe(
+      "tell me a secret",
+    );
+  });
+
+  it("does not emit prompt when capture.prompts is off", () => {
+    tracker.beginInteraction();
+    tracker.recordPrompt("tell me a secret");
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const interaction = findSpan(
+      exporter.getFinishedSpans(),
+      SPAN_NAME.INTERACTION,
+    );
+    expect(interaction.events.some((e) => e.name === "prompt")).toBe(false);
+  });
+
+  it("emits provider payloads when capture.providerPayloads is on", () => {
+    tracker = makeTracker({ providerPayloads: true });
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat(
+      {
+        provider: "anthropic",
+        model: "claude-opus-4-5",
+        stopReason: "stop",
+        usage: { input: 1, output: 1 },
+      },
+      undefined,
+      { request: { system: "sys" }, response: { text: "hello" } },
+    );
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
+    expect(chat.attributes["pi.provider.request"]).toBe('{"system":"sys"}');
+    expect(chat.attributes["pi.provider.response"]).toBe('{"text":"hello"}');
+  });
+
+  it("does not emit provider payloads when capture.providerPayloads is off", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat(
+      {
+        provider: "anthropic",
+        model: "claude-opus-4-5",
+        stopReason: "stop",
+        usage: { input: 1, output: 1 },
+      },
+      undefined,
+      { request: { system: "sys" }, response: { text: "hello" } },
+    );
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
+    expect(chat.attributes["pi.provider.request"]).toBeUndefined();
+    expect(chat.attributes["pi.provider.response"]).toBeUndefined();
   });
 });

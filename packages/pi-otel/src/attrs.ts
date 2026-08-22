@@ -101,6 +101,24 @@ export const PI_TOOL_NAME = "pi.tool.name" as const;
 /** Session id of a nested agent (e.g. pi-subagents fork). */
 export const PI_AGENT_SESSION_ID = "pi.agent.session_id" as const;
 
+// ── Captured content (present only when the matching `capture.*` flag is
+// on; always truncated to `summaryLength`). ────────────────────────────────
+
+/** Captured prompt text (span event attribute). */
+export const PI_PROMPT_TEXT = "pi.prompt.text" as const;
+
+/** Captured tool arguments (truncated). */
+export const PI_TOOL_ARGS = "pi.tool.args" as const;
+
+/** Captured tool result (truncated). */
+export const PI_TOOL_RESULT = "pi.tool.result" as const;
+
+/** Captured provider request body (truncated). */
+export const PI_PROVIDER_REQUEST = "pi.provider.request" as const;
+
+/** Captured provider response body (truncated). */
+export const PI_PROVIDER_RESPONSE = "pi.provider.response" as const;
+
 // ── Span names ────────────────────────────────────────────────────────────
 
 export const SPAN_NAME = {

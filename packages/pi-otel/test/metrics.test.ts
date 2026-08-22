@@ -51,7 +51,10 @@ function createMockPi(): { pi: unknown; handlers: Handlers } {
 }
 
 function ctx() {
-  return { sessionManager: { getSessionId: () => SESSION_ID } };
+  return {
+    cwd: process.cwd(),
+    sessionManager: { getSessionId: () => SESSION_ID },
+  };
 }
 
 function fire(

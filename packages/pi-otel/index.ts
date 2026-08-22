@@ -1,11 +1,9 @@
 /**
  * @mammothb/pi-otel — OpenTelemetry traces + metrics for the pi coding harness.
  *
- * Phase 2+3 wiring: lifecycle events from pi drive the SpanTracker and the
- * Metrics recorder. The SDK lifecycle (init on `session_start`, shutdown on
- * `session_shutdown`) and resource attributes are also handled here. Config
- * resolution lands in Phase 4 — for now minimal defaults keep the wiring
- * testable.
+ * Wiring: lifecycle events from pi drive the SpanTracker and the Metrics
+ * recorder. Config is loaded from `pi-otel.json` + env at `session_start`
+ * (see `src/config.ts`), which also controls SDK init and content capture.
  */
 import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -50,6 +48,7 @@ interface ModelSelectEvent {
   source: string;
 }
 
+import { loadConfig, type ResolvedConfig } from "./src/config.js";
 import { Metrics } from "./src/metrics.js";
 import {
   initSdk,
@@ -62,11 +61,6 @@ import { SpanTracker } from "./src/spans.js";
 import { PI_OTEL_VERSION } from "./src/version.js";
 
 const TRACER_NAME = "@mammothb/pi-otel";
-
-/** Phase 2/3 default config; replaced by `config.ts` resolution in Phase 4. */
-const DEFAULT_ENDPOINT =
-  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318";
-const DEFAULT_SERVICE_NAME = "pi";
 
 /** Run `git config <key>` and return stdout, or `undefined` on any failure. */
 function gitConfig(key: string): string | undefined {
@@ -82,11 +76,9 @@ function gitConfig(key: string): string | undefined {
 
 /**
  * Build the resource attributes (service.name, host.name, user.*) for the
- * SDK. Order: explicit env > `git config` > hostname fallback. `user.*`
- * env vars follow the `PI_OTEL_USER_*` convention; Phase 4 will also read
- * `OTEL_RESOURCE_ATTRIBUTES`.
+ * SDK. Order: explicit env > `git config` > hostname fallback.
  */
-function buildResourceAttributes(): Record<string, string> {
+function buildResourceAttributes(serviceName: string): Record<string, string> {
   const userName =
     process.env.PI_OTEL_USER_NAME ??
     gitConfig("user.name") ??
@@ -95,7 +87,7 @@ function buildResourceAttributes(): Record<string, string> {
   const userEmail =
     process.env.PI_OTEL_USER_EMAIL ?? gitConfig("user.email") ?? "";
   const attrs: Record<string, string> = {
-    "service.name": DEFAULT_SERVICE_NAME,
+    "service.name": serviceName,
     "host.name": hostname(),
   };
   if (userName) {
@@ -112,8 +104,10 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   // factory on /reload, /new, /fork, and /resume; a fresh closure gives
   // each extension instance clean state.
   const metrics = new Metrics();
+  let resolvedConfig: ResolvedConfig | null = null;
   let tracker: SpanTracker | null = null;
   let lastResponseStatus: number | undefined;
+  let lastRequestPayload: unknown;
   let chatStartedAt: number | undefined;
   let toolStartedAt: number | undefined;
   let sessionStartedAt: number | undefined;
@@ -123,18 +117,20 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     "session_start",
     async (_event: SessionStartEvent, ctx: ExtensionContext) => {
       sessionStartedAt = Date.now();
-      // Re-init on every session_start. The SDK's initOnce guard tears down
-      // any prior SDK first, so this is safe across `/new`, `/reload`,
-      // `/resume`, and `/fork`.
+      resolvedConfig = loadConfig(ctx.cwd);
+      if (!resolvedConfig.enabled) {
+        return;
+      }
       const config: OtelSdkConfig = {
-        endpoint: DEFAULT_ENDPOINT,
-        headers: {},
-        serviceName: DEFAULT_SERVICE_NAME,
-        resourceAttributes: buildResourceAttributes(),
+        tracesEndpoint: resolvedConfig.tracesEndpoint,
+        metricsEndpoint: resolvedConfig.metricsEndpoint,
+        headers: resolvedConfig.headers,
+        serviceName: resolvedConfig.serviceName,
+        sampleRatio: resolvedConfig.sampleRatio,
+        resourceAttributes: buildResourceAttributes(resolvedConfig.serviceName),
       };
       const sdk = await initSdk(config);
       startSdk(sdk);
-      void ctx; // session id is read per-event from the ExtensionContext
     },
   );
 
@@ -186,19 +182,24 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
   pi.on(
     "before_agent_start",
     (event: BeforeAgentStartEvent, ctx: ExtensionContext) => {
+      if (!resolvedConfig?.enabled) {
+        return;
+      }
       // One tracker per interaction. The session id is read from the
       // context here (the resource attributes don't carry it — the tracker
       // sets it as a span attribute on every span).
       const sessionId = ctx.sessionManager.getSessionId();
       const interactionId = randomUUID();
-      void event; // prompt/image are not used until Phase 4 capture
       metrics.recordPrompt();
       tracker = new SpanTracker({
         tracer: trace.getTracer(TRACER_NAME, PI_OTEL_VERSION),
         sessionId,
         interactionId,
+        capture: resolvedConfig.capture,
+        summaryLength: resolvedConfig.summaryLength,
       });
       tracker.beginInteraction();
+      tracker.recordPrompt(event.prompt);
     },
   );
 
@@ -211,8 +212,9 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     tracker?.endTurn();
   });
 
-  pi.on("before_provider_request", (_event: BeforeProviderRequestEvent) => {
+  pi.on("before_provider_request", (event: BeforeProviderRequestEvent) => {
     chatStartedAt = Date.now();
+    lastRequestPayload = event.payload;
     tracker?.beginChat();
     lastResponseStatus = undefined;
   });
@@ -265,15 +267,18 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
         errorMessage: message.errorMessage,
       },
       lastResponseStatus,
+      {
+        request: lastRequestPayload,
+        response: event.message,
+      },
     );
+    lastRequestPayload = undefined;
     lastResponseStatus = undefined;
   });
 
   pi.on("tool_execution_start", (event: ToolExecutionStartEvent) => {
     toolStartedAt = Date.now();
-    // Placeholder hashes until Phase 4's content.ts supplies the real
-    // sha256 of args/result.
-    tracker?.beginTool(event.toolCallId, event.toolName, "");
+    tracker?.beginTool(event.toolCallId, event.toolName, event.args);
   });
 
   pi.on("tool_execution_end", (event: ToolExecutionEndEvent) => {
@@ -285,8 +290,7 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       toolStartedAt = undefined;
     }
     metrics.recordToolCall(event.toolName, event.isError);
-    tracker?.endTool("", event.isError);
-    void event.result; // Phase 4 will hash the result and pass it through
+    tracker?.endTool(event.result, event.isError);
   });
 
   pi.on("agent_end", (_event: AgentEndEvent) => {

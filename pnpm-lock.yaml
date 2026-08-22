@@ -218,6 +218,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 0.83.0
         version: 0.83.0(supports-color@7.2.0)(ws@8.21.0)(zod@4.4.3)
+      '@mammothb/pi-shared':
+        specifier: workspace:*
+        version: link:../pi-shared
       '@opentelemetry/api':
         specifier: 'catalog:'
         version: 1.9.1
@@ -1108,6 +1111,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}

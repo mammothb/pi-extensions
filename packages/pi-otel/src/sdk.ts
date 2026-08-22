@@ -34,23 +34,30 @@ import {
   PeriodicExportingMetricReader,
 } from "@opentelemetry/sdk-metrics";
 import {
+  AlwaysOffSampler,
+  AlwaysOnSampler,
   BasicTracerProvider,
   BatchSpanProcessor,
+  ParentBasedSampler,
+  TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 
 /**
  * Subset of resolved config that the SDK lifecycle needs at construction.
- * Phase 4's `config.ts` will produce a wider `ResolvedConfig`; this shape is
- * the only part the SDK consumes.
+ * `config.ts` produces a wider `ResolvedConfig`; this shape is the only part
+ * the SDK consumes.
  */
 export interface OtelSdkConfig {
-  /** Base OTLP HTTP endpoint, e.g. `http://localhost:4318`. Paths
-   * `/v1/traces` and `/v1/metrics` are appended. */
-  endpoint: string;
+  /** Fully-resolved traces endpoint (already includes `/v1/traces`). */
+  tracesEndpoint: string;
+  /** Fully-resolved metrics endpoint (already includes `/v1/metrics`). */
+  metricsEndpoint: string;
   /** Headers attached to every export request (auth, tenant, etc.). */
   headers: Record<string, string>;
   /** Value for the `service.name` resource attribute. */
   serviceName: string;
+  /** Trace sampling ratio, 0.0–1.0 (default 1.0). */
+  sampleRatio?: number;
   /** Additional resource attributes (host.name, user.*, service.*, ...).
    * `service.name` from above is also merged in. Values follow the OTel
    * `AttributeValue` shape. */
@@ -67,14 +74,11 @@ export interface OtelSdk {
   shutdown(): Promise<void>;
 }
 
-const TRACES_PATH = "/v1/traces";
-const METRICS_PATH = "/v1/metrics";
 const METRIC_EXPORT_INTERVAL_MS = 60_000;
 
-/** Join a base URL with a path, stripping trailing slashes from the base. */
-function joinUrl(base: string, path: string): string {
-  const trimmed = base.replace(/\/+$/, "");
-  return `${trimmed}${path}`;
+/** Clamp a sampling ratio to [0, 1]. */
+function clampRatio(ratio: number): number {
+  return Math.min(1, Math.max(0, ratio));
 }
 
 let active: OtelSdk | null = null;
@@ -101,12 +105,12 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
     });
 
     const traceExporter = new OTLPTraceExporter({
-      url: joinUrl(config.endpoint, TRACES_PATH),
+      url: config.tracesEndpoint,
       headers: config.headers,
     });
 
     const metricExporter = new OTLPMetricExporter({
-      url: joinUrl(config.endpoint, METRICS_PATH),
+      url: config.metricsEndpoint,
       headers: config.headers,
       // CUMULATIVE matches what Prometheus / Mimir expect for counter
       // rate queries; the otel-lgtm stack is Prometheus-backed.
@@ -118,8 +122,17 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
       exportIntervalMillis: METRIC_EXPORT_INTERVAL_MS,
     });
 
+    const sampleRatio = clampRatio(config.sampleRatio ?? 1.0);
     const tracerProvider = new BasicTracerProvider({
       resource,
+      sampler:
+        sampleRatio >= 1
+          ? new AlwaysOnSampler()
+          : sampleRatio <= 0
+            ? new AlwaysOffSampler()
+            : new ParentBasedSampler({
+                root: new TraceIdRatioBasedSampler(sampleRatio),
+              }),
       spanProcessors: [new BatchSpanProcessor(traceExporter)],
     });
 
