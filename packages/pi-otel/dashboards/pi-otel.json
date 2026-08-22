@@ -376,7 +376,7 @@
         "barWidth": 0.9,
         "barRadius": 0,
         "fullHighlight": false,
-        "xTickLabelRotation": 0,
+        "xTickLabelRotation": -20,
         "xTickLabelSpacing": 0,
         "legend": {
           "displayMode": "list",
