@@ -145,9 +145,12 @@ export class SpanTracker {
     return span;
   }
 
-  /** Close the interaction root. Removes the matching entry from the stack. */
+  /** Close the interaction root and any unfinished children. Terminal —
+   * pairs with beginInteraction; a hard exit may leave child spans (turn/
+   * chat/tool) open on the stack, so delegate to closeAll() to end them
+   * before the root and clear the stack. */
   endInteraction(): void {
-    this._removeByKind("interaction")?.span.end();
+    this.closeAll();
   }
 
   /** Start a `pi.turn` child of the active interaction. */

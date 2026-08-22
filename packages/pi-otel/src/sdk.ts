@@ -228,7 +228,10 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
         return { ...stats };
       },
       async forceFlush() {
-        await Promise.allSettled([
+        // Use `all` (not `allSettled`) so a rejected provider flush
+        // propagates — otherwise a failed flush resolves as success and the
+        // command handler reports "flush complete" erroneously.
+        await Promise.all([
           tracerProvider.forceFlush(),
           meterProvider.forceFlush(),
         ]);

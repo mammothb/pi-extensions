@@ -60,7 +60,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Operation duration p95 (s)",
+      "title": "Operation duration (s)",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"

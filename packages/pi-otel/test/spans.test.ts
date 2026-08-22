@@ -158,6 +158,18 @@ describe("SpanTracker", () => {
     ]);
   });
 
+  it("endInteraction ends unfinished child spans before the root", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0); // left unfinished (no endTurn)
+    tracker.endInteraction(); // terminal cleanup
+    provider.forceFlush();
+
+    const spans = exporter.getFinishedSpans();
+    // Both the dangling child and the interaction root were ended.
+    findSpan(spans, SPAN_NAME.INTERACTION);
+    findSpan(spans, SPAN_NAME.TURN);
+  });
+
   it("carries session.id, gen_ai.conversation.id, and pi.interaction.id on every span", () => {
     tracker.beginInteraction();
     tracker.beginTurn(0);
