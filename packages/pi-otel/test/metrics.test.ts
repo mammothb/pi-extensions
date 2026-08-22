@@ -225,6 +225,13 @@ describe("Metrics", () => {
     );
     expect(inputPoint?.attributes["gen_ai.system"]).toBe("anthropic");
 
+    // pi.chat.calls — one chat, classified "none" (has finish_reason, no error)
+    const chatCalls = findMetric(rms, "pi.chat.calls");
+    expect(sumPoints(chatCalls)).toHaveLength(1);
+    const chatPoint = sumPoints(chatCalls)[0];
+    expect(chatPoint?.value).toBe(1);
+    expect(chatPoint?.attributes["pi.chat.error_type"]).toBe("none");
+
     // gen_ai.client.operation.duration — one data point per chat and per tool
     const opDuration = findMetric(rms, "gen_ai.client.operation.duration");
     const opPoints = histogramPoints(opDuration);
@@ -290,5 +297,64 @@ describe("Metrics", () => {
     expect(toolPoint?.value).toBe(1);
     expect(toolPoint?.attributes["pi.tool.name"]).toBe("bash");
     expect(toolPoint?.attributes["pi.tool.is_error"]).toBe(true);
+  });
+
+  it("classifies chat errors: http status, no finish_reason, aborted", async () => {
+    const { pi, handlers } = createMockPi();
+    piOtelExtension(pi as never);
+
+    await fire(
+      handlers,
+      "session_start",
+      { type: "session_start", reason: "startup" },
+      ctx(),
+    );
+    await fire(
+      handlers,
+      "before_agent_start",
+      { type: "before_agent_start", prompt: "hi" },
+      ctx(),
+    );
+    const msg = (over: Record<string, unknown>) => ({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        provider: "anthropic",
+        model: "claude-opus-4-5",
+        ...over,
+      },
+    });
+
+    // HTTP non-2xx wins over everything else.
+    await fire(handlers, "after_provider_response", {
+      type: "after_provider_response",
+      status: 401,
+    });
+    await fire(handlers, "message_end", msg({ stopReason: "stop" }));
+
+    // Missing finish_reason.
+    await fire(handlers, "message_end", msg({ stopReason: undefined }));
+
+    // Explicit abort.
+    await fire(handlers, "message_end", msg({ stopReason: "aborted" }));
+
+    await fire(handlers, "session_shutdown", {
+      type: "session_shutdown",
+      reason: "quit",
+    });
+    await provider.forceFlush();
+    const rms = exporter.getMetrics();
+
+    const chatCalls = findMetric(rms, "pi.chat.calls");
+    const byType = new Map(
+      sumPoints(chatCalls).map((p) => [
+        p.attributes["pi.chat.error_type"],
+        p.value,
+      ]),
+    );
+    expect(byType.get("http_401")).toBe(1);
+    expect(byType.get("no_finish_reason")).toBe(1);
+    expect(byType.get("aborted")).toBe(1);
+    expect(byType.get("none")).toBeUndefined();
   });
 });

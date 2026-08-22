@@ -22,6 +22,7 @@ import {
   GEN_AI_SYSTEM,
   GEN_AI_TOKEN_TYPE,
   GEN_AI_TOKEN_TYPE_VALUE,
+  PI_CHAT_ERROR_TYPE,
   PI_TOOL_IS_ERROR,
   PI_TOOL_NAME,
 } from "./attrs.js";
@@ -50,6 +51,7 @@ export class Metrics {
   private _toolCalls: Counter | undefined;
   private _sessionDuration: Histogram | undefined;
   private _toolDuration: Histogram | undefined;
+  private _chatCalls: Counter | undefined;
 
   /** Fetch (and cache) the meter lazily. */
   private getMeter(): Meter {
@@ -192,6 +194,24 @@ export class Metrics {
   /** Increment the turn counter. */
   recordTurn(): void {
     this.turnCount().add(1);
+  }
+
+  /** `pi.chat.calls` — counter, dim `pi.chat.error_type` (`none`,
+   * `http_<status>`, `no_finish_reason`, `aborted`, `error`). */
+  private chatCalls(): Counter {
+    if (!this._chatCalls) {
+      this._chatCalls = this.getMeter().createCounter("pi.chat.calls", {
+        description: "Number of LLM chat calls, classified by error type.",
+      });
+    }
+    return this._chatCalls;
+  }
+
+  /** Increment the chat-call counter with its error classification. */
+  recordChatCall(errorType: string): void {
+    this.chatCalls().add(1, {
+      [PI_CHAT_ERROR_TYPE]: errorType,
+    });
   }
 
   /** Increment the tool-call counter with its error dimension. */

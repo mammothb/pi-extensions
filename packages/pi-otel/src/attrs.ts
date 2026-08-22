@@ -95,6 +95,10 @@ export const PI_TOOL_RESULT_SHA256 = "pi.tool.result_sha256" as const;
 /** Whether the tool reported an error (`true` / `false`). */
 export const PI_TOOL_IS_ERROR = "pi.tool.is_error" as const;
 
+/** Chat error classification (`none`, `http_<status>`, `no_finish_reason`,
+ * `aborted`, `error`). */
+export const PI_CHAT_ERROR_TYPE = "pi.chat.error_type" as const;
+
 /** Tool name as pi sees it (mirrors `gen_ai.tool.name`). */
 export const PI_TOOL_NAME = "pi.tool.name" as const;
 

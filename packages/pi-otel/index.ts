@@ -269,6 +269,23 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       message.provider ?? "",
       message.usage?.output ?? 0,
     );
+    // Classify the chat outcome: HTTP non-2xx wins, then message-derived
+    // error signals, then a missing finish_reason.
+    const rawStopReason = message.stopReason;
+    let chatErrorType = "none";
+    if (
+      lastResponseStatus !== undefined &&
+      (lastResponseStatus < 200 || lastResponseStatus >= 300)
+    ) {
+      chatErrorType = `http_${lastResponseStatus}`;
+    } else if (message.errorMessage || rawStopReason === "error") {
+      chatErrorType = "error";
+    } else if (rawStopReason === "aborted") {
+      chatErrorType = "aborted";
+    } else if (!rawStopReason || rawStopReason === "") {
+      chatErrorType = "no_finish_reason";
+    }
+    metrics.recordChatCall(chatErrorType);
     if (chatStartedAt !== undefined) {
       metrics.recordOperationDuration("chat", Date.now() - chatStartedAt);
       chatStartedAt = undefined;

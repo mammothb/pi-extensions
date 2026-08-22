@@ -17,7 +17,7 @@
         "y": 0
       },
       "panels": [],
-      "title": "Token Usage",
+      "title": "Activity",
       "type": "row"
     },
     {
@@ -35,7 +35,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 6,
         "x": 0,
         "y": 1
       },
@@ -73,8 +73,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 6,
+        "x": 6,
         "y": 1
       },
       "id": 2,
@@ -87,6 +87,87 @@
         {
           "expr": "histogram_quantile(0.50, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_bucket[1h])))",
           "legendFormat": "p50 {{gen_ai_operation_name}}",
+          "refId": "B"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Chat error rate (%)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 11,
+      "targets": [
+        {
+          "expr": "((sum(rate(pi_chat_calls_total{pi_chat_error_type!=\"none\"}[5m])) / clamp_min(sum(rate(pi_chat_calls_total[5m])), 1e-9)) * 100) or on() vector(0)",
+          "legendFormat": "error rate",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prompts / turns (rate/min)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cpm"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(rate(pi_prompt_count_total[5m])) * 60",
+          "legendFormat": "prompts",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(pi_turn_count_total[5m])) * 60",
+          "legendFormat": "turns",
           "refId": "B"
         }
       ],
@@ -370,104 +451,6 @@
         "y": 18
       },
       "panels": [],
-      "title": "Agent Activity",
-      "type": "row"
-    },
-    {
-      "type": "timeseries",
-      "title": "Prompts / turns (rate)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 19
-      },
-      "id": 5,
-      "targets": [
-        {
-          "expr": "sum(rate(pi_prompt_count_total[5m]))",
-          "legendFormat": "prompts",
-          "refId": "A"
-        },
-        {
-          "expr": "sum(rate(pi_turn_count_total[5m]))",
-          "legendFormat": "turns",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Session duration p50/p95 (s)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 19
-      },
-      "id": 6,
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(pi_session_duration_bucket[1h])))",
-          "legendFormat": "p95",
-          "refId": "A"
-        },
-        {
-          "expr": "histogram_quantile(0.50, sum(rate(pi_session_duration_bucket[1h])))",
-          "legendFormat": "p50",
-          "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 27
-      },
-      "panels": [],
       "title": "Traces",
       "type": "row"
     },
@@ -482,7 +465,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 19
       },
       "id": 7,
       "fieldConfig": {
@@ -575,5 +558,5 @@
   "timezone": "browser",
   "title": "pi-otel",
   "uid": "pi-otel",
-  "version": 16
+  "version": 22
 }
