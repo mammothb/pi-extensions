@@ -223,37 +223,7 @@ export class SpanTracker {
     span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, message.usage.output);
     span.setAttribute(GEN_AI_RESPONSE_FINISH_REASONS, [message.stopReason]);
 
-    if (
-      responseStatus !== undefined &&
-      (responseStatus < 200 || responseStatus >= 300)
-    ) {
-      // HTTP error wins over message-derived error: more specific
-      // classifier and the response status is the canonical signal.
-      span.setAttribute(ATTR_ERROR_TYPE, `http_${responseStatus}`);
-      span.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: `HTTP ${responseStatus}`,
-      });
-    } else if (message.stopReason === "aborted") {
-      // Abort is its own category: the turn ended early (e.g. stream
-      // closed) rather than a provider failure. Classify as `aborted`
-      // to match the chat error-type metric, not the provider name.
-      span.setAttribute(ATTR_ERROR_TYPE, "aborted");
-      span.setAttribute(PI_CHAT_ERROR_TYPE, "aborted");
-      span.setStatus({ code: SpanStatusCode.ERROR });
-    } else if (message.isError || message.stopReason === "error") {
-      // Other provider-side failures classify as `error`.
-      span.setAttribute(ATTR_ERROR_TYPE, "error");
-      span.setAttribute(PI_CHAT_ERROR_TYPE, "error");
-      if (message.errorMessage) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: message.errorMessage,
-        });
-      } else {
-        span.setStatus({ code: SpanStatusCode.ERROR });
-      }
-    }
+    this._classifyChatError(span, message, responseStatus);
 
     if (providerPayload?.request !== undefined) {
       const captured = applyCaptureMode(
@@ -281,6 +251,43 @@ export class SpanTracker {
     }
 
     span.end();
+  }
+
+  /** Record the chat error status/classification on `span`.
+   * Precedence: HTTP non-2xx status wins (canonical signal), then an
+   * abort, then a generic provider error — matching the chat error-type
+   * metric vocabulary (http_* / aborted / error), not the provider name. */
+  private _classifyChatError(
+    span: Span,
+    message: ChatMessageInfo,
+    responseStatus?: number,
+  ): void {
+    if (
+      responseStatus !== undefined &&
+      (responseStatus < 200 || responseStatus >= 300)
+    ) {
+      span.setAttribute(ATTR_ERROR_TYPE, `http_${responseStatus}`);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: `HTTP ${responseStatus}`,
+      });
+      return;
+    }
+    if (message.stopReason === "aborted") {
+      span.setAttribute(ATTR_ERROR_TYPE, "aborted");
+      span.setAttribute(PI_CHAT_ERROR_TYPE, "aborted");
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      return;
+    }
+    if (message.isError || message.stopReason === "error") {
+      span.setAttribute(ATTR_ERROR_TYPE, "error");
+      span.setAttribute(PI_CHAT_ERROR_TYPE, "error");
+      span.setStatus(
+        message.errorMessage
+          ? { code: SpanStatusCode.ERROR, message: message.errorMessage }
+          : { code: SpanStatusCode.ERROR },
+      );
+    }
   }
 
   /**
