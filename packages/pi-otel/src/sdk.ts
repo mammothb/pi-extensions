@@ -51,6 +51,10 @@ export interface OtelSdkConfig {
   headers: Record<string, string>;
   /** Value for the `service.name` resource attribute. */
   serviceName: string;
+  /** Additional resource attributes (host.name, user.*, service.*, ...).
+   * `service.name` from above is also merged in. Values follow the OTel
+   * `AttributeValue` shape. */
+  resourceAttributes?: Record<string, string | number | boolean>;
 }
 
 /** Public handle to a constructed SDK. */
@@ -93,6 +97,7 @@ export async function initSdk(config: OtelSdkConfig): Promise<OtelSdk> {
 
     const resource = resourceFromAttributes({
       "service.name": config.serviceName,
+      ...(config.resourceAttributes ?? {}),
     });
 
     const traceExporter = new OTLPTraceExporter({
