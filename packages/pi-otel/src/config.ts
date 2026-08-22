@@ -7,7 +7,7 @@
  *   - project: `<cwd>/.pi/pi-otel.json` (wins per-key)
  *
  * Then `OTEL_*` env vars, then `PI_OTEL_*` env vars (highest). Precedence
- * (decision D6 in PROPOSAL-pi-otel.md, applied to the flat config file):
+ * applied to the flat config file:
  *
  *   `PI_OTEL_*` > `OTEL_*` > `pi-otel.json` > defaults
  */

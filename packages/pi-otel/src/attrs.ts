@@ -2,8 +2,8 @@
  * Single source of truth for every `gen_ai.*` and `pi.*` attribute name
  * emitted by `@mammothb/pi-otel`.
  *
- * Decision D9 in PROPOSAL-pi-otel.md: the GenAI semantic conventions are
- * `Development`-status and `@opentelemetry/semantic-conventions/incubating`
+ * The GenAI semantic conventions are `Development`-status and
+ * `@opentelemetry/semantic-conventions/incubating`
  * exports churn. We hand-define the constants in one audited file rather
  * than depend on a moving package. Re-audit against the spec on every OTel
  * SDK bump.

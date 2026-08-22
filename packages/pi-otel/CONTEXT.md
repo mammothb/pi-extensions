@@ -1,12 +1,11 @@
 # CONTEXT — @mammothb/pi-otel
 
-Glossary scoped to this extension. Source: the design grilling recorded in
-`PROPOSAL-pi-otel.md`; the session-span-model call is ADR 0001.
+Glossary scoped to this extension.
 
 ## Terminology
 
 **Session** — a pi conversation persisted to a session file. Always an
-attribute, never a span (ADR 0001). _Avoid_: conversation, thread (they
+attribute, never a span. _Avoid_: conversation, thread (they
 exist only as the `gen_ai.conversation.id` alias).
 
 **Interaction** — one user prompt through `agent_end` (including retries,
@@ -30,7 +29,7 @@ is emitted, versus metadata-only (hashes/counts/durations).
 - `gen_ai.*` — OpenTelemetry GenAI semantic conventions, applied where the
   spec covers the concept (LLM calls, tool executions, token usage, nested
   agents). Constants live in `src/attrs.ts`, hand-defined (the semconv is
-  `Development`-status; see proposal D9).
+  `Development`-status).
 - `pi.*` — harness-specific concepts the semconv doesn't cover (session,
   interaction, turn index, capture hashes). Same file.
 

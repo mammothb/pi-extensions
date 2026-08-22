@@ -243,9 +243,6 @@ describe("Metrics", () => {
     );
     expect(chatPoints).toHaveLength(1);
     expect(toolDurationPoints).toHaveLength(1);
-
-    // no pi.session.duration — removed (completed-session metric was unused)
-    expect(findMetric(rms, "pi.session.duration")).toBeUndefined();
   });
 
   it("records an errored tool call with is_error=true", async () => {

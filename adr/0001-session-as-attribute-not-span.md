@@ -49,15 +49,15 @@ SDK's `Resource` and inherit automatically.
 
 - Session-level metrics (e.g. "tokens per session") cannot be summed via
   trace queries alone — they require aggregation across traces by
-  `pi.session.id`. We expose a `pi.session.duration` histogram and
-  `pi.prompt.count` counter to make this queryable directly.
+  `pi.session.id`. We expose a `pi.prompt.count` counter to make this
+  queryable directly.
 - A tool that walks span parents expecting to reach the session root will
   hit the trace root (the interaction) instead. This is the intended
   behavior; the interaction root is the right anchor.
 
 ### Neutral
 
-- The proposal's `pi.*` attribute namespace carries `pi.session.id` and
+- The `pi.*` attribute namespace carries `pi.session.id` and
   `pi.interaction.id` separately so dashboards can group either way.
 
 ## Alternatives considered

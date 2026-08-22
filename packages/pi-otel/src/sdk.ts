@@ -2,8 +2,8 @@
  * SDK lifecycle for `@mammothb/pi-otel`.
  *
  * Wiring:
- *   `initSdk`   — construct tracer/meter providers + OTLP exporters; not yet
- *                 registered globally. Idempotent: a second call tears down
+ *   `initSdk`   — construct tracer/meter providers + OTLP exporters, without
+ *                 registering them globally. Idempotent: a second call tears down
  *                 any prior SDK first, so `/reload` and session-switch don't
  *                 leak a dead provider.
  *   `startSdk`  — register the providers on the OTel global API. After this,
@@ -19,10 +19,6 @@
  *     pattern the OTel API requires (it refuses to replace a registered
  *     provider without `disable()` first).
  *   - Resource attributes and headers are config-driven, not env-only.
- *
- * Phase 1 covers scaffold + lifecycle only. Spans and metrics recording land
- * in Phases 2 and 3 — those will call `trace.getTracer()` / `metrics.getMeter()`
- * after `startSdk` returns.
  */
 import { metrics, trace } from "@opentelemetry/api";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";

@@ -3,7 +3,7 @@
  * `InstrumentationScope.version` on emitted telemetry.
  *
  * Derived from package.json so it cannot drift from the published version —
- * a changeset bump (Phase 6) updates the version in one place only.
+ * a changeset bump updates the version in one place only.
  */
 import pkg from "../package.json";
 

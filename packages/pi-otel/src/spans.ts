@@ -8,15 +8,15 @@
  * context to have the right active span at any given moment.
  *
  * Every span this tracker emits carries:
- *   - `pi.session.id` and `gen_ai.conversation.id` (the same value, the
- *     session identifier — see ADR 0001)
+ *   - `pi.session.id` and `gen_ai.conversation.id` (the same value; the
+ *     session is modeled as an attribute, never a span)
  *   - `pi.interaction.id` (set on every span; the interaction root carries
  *     it too, redundantly, for uniform query)
  *
  * Resource attributes (service.name, host.name, user.*) are set on the
  * OTel `Resource` at SDK init and inherit automatically.
  *
- * Phase 2/4 scope: shape, parent resolution, gen_ai attribute mapping, error
+ * Covers span shape, parent resolution, gen_ai attribute mapping, error
  * status, and content capture. Hashing and capture-mode gating live in
  * `content.ts`; the tracker emits sha256 hashes always, and raw (truncated)
  * content only when the matching `capture.*` flag is on.
