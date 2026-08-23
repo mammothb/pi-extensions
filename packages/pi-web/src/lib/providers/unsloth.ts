@@ -1063,6 +1063,7 @@ export function createUnslothProvider(
       if (signal?.aborted) {
         throw new Error("Request aborted");
       }
+
       const filtered = TEXT_ENGINES.filter((e) =>
         (engines as string[]).includes(e.name),
       );
@@ -1146,11 +1147,23 @@ export function createUnslothProvider(
         if (results.length) {
           return formatSearchResults(results.slice(0, maxResults));
         }
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw err;
+        }
         if (err instanceof Error && err.message.includes("timed out")) {
           throw new Error("Request timed out");
         }
+        if (err instanceof Error && signal?.aborted) {
+          throw err;
+        }
+        if (signal?.aborted) {
+          throw new DOMException("The operation was aborted.", "AbortError");
+        }
         return undefined;
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw error;
+        }
         if (controller.signal.aborted && !signal?.aborted) {
           throw new Error("Request timed out");
         }

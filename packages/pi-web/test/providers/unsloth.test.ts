@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   autoTextSearch,
   buildDom,
+  createUnslothProvider,
   EmptySweepError,
   extractResults,
+  formatSearchResults,
   normalizeText,
   normalizeUrl,
   ResultsAggregator,
@@ -577,5 +579,195 @@ describe("autoTextSearch", () => {
     // Actually both use different URLs, but dedup prevents second from running
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(results.length).toBeGreaterThan(0);
+  });
+});
+
+// ── createUnslothProvider ────────────────────────────────────────────────
+
+describe("createUnslothProvider", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function makeProvider(
+    overrides: Partial<Parameters<typeof createUnslothProvider>[0]> = {},
+  ) {
+    return createUnslothProvider({
+      timeoutMs: 5000,
+      overallTimeoutMs: 8000,
+      region: "us-en",
+      safesearch: "moderate",
+      engines: ["duckduckgo"],
+      ...overrides,
+    });
+  }
+
+  it("has name unsloth and usageNotes", () => {
+    const provider = makeProvider();
+    expect(provider.name).toBe("unsloth");
+    expect(provider.usageNotes).toContain("duckduckgo");
+  });
+
+  it("throws Request aborted when signal already aborted", async () => {
+    const provider = makeProvider();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      provider.search({ query: "hello" }, controller.signal),
+    ).rejects.toThrow("Request aborted");
+  });
+
+  it("propagates abort when signal fires mid-flight", async () => {
+    // Never-resolving fetch that rejects on abort
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            const signal = init?.signal;
+            if (signal?.aborted) {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+              return;
+            }
+            signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
+    const provider = makeProvider({ overallTimeoutMs: 5000 });
+    const controller = new AbortController();
+    const promise = provider.search({ query: "hello" }, controller.signal);
+    // Give the provider a tick to start fetch, then abort
+    await Promise.resolve();
+    controller.abort();
+    await expect(promise).rejects.toThrow();
+  });
+
+  it("throws Request timed out when overall timeout fires", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            const signal = init?.signal;
+            if (signal) {
+              signal.addEventListener("abort", () => {
+                // httpFetch maps TimeoutError -> "timed out"
+                reject(new DOMException("timed out", "TimeoutError"));
+              });
+            }
+          }),
+      ),
+    );
+    const provider = makeProvider({ overallTimeoutMs: 10, timeoutMs: 5000 });
+    await expect(provider.search({ query: "hello" })).rejects.toThrow(
+      "Request timed out",
+    );
+  });
+
+  it("returns undefined on empty sweep", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("", { status: 500 })),
+    );
+    const provider = makeProvider();
+    const result = await provider.search({ query: "hello" });
+    expect(result).toBeUndefined();
+  });
+
+  it("caps to numResults and appends IMPORTANT trailer", async () => {
+    const html = [
+      `<div class="body"><h2>One</h2><a href="https://a.com">hello world one body</a></div>`,
+      `<div class="body"><h2>Two</h2><a href="https://b.com">hello world two body</a></div>`,
+      `<div class="body"><h2>Three</h2><a href="https://c.com">hello world three body</a></div>`,
+    ].join("");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const provider = makeProvider();
+    const result = await provider.search({
+      query: "hello world",
+      numResults: 2,
+    });
+    expect(result).toBeDefined();
+    const count = (result ?? "").split("\nTitle:").length;
+    // First block starts with "Title:", subsequent are "\nTitle:" after split we count segments
+    // With 2 results we expect 2 Title: occurrences
+    expect((result ?? "").split("Title:").length - 1).toBe(2);
+    expect(result).toContain("URL:");
+    expect(result).toContain("Snippet:");
+    expect(result).toContain("IMPORTANT:");
+    expect(count).toBe(2);
+  });
+
+  it("uses overallTimeoutMs vs timeoutMs separately", async () => {
+    // Per-engine timeout throws "timed out" immediately
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        throw new DOMException("timed out", "TimeoutError");
+      }),
+    );
+    const provider = makeProvider({ timeoutMs: 5, overallTimeoutMs: 5000 });
+    await expect(provider.search({ query: "hello" })).rejects.toThrow(
+      "Request timed out",
+    );
+  });
+
+  it("cleans up timeout on success", async () => {
+    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    const provider = makeProvider();
+    await provider.search({ query: "hello world" });
+    expect(clearSpy).toHaveBeenCalled();
+    clearSpy.mockRestore();
+  });
+});
+
+describe("formatSearchResults", () => {
+  it("formats Title/URL/Snippet blocks with IMPORTANT trailer", () => {
+    const text = formatSearchResults([
+      { title: "A", href: "https://a.com", body: "body a" },
+      { title: "B", href: "https://b.com", body: "body b" },
+    ]);
+    expect(text).toContain("Title: A");
+    expect(text).toContain("URL: https://a.com");
+    expect(text).toContain("Snippet: body a");
+    expect(text).toContain("---");
+    expect(text).toContain("IMPORTANT:");
+  });
+});
+
+describe.skipIf(!process.env.LIVE)("unsloth live", () => {
+  it("returns at least one result for a real query", async () => {
+    const { createProvider } = await import("../../src/lib/providers");
+    const provider = createProvider({
+      provider: "unsloth",
+      exaMcp: { url: "https://mcp.exa.ai/mcp", tool: "web_search_exa" },
+      searxng: { url: "http://localhost:8080", safesearch: 0 },
+      timeoutMs: 15_000,
+      defaults: {
+        numResults: 5,
+        type: "auto",
+        livecrawl: "fallback",
+        contextMaxCharacters: 10_000,
+      },
+    } as unknown as import("../../src/config").WebsearchConfig);
+    const result = await provider.search({ query: "pi coding agent" });
+    expect(result).toBeDefined();
+    expect(result).toContain("Title:");
+    expect(result).toContain("URL:");
+    expect(result).toContain("Snippet:");
+    expect(result).toContain("IMPORTANT:");
   });
 });
