@@ -1,3 +1,4 @@
+import { formatSearchResults } from "../format";
 import type { SearchArgs, SearchProvider } from "../types";
 
 /**
@@ -138,18 +139,17 @@ export function createSearxngProvider(config: SearxngConfig): SearchProvider {
             const results = (data.results ?? [])
               .filter((r): r is typeof r & { url: string } => r.url != null)
               .slice(0, args.numResults)
-              .map((r, i) => {
-                const title = r.title ?? "Untitled";
-                const url = r.url;
-                const content = r.content ?? "";
-                return `## **${i + 1}.** ${title}\n**URL:** ${url}\n${content}`;
-              });
+              .map((r) => ({
+                title: r.title ?? "Untitled",
+                href: r.url,
+                body: r.content ?? "",
+              }));
 
             if (results.length === 0) {
               return "";
             }
 
-            return results.join("\n\n---\n\n");
+            return formatSearchResults(results);
           },
           controller.signal,
           timeoutMs,

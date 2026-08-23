@@ -40,7 +40,7 @@ describe("search", () => {
 
     const result = await provider.search(searchArgs);
     expect(result).toBe(
-      "## **1.** Result 1\n**URL:** https://a.com\nContent A\n\n---\n\n## **2.** Result 2\n**URL:** https://b.com\nContent B",
+      "Title: Result 1\nURL: https://a.com\nSnippet: Content A\n\n---\n\nTitle: Result 2\nURL: https://b.com\nSnippet: Content B",
     );
   });
 
@@ -63,7 +63,7 @@ describe("search", () => {
     const provider = createSearxngProvider(SEARXNG_CONFIG);
 
     const result = await provider.search(searchArgs);
-    expect(result).toBe("## **1.** Untitled\n**URL:** https://a.com\n");
+    expect(result).toBe("Title: Untitled\nURL: https://a.com\nSnippet: ");
   });
 
   it("returns undefined when all results lack a URL", async () => {
@@ -111,7 +111,7 @@ describe("search", () => {
 
     const result = await provider.search({ ...searchArgs, numResults: 3 });
     // Should have exactly 3 results
-    const count = (result ?? "").split("## **").length - 1;
+    const count = (result ?? "").split("Title:").length - 1;
     expect(count).toBe(3);
   });
 

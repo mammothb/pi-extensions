@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SNIPPET_TRAILER } from "../../src/lib/format";
 import {
   autoTextSearch,
   buildDom,
@@ -701,7 +702,7 @@ describe("createUnslothProvider", () => {
     expect(result).toBeUndefined();
   });
 
-  it("caps to numResults and appends IMPORTANT trailer", async () => {
+  it("caps to numResults", async () => {
     const html = [
       duckResult("One", "https://a.com", "hello world one body"),
       duckResult("Two", "https://b.com", "hello world two body"),
@@ -723,7 +724,6 @@ describe("createUnslothProvider", () => {
     expect((result ?? "").split("Title:").length - 1).toBe(2);
     expect(result).toContain("URL:");
     expect(result).toContain("Snippet:");
-    expect(result).toContain("IMPORTANT:");
     expect(count).toBe(2);
   });
 
@@ -756,7 +756,7 @@ describe("createUnslothProvider", () => {
 });
 
 describe("formatSearchResults", () => {
-  it("formats Title/URL/Snippet blocks with IMPORTANT trailer", () => {
+  it("formats Title/URL/Snippet blocks without trailer", () => {
     const text = formatSearchResults([
       { title: "A", href: "https://a.com", body: "body a" },
       { title: "B", href: "https://b.com", body: "body b" },
@@ -765,7 +765,10 @@ describe("formatSearchResults", () => {
     expect(text).toContain("URL: https://a.com");
     expect(text).toContain("Snippet: body a");
     expect(text).toContain("---");
-    expect(text).toContain("IMPORTANT:");
+    // trailer lives at the tool layer, not in the shared formatter
+    expect(text).not.toContain("IMPORTANT:");
+    expect(SNIPPET_TRAILER).toContain("IMPORTANT:");
+    expect(SNIPPET_TRAILER).toContain("WebFetch");
   });
 });
 
@@ -1209,6 +1212,5 @@ describe.skipIf(!process.env.LIVE)("unsloth live", () => {
     expect(result).toContain("Title:");
     expect(result).toContain("URL:");
     expect(result).toContain("Snippet:");
-    expect(result).toContain("IMPORTANT:");
   });
 });

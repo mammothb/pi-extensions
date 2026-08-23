@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Parser } from "htmlparser2";
+import { formatSearchResults as sharedFormatSearchResults } from "../format";
 
 // ── Normalizers (port of engines.ts) ──────────────────────────────────────
 
@@ -1104,18 +1105,7 @@ export function shuffledEngines(): Engine[] {
 }
 
 export function formatSearchResults(results: SearchResult[]): string {
-  const parts = results.map((result) => {
-    const title = result.title.replace(/\s+/g, " ");
-    const href = result.href.trim();
-    const snippet = result.body.replace(/\s+/g, " ");
-    return `Title: ${title}\nURL: ${href}\nSnippet: ${snippet}`;
-  });
-  const text = parts.join("\n\n---\n\n");
-  return (
-    text +
-    "\n\n---\n\nIMPORTANT: These are only short snippets. " +
-    'To get the full page content, call WebFetch with the url parameter (e.g. {"url": "<URL>"}).'
-  );
+  return sharedFormatSearchResults(results);
 }
 
 export interface UnslothConfig {
