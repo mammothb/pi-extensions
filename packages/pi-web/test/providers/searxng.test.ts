@@ -66,6 +66,23 @@ describe("search", () => {
     expect(result).toBe("Title: Untitled\nURL: https://a.com\nSnippet: ");
   });
 
+  it("discards non-string url but retains entries with non-string fields", async () => {
+    mockFetch({
+      body: searchResponse([
+        { url: 123, title: "Bad URL" },
+        { title: 42, url: "https://a.com", content: 7 },
+        { title: "Good", url: "https://b.com", content: "Body B" },
+      ]),
+    });
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    // invalid url entry dropped; the rest survive with defaults applied
+    expect(result).toBe(
+      "Title: Untitled\nURL: https://a.com\nSnippet: \n\n---\n\nTitle: Good\nURL: https://b.com\nSnippet: Body B",
+    );
+  });
+
   it("returns undefined when all results lack a URL", async () => {
     mockFetch({
       body: searchResponse([{ title: "No URL", content: "Body" }]),

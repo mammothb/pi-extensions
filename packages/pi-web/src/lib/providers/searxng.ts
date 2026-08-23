@@ -137,12 +137,15 @@ export function createSearxngProvider(config: SearxngConfig): SearchProvider {
 
             const data = (await response.json()) as SearxngResponse;
             const results = (data.results ?? [])
-              .filter((r): r is typeof r & { url: string } => r.url != null)
+              .filter(
+                (r): r is typeof r & { url: string } =>
+                  typeof r.url === "string",
+              )
               .slice(0, args.numResults)
               .map((r) => ({
-                title: r.title ?? "Untitled",
+                title: typeof r.title === "string" ? r.title : "Untitled",
                 href: r.url,
-                body: r.content ?? "",
+                body: typeof r.content === "string" ? r.content : "",
               }));
 
             if (results.length === 0) {
