@@ -846,10 +846,12 @@ const DUCKDUCKGO: Engine = {
     if (!html) {
       return null;
     }
+    // Current markup nests the anchor inside h2.result__title and serves the
+    // snippet via a.result__snippet; result__url would otherwise pollute body.
     const results = extractResults(html, "//div[contains(@class, 'body')]", {
       title: ".//h2//text()",
-      href: "./a/@href",
-      body: "./a//text()",
+      href: ".//h2/a/@href",
+      body: ".//a[contains(@class,'result__snippet')]//text()",
     });
     return results.filter(
       (r) => !r.href.startsWith("https://duckduckgo.com/y.js?"),
@@ -981,14 +983,16 @@ const YAHOO: Engine = {
       href: ".//div[contains(@class, 'Title')]//a/@href",
       body: ".//div[contains(@class, 'Text')]//text()",
     });
+    // Unwrap /RU= redirects BEFORE the ad filter: ads hide behind yahoo
+    // redirects whose decoded target is a bing adclick URL.
     return results
-      .filter((r) => !r.href.startsWith("https://www.bing.com/aclick?"))
       .map((r) => {
         if (r.href.includes("/RU=")) {
           r.href = yahooExtractUrl(r.href);
         }
         return r;
-      });
+      })
+      .filter((r) => !r.href.startsWith("https://www.bing.com/aclick?"));
   },
 };
 

@@ -20,6 +20,18 @@ import {
   xpathText,
 } from "../../src/lib/providers/unsloth";
 
+/** Current html.duckduckgo.com result markup (anchor nested in h2, snippet in
+ * a.result__snippet, display URL in a.result__url). */
+function duckResult(title: string, href: string, body: string): string {
+  return (
+    `<div class="result"><div class="links_main links_deep result__body">` +
+    `<h2 class="result__title"><a rel="nofollow" class="result__a" href="${href}">${title}</a></h2>` +
+    `<div class="result__extras"><div class="result__extras__url"><a class="result__url" href="${href}">${href}</a></div></div>` +
+    `<a class="result__snippet" href="${href}">${body}</a>` +
+    `</div></div>`
+  );
+}
+
 // ── normalizeText ─────────────────────────────────────────────────────────
 
 describe("normalizeText", () => {
@@ -320,7 +332,9 @@ describe("engine search", () => {
 
   it("duckduckgo parses results and filters y.js?", async () => {
     const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
-    const html = `<div class="body"><h2>Duck Title</h2><a href="https://example.com">Duck body</a></div><div class="body"><h2>Bad</h2><a href="https://duckduckgo.com/y.js?x=1">bad</a></div>`;
+    const html =
+      duckResult("Duck Title", "https://example.com", "Duck body") +
+      duckResult("Bad", "https://duckduckgo.com/y.js?x=1", "bad");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
@@ -333,6 +347,8 @@ describe("engine search", () => {
     expect(results).toHaveLength(1);
     expect(results![0].title).toBe("Duck Title");
     expect(results![0].href).toBe("https://example.com");
+    // snippet anchor only — result__url display text must not leak into body
+    expect(results![0].body).toBe("Duck body");
   });
 
   it("brave parses results", async () => {
@@ -386,6 +402,21 @@ describe("engine search", () => {
   it("yahoo filters bing aclick", async () => {
     const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
     const html = `<div class="relsrch"><div class="Title"><h3><a href="https://www.bing.com/aclick?x=1">Ad</a></h3></div><div class="Text">ad body</div></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const results = await yahoo.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(results).toHaveLength(0);
+  });
+
+  it("yahoo filters bing aclick hidden behind /RU= redirect", async () => {
+    const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
+    const html = `<div class="relsrch"><div class="Title"><h3><a href="https://r.search.yahoo.com/_ylt=x/RU=https%3A%2F%2Fwww.bing.com%2Faclick%3Fld%3D1/RK=y">Ad</a></h3></div><div class="Text">ad body</div></div>`;
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
@@ -518,7 +549,7 @@ describe("autoTextSearch", () => {
     const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
     const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
     // Both share provider "bing" — duck succeeds so yahoo is dedup-skipped
-    const html = `<div class="body"><h2>Title</h2><a href="https://example.com">body</a></div>`;
+    const html = duckResult("Title", "https://example.com", "body");
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(new Response(html, { status: 200 }));
@@ -555,7 +586,11 @@ describe("autoTextSearch", () => {
   });
 
   it("returns results from stubbed engines", async () => {
-    const html = `<div class="body"><h2>Result</h2><a href="https://example.com">hello world body</a></div>`;
+    const html = duckResult(
+      "Result",
+      "https://example.com",
+      "hello world body",
+    );
     // Make duckduckgo succeed, others fail; autoTextSearch shuffles, so stub all
     vi.stubGlobal(
       "fetch",
@@ -668,9 +703,9 @@ describe("createUnslothProvider", () => {
 
   it("caps to numResults and appends IMPORTANT trailer", async () => {
     const html = [
-      `<div class="body"><h2>One</h2><a href="https://a.com">hello world one body</a></div>`,
-      `<div class="body"><h2>Two</h2><a href="https://b.com">hello world two body</a></div>`,
-      `<div class="body"><h2>Three</h2><a href="https://c.com">hello world three body</a></div>`,
+      duckResult("One", "https://a.com", "hello world one body"),
+      duckResult("Two", "https://b.com", "hello world two body"),
+      duckResult("Three", "https://c.com", "hello world three body"),
     ].join("");
     vi.stubGlobal(
       "fetch",
@@ -707,7 +742,7 @@ describe("createUnslothProvider", () => {
   });
 
   it("cleans up timeout on success", async () => {
-    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const html = duckResult("Hi", "https://example.com", "hello world body");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
@@ -1015,7 +1050,11 @@ describe("coverage gaps", () => {
   });
 
   it("aggregator early break and pending drain in runUnslothSearch", async () => {
-    const duckHtml = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const duckHtml = duckResult(
+      "Hi",
+      "https://example.com",
+      "hello world body",
+    );
     const braveHtml = `<div data-type="web"><a href="https://b.com"><div class="title">T</div></a><div class="snippet"><div class="content">hello world c</div></div></div>`;
     const html = `${duckHtml}${braveHtml}`;
     vi.stubGlobal(
@@ -1039,7 +1078,11 @@ describe("coverage gaps", () => {
 
   it("provider dedup continue path", async () => {
     // duck and yahoo share provider "bing" -> second is skipped via continue
-    const duckHtml = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const duckHtml = duckResult(
+      "Hi",
+      "https://example.com",
+      "hello world body",
+    );
     const yahooHtml = `<div class="relsrch"><div class="Title"><h3><a href="https://a.com">Hi</a></h3></div><div class="Text">b</div></div>`;
     const fetchSpy = vi.fn().mockImplementation((url: string) => {
       // yahoo and duck share provider "bing" -> only one should contribute
@@ -1118,7 +1161,7 @@ describe("coverage gaps", () => {
   });
 
   it("autoTextSearch break via aggregator size >= maxResults", async () => {
-    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const html = duckResult("Hi", "https://example.com", "hello world body");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
@@ -1133,7 +1176,7 @@ describe("coverage gaps", () => {
   });
 
   it("autoTextSearch pending drain", async () => {
-    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const html = duckResult("Hi", "https://example.com", "hello world body");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
