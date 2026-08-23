@@ -596,6 +596,14 @@ function abortableFetch(_url: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+function abortOnSignal2(_url: string, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => {
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    });
+  });
+}
+
 function timeoutFetch(_url: string, init?: RequestInit): Promise<Response> {
   return new Promise((_resolve, reject) => {
     init?.signal?.addEventListener("abort", () => {
@@ -1058,20 +1066,7 @@ describe("coverage gaps", () => {
   });
 
   it("collectSearchError abort without err via perEngineSignal", async () => {
-    // No engine error but perEngineSignal aborted -> DOMException throw
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(
-        (_url: string, init?: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            init?.signal?.addEventListener("abort", () => {
-              reject(
-                new DOMException("The operation was aborted.", "AbortError"),
-              );
-            });
-          }),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(abortOnSignal2));
     const provider = createUnslothProvider({
       timeoutMs: 5000,
       overallTimeoutMs: 10,

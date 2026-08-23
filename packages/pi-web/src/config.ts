@@ -168,6 +168,54 @@ export const DEFAULT_CONFIG: WebsearchConfig = {
  * Deep-merge two configs. Arrays and primitives from `override` replace those
  * in `base`. Objects are merged recursively.
  */
+function isValidProvider(value: string): value is WebsearchConfig["provider"] {
+  return value === "exa-mcp" || value === "searxng" || value === "unsloth";
+}
+
+function validateUnslothRegion(region: unknown): void {
+  if (
+    typeof region !== "string" ||
+    !UNSLOTH_REGION_RE.test(region.toLowerCase())
+  ) {
+    throw new Error(
+      `Unsloth: region must match xx-yy (e.g. us-en), got "${String(region)}"`,
+    );
+  }
+}
+
+function validateUnslothSafeSearch(value: unknown): void {
+  if (value !== "on" && value !== "moderate" && value !== "off") {
+    throw new Error(
+      `Unsloth: safesearch must be "on", "moderate", or "off", got "${String(value)}"`,
+    );
+  }
+}
+
+function mergeUnsloth(
+  base: WebsearchConfig["unsloth"],
+  overrideUnsloth: Record<string, unknown>,
+): WebsearchConfig["unsloth"] {
+  const mergedUnsloth: Record<string, unknown> = {
+    ...(base ?? {}),
+    ...overrideUnsloth,
+  };
+  if ("region" in overrideUnsloth) {
+    validateUnslothRegion(overrideUnsloth["region"]);
+  }
+  if ("safesearch" in overrideUnsloth) {
+    validateUnslothSafeSearch(overrideUnsloth["safesearch"]);
+  }
+  const hasEngines = overrideUnsloth["engines"] !== undefined;
+  const hasDisabled = overrideUnsloth["disabledEngines"] !== undefined;
+  if (hasEngines && !hasDisabled) {
+    delete mergedUnsloth["disabledEngines"];
+  }
+  if (hasDisabled && !hasEngines) {
+    delete mergedUnsloth["engines"];
+  }
+  return mergedUnsloth as WebsearchConfig["unsloth"];
+}
+
 function mergeConfig(
   base: WebsearchConfig,
   override: Record<string, unknown>,
@@ -176,9 +224,7 @@ function mergeConfig(
 
   if (
     typeof override.provider === "string" &&
-    (override.provider === "exa-mcp" ||
-      override.provider === "searxng" ||
-      override.provider === "unsloth")
+    isValidProvider(override.provider)
   ) {
     merged.provider = override.provider;
   }
@@ -195,39 +241,10 @@ function mergeConfig(
     };
   }
   if (override.unsloth && typeof override.unsloth === "object") {
-    const overrideUnsloth = override.unsloth as Record<string, unknown>;
-    const mergedUnsloth: Record<string, unknown> = {
-      ...(base.unsloth ?? {}),
-      ...overrideUnsloth,
-    };
-    if ("region" in overrideUnsloth) {
-      const region = overrideUnsloth["region"];
-      if (
-        typeof region !== "string" ||
-        !UNSLOTH_REGION_RE.test(region.toLowerCase())
-      ) {
-        throw new Error(
-          `Unsloth: region must match xx-yy (e.g. us-en), got "${String(region)}"`,
-        );
-      }
-    }
-    if ("safesearch" in overrideUnsloth) {
-      const ss = overrideUnsloth["safesearch"];
-      if (ss !== "on" && ss !== "moderate" && ss !== "off") {
-        throw new Error(
-          `Unsloth: safesearch must be "on", "moderate", or "off", got "${String(ss)}"`,
-        );
-      }
-    }
-    const hasEngines = overrideUnsloth["engines"] !== undefined;
-    const hasDisabled = overrideUnsloth["disabledEngines"] !== undefined;
-    if (hasEngines && !hasDisabled) {
-      delete mergedUnsloth["disabledEngines"];
-    }
-    if (hasDisabled && !hasEngines) {
-      delete mergedUnsloth["engines"];
-    }
-    merged.unsloth = mergedUnsloth as WebsearchConfig["unsloth"];
+    merged.unsloth = mergeUnsloth(
+      base.unsloth,
+      override.unsloth as Record<string, unknown>,
+    ); // needed: narrows unknown to indexable record
   }
   if (override.defaults && typeof override.defaults === "object") {
     merged.defaults = {
