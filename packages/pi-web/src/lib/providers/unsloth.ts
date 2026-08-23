@@ -41,6 +41,8 @@ export function normalizeText(raw: string): string {
   let text = raw.replace(STRIP_TAGS_RE, "");
   text = decodeHtmlEntities(text);
   text = text.normalize("NFC");
+  // Preserve word boundaries: whitespace controls become spaces before stripping remaining controls
+  text = text.replace(/[\t\n\r]/g, " ");
   text = text.replace(/[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Cn}]/gu, "");
   return text.trim().split(/\s+/).join(" ");
 }
@@ -134,12 +136,10 @@ type Pred =
   | { op: "desc"; tag: string }
   | { op: "child"; tag: string; preds: Pred[] };
 
-interface XStep {
-  axis: "descendant" | "child";
-  name?: string;
-  preds: Pred[];
-  terminal?: string;
-}
+type XStep =
+  | { kind: "node"; axis: "descendant" | "child"; name?: string; preds: Pred[] }
+  | { kind: "text" }
+  | { kind: "attr"; name: string };
 
 function readWord(input: string, pos: { value: number }): string {
   while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
@@ -337,12 +337,12 @@ function parsePath(expr: string): XStep[] {
     if (expr[i] === "@") {
       i++;
       const m = /^[A-Za-z0-9_-]+/.exec(expr.slice(i));
-      steps.push({ axis, preds: [], terminal: m ? m[0] : "" });
+      steps.push({ kind: "attr", name: m ? m[0] : "" });
       i += m ? m[0].length : 0;
       continue;
     }
     if (expr.startsWith("text()", i)) {
-      steps.push({ axis, preds: [], terminal: "text" });
+      steps.push({ kind: "text" });
       i += 6;
       continue;
     }
@@ -376,21 +376,32 @@ function parsePath(expr: string): XStep[] {
       preds.push(parsePredExpr(expr.slice(start, j - 1)));
       i = j;
     }
-    steps.push({ axis, name, preds });
+    steps.push({ kind: "node", axis, name, preds });
   }
   return steps;
 }
 
-function descendantsOf(el: DomNode): DomNode[] {
-  const out: DomNode[] = [];
-  const walk = (node: DomNode) => {
-    for (const child of node.children) {
-      out.push(child);
-      walk(child);
+function hasDescendantWithTag(node: DomNode, tag: string): boolean {
+  const stack: DomNode[] = [...node.children];
+  while (stack.length) {
+    // biome-ignore lint/style/noNonNullAssertion: stack non-empty (length checked)
+    const cur = stack.pop()!;
+    if (cur.tag === tag) {
+      return true;
     }
-  };
-  walk(el);
-  return out;
+    for (let i = cur.children.length - 1; i >= 0; i--) {
+      // biome-ignore lint/style/noNonNullAssertion: i < cur.children.length
+      stack.push(cur.children[i]!);
+    }
+  }
+  return false;
+}
+
+function collectDescendants(el: DomNode, out: DomNode[]): void {
+  for (const child of el.children) {
+    out.push(child);
+    collectDescendants(child, out);
+  }
 }
 
 function matchesPred(
@@ -426,9 +437,7 @@ function matchesPred(
       return pred.name in el.attrs;
     }
     case "desc": {
-      return (
-        el.tag === pred.tag || descendantsOf(el).some((d) => d.tag === pred.tag)
-      );
+      return el.tag === pred.tag || hasDescendantWithTag(el, pred.tag);
     }
     case "child": {
       return el.children.some(
@@ -440,15 +449,28 @@ function matchesPred(
   }
 }
 
-function applyStep(step: XStep, nodes: DomNode[]): DomNode[] {
+function applyStep(
+  step: Extract<XStep, { kind: "node" }>,
+  nodes: DomNode[],
+): DomNode[] {
   const candidates: DomNode[] = [];
   for (const node of nodes) {
-    const list = step.axis === "child" ? node.children : descendantsOf(node);
-    for (const c of list) {
-      if (step.name && c.tag !== step.name) {
-        continue;
+    if (step.axis === "child") {
+      for (const c of node.children) {
+        if (step.name && c.tag !== step.name) {
+          continue;
+        }
+        candidates.push(c);
       }
-      candidates.push(c);
+    } else {
+      const list: DomNode[] = [];
+      collectDescendants(node, list);
+      for (const c of list) {
+        if (step.name && c.tag !== step.name) {
+          continue;
+        }
+        candidates.push(c);
+      }
     }
   }
   const deduped: DomNode[] = [];
@@ -469,15 +491,15 @@ export function xpathText(expr: string, node: DomNode): string[] {
   const steps = parsePath(expr);
   let nodes: DomNode[] = [node];
   for (const step of steps) {
-    if (step.terminal === "text") {
+    if (step.kind === "text") {
       const out: string[] = [];
       for (const n of nodes) {
         out.push(...n.textNodes);
       }
       return out;
     }
-    if (step.terminal !== undefined) {
-      return nodes.map((n) => n.attrs[step.terminal as string] ?? "");
+    if (step.kind === "attr") {
+      return nodes.map((n) => n.attrs[step.name] ?? "");
     }
     nodes = applyStep(step, nodes);
   }
@@ -488,7 +510,7 @@ export function xpathNodes(expr: string, root: DomNode): DomNode[] {
   const steps = parsePath(expr);
   let nodes: DomNode[] = [root];
   for (const step of steps) {
-    if (step.terminal) {
+    if (step.kind !== "node") {
       break;
     }
     nodes = applyStep(step, nodes);
@@ -562,6 +584,9 @@ export class ResultsAggregator {
 
   append(item: SearchResult): void {
     const key = item.href;
+    if (!key) {
+      return;
+    }
     const existing = this.cache.get(key);
     if (!existing || item.body.length > existing.body.length) {
       this.cache.set(key, item);
@@ -669,8 +694,7 @@ function googleUserAgent(): string {
   return (
     `Mozilla/5.0 (Linux; Android ${androidVer}; ${device}) ` +
     `AppleWebKit/537.36 (KHTML, like Gecko) ` +
-    `Chrome/${chromeMajor}.0.${chromeBuild}.${chromePatch} Mobile Safari/537.36` +
-    "NSTNWV"
+    `Chrome/${chromeMajor}.0.${chromeBuild}.${chromePatch} Mobile Safari/537.36`
   );
 }
 
@@ -736,8 +760,13 @@ async function httpPost(
     signal?: AbortSignal;
   },
 ): Promise<string | null> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    ...(options.headers ?? {}),
+  };
   return httpFetch(url, {
     ...options,
+    headers,
     method: "POST",
     body: new URLSearchParams(data).toString(),
   });
@@ -848,17 +877,19 @@ const GOOGLE: Engine = {
   name: "google",
   provider: "google",
   async search(query, ctx, timeoutMs, signal) {
-    const [country, lang] = ctx.region.split("-") as [string, string];
+    const parts = ctx.region.toLowerCase().split("-");
+    const country = parts[0] ?? "us";
+    const lang = parts[1] ?? "en";
     const safesearchBase: Record<string, string> = {
-      on: "2",
-      moderate: "1",
-      off: "0",
+      on: "active",
+      moderate: "active",
+      off: "off",
     };
     const html = await httpGet(
       "https://www.google.com/search",
       {
         q: query,
-        filter: safesearchBase[ctx.safesearch.toLowerCase()] ?? "1",
+        safe: safesearchBase[ctx.safesearch.toLowerCase()] ?? "active",
         start: "0",
         hl: `${lang}-${country.toUpperCase()}`,
         lr: `lang_${lang}`,
@@ -894,10 +925,9 @@ const MOJEEK: Engine = {
   name: "mojeek",
   provider: "mojeek",
   async search(query, ctx, timeoutMs, signal) {
-    const [country, lang] = ctx.region.toLowerCase().split("-") as [
-      string,
-      string,
-    ];
+    const parts = ctx.region.toLowerCase().split("-");
+    const country = parts[0] ?? "us";
+    const lang = parts[1] ?? "en";
     const params: Record<string, string> = { q: query };
     if (ctx.safesearch === "on") {
       params.safe = "1";
@@ -1036,11 +1066,11 @@ export const TEXT_ENGINES: Engine[] = [
   WIKIPEDIA,
 ];
 
-export function shuffledEngines(): Engine[] {
-  const shuffled = [...TEXT_ENGINES];
+export function shuffleEnginesWithPriority(engines: Engine[]): Engine[] {
+  const shuffled = [...engines];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    // biome-ignore lint/style/noNonNullAssertion: explanation
+    // biome-ignore lint/style/noNonNullAssertion: indices in bounds
     [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!] as [
       Engine,
       Engine,
@@ -1049,6 +1079,10 @@ export function shuffledEngines(): Engine[] {
   const wikipedia = shuffled.find((e) => e.priority === 2);
   const rest = shuffled.filter((e) => e.priority !== 2);
   return wikipedia ? [wikipedia, ...rest] : shuffled;
+}
+
+export function shuffledEngines(): Engine[] {
+  return shuffleEnginesWithPriority(TEXT_ENGINES);
 }
 
 export function formatSearchResults(results: SearchResult[]): string {
@@ -1074,21 +1108,6 @@ export interface UnslothConfig {
   engines: import("../../config").UnslothEngineId[];
 }
 
-function shuffleEnginesWithPriority(engines: Engine[]): Engine[] {
-  const shuffled = [...engines];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    // biome-ignore lint/style/noNonNullAssertion: indices in bounds
-    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!] as [
-      Engine,
-      Engine,
-    ];
-  }
-  const wikipedia = shuffled.find((e) => e.priority === 2);
-  const rest = shuffled.filter((e) => e.priority !== 2);
-  return wikipedia ? [wikipedia, ...rest] : shuffled;
-}
-
 export function collectSearchError(
   err: unknown,
   signal?: AbortSignal,
@@ -1111,37 +1130,29 @@ export function collectSearchError(
   return err ? { shouldThrow: false, error: err as Error } : null;
 }
 
-export function shuffleEnginesWithPriorityPublic(engines: Engine[]): Engine[] {
-  return shuffleEnginesWithPriority(engines);
+interface ScheduleResult {
+  ranked: SearchResult[];
+  err: unknown;
 }
 
-async function runUnslothSearch(
-  filtered: Engine[],
-  args: import("../types").SearchArgs,
-  config: UnslothConfig,
-  perEngineSignal: AbortSignal,
-): Promise<string | undefined> {
-  const ctx: EngineContext = {
-    region: config.region,
-    safesearch: config.safesearch,
-  };
+async function scheduleEngines(
+  ordered: Engine[],
+  query: string,
+  ctx: EngineContext,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+  maxResults: number,
+): Promise<ScheduleResult> {
   const seenProviders = new Set<string>();
   const aggregator = new ResultsAggregator();
   let err: unknown = null;
-  const uniqueProviders = new Set(filtered.map((e) => e.provider)).size;
-  const maxResults = args.numResults ?? 8;
+  const uniqueProviders = new Set(ordered.map((e) => e.provider)).size;
   const maxWorkers = Math.min(uniqueProviders, Math.ceil(maxResults / 10) + 1);
-  const ordered = shuffleEnginesWithPriority(filtered);
   let i = 0;
   let pending: Promise<void>[] = [];
   const run = async (engine: Engine) => {
     try {
-      const results = await engine.search(
-        args.query,
-        ctx,
-        config.timeoutMs,
-        perEngineSignal,
-      );
+      const results = await engine.search(query, ctx, timeoutMs, signal);
       if (results?.length) {
         aggregator.extend(results);
         seenProviders.add(engine.provider);
@@ -1160,7 +1171,7 @@ async function runUnslothSearch(
       continue;
     }
     pending.push(run(engine));
-    if (pending.length >= maxWorkers || i >= maxWorkers) {
+    if (pending.length >= maxWorkers) {
       await Promise.allSettled(pending);
       pending = [];
     }
@@ -1168,19 +1179,39 @@ async function runUnslothSearch(
   if (pending.length) {
     await Promise.allSettled(pending);
   }
-  const results = rankResults(aggregator.extractDicts(), args.query);
-  if (results.length) {
-    return formatSearchResults(results.slice(0, maxResults));
+  return { ranked: rankResults(aggregator.extractDicts(), query), err };
+}
+
+async function runUnslothSearch(
+  filtered: Engine[],
+  args: import("../types").SearchArgs,
+  config: UnslothConfig,
+  perEngineSignal: AbortSignal,
+): Promise<string | undefined> {
+  const ctx: EngineContext = {
+    region: config.region,
+    safesearch: config.safesearch,
+  };
+  const ordered = shuffleEnginesWithPriority(filtered);
+  const maxResults = args.numResults ?? 8;
+  const { ranked, err } = await scheduleEngines(
+    ordered,
+    args.query,
+    ctx,
+    config.timeoutMs,
+    perEngineSignal,
+    maxResults,
+  );
+  if (ranked.length) {
+    return formatSearchResults(ranked.slice(0, maxResults));
   }
   const collected = collectSearchError(
     err,
     perEngineSignal as unknown as AbortSignal,
   );
-  // perEngineSignal already reflects external abort; check the original args signal for throw type
   if (collected?.shouldThrow) {
     throw collected.error;
   }
-  // Also surface signal abort even when no engine error was captured
   if (perEngineSignal.aborted) {
     throw new DOMException("The operation was aborted.", "AbortError");
   }
@@ -1244,46 +1275,17 @@ export async function autoTextSearch(
   signal?: AbortSignal,
   engines: Engine[] = shuffledEngines(),
 ): Promise<SearchResult[]> {
-  const seenProviders = new Set<string>();
-  const aggregator = new ResultsAggregator();
   const ctx: EngineContext = { region: "us-en", safesearch: "moderate" };
-  let err: unknown = null;
-  const uniqueProviders = new Set(engines.map((e) => e.provider)).size;
-  const maxWorkers = Math.min(uniqueProviders, Math.ceil(maxResults / 10) + 1);
-  let i = 0;
-  let pending: Promise<void>[] = [];
-  const run = async (engine: Engine) => {
-    try {
-      const results = await engine.search(query, ctx, timeoutMs, signal);
-      if (results?.length) {
-        aggregator.extend(results);
-        seenProviders.add(engine.provider);
-      }
-    } catch (e) {
-      err = e;
-    }
-  };
-  while (i < engines.length) {
-    if (aggregator.size >= maxResults) {
-      break;
-    }
-    // biome-ignore lint/style/noNonNullAssertion: explanation
-    const engine = engines[i++]!;
-    if (seenProviders.has(engine.provider)) {
-      continue;
-    }
-    pending.push(run(engine));
-    if (pending.length >= maxWorkers || i >= maxWorkers) {
-      await Promise.allSettled(pending);
-      pending = [];
-    }
-  }
-  if (pending.length) {
-    await Promise.allSettled(pending);
-  }
-  const results = rankResults(aggregator.extractDicts(), query);
-  if (results.length) {
-    return results.slice(0, maxResults);
+  const { ranked, err } = await scheduleEngines(
+    engines,
+    query,
+    ctx,
+    timeoutMs,
+    signal,
+    maxResults,
+  );
+  if (ranked.length) {
+    return ranked.slice(0, maxResults);
   }
   if (err instanceof Error && err.message.includes("timed out")) {
     throw new SearchTimeoutError();

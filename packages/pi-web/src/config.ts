@@ -69,6 +69,8 @@ function resolveBlocklist(disabled: unknown[]): UnslothEngineId[] {
   return filtered;
 }
 
+const UNSLOTH_REGION_RE = /^[a-z]{2}-[a-z]{2}$/;
+
 export function resolveUnslothEngines(
   cfg?: {
     engines?: UnslothEngineId[];
@@ -193,10 +195,30 @@ function mergeConfig(
     };
   }
   if (override.unsloth && typeof override.unsloth === "object") {
-    merged.unsloth = {
+    const overrideUnsloth = override.unsloth as Record<string, unknown>;
+    const mergedUnsloth: Record<string, unknown> = {
       ...(base.unsloth ?? {}),
-      ...(override.unsloth as Record<string, unknown>),
-    } as WebsearchConfig["unsloth"];
+      ...overrideUnsloth,
+    };
+    if (
+      typeof overrideUnsloth["region"] === "string" &&
+      !UNSLOTH_REGION_RE.test(
+        (overrideUnsloth["region"] as string).toLowerCase(),
+      )
+    ) {
+      throw new Error(
+        `Unsloth: region must match xx-yy (e.g. us-en), got "${overrideUnsloth["region"]}"`,
+      );
+    }
+    const hasEngines = overrideUnsloth["engines"] !== undefined;
+    const hasDisabled = overrideUnsloth["disabledEngines"] !== undefined;
+    if (hasEngines && !hasDisabled) {
+      delete mergedUnsloth["disabledEngines"];
+    }
+    if (hasDisabled && !hasEngines) {
+      delete mergedUnsloth["engines"];
+    }
+    merged.unsloth = mergedUnsloth as WebsearchConfig["unsloth"];
   }
   if (override.defaults && typeof override.defaults === "object") {
     merged.defaults = {

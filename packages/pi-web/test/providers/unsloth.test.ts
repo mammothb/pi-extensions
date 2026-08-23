@@ -14,7 +14,7 @@ import {
   SearchCancelled,
   SearchTimeoutError,
   shuffledEngines,
-  shuffleEnginesWithPriorityPublic,
+  shuffleEnginesWithPriority,
   TEXT_ENGINES,
   xpathNodes,
   xpathText,
@@ -517,15 +517,18 @@ describe("autoTextSearch", () => {
   it("provider dedup skips second engine with same provider", async () => {
     const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
     const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
-    // Both share provider "bing" — stub success so dedup is observable
+    // Both share provider "bing" — duck succeeds so yahoo is dedup-skipped
     const html = `<div class="body"><h2>Title</h2><a href="https://example.com">body</a></div>`;
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(new Response(html, { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
-    await autoTextSearch("hello", 5, 5000, undefined, [duck, yahoo]);
-    // duck succeeds -> yahoo (same provider) skipped -> 1 fetch
+    const results = await autoTextSearch("hello", 5, 5000, undefined, [
+      duck,
+      yahoo,
+    ]);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(results.length).toBeGreaterThan(0);
   });
 
   it("throws EmptySweepError when all engines return null", async () => {
@@ -562,26 +565,6 @@ describe("autoTextSearch", () => {
     const results = await autoTextSearch("hello", 2, 5000, undefined, [duck]);
     expect(results.length).toBeGreaterThan(0);
     expect(results.length).toBeLessThanOrEqual(2);
-  });
-
-  it("respects provider dedup", async () => {
-    const html = `<div class="body"><h2>Result</h2><a href="https://example.com">body</a></div>`;
-    const fetchSpy = vi
-      .fn()
-      .mockResolvedValue(new Response(html, { status: 200 }));
-    vi.stubGlobal("fetch", fetchSpy);
-    // duckduckgo and yahoo share provider "bing" -> only first of the two should be called
-    const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
-    const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
-    // Pass deterministic order: duck first, then yahoo (same provider -> yahoo skipped after duck succeeds)
-    const results = await autoTextSearch("hello", 5, 5000, undefined, [
-      duck,
-      yahoo,
-    ]);
-    // duck succeeds, so yahoo (same provider "bing") is skipped -> only 1 fetch for POST to duckduckgo
-    // Actually both use different URLs, but dedup prevents second from running
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(results.length).toBeGreaterThan(0);
   });
 });
 
@@ -648,7 +631,13 @@ describe("createUnslothProvider", () => {
     const promise = provider.search({ query: "hello" }, controller.signal);
     await Promise.resolve();
     controller.abort();
-    await expect(promise).rejects.toThrow();
+    try {
+      await promise;
+      throw new Error("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(DOMException);
+      expect((err as DOMException).name).toBe("AbortError");
+    }
   });
 
   it("throws Request timed out when overall timeout fires", async () => {
@@ -787,7 +776,7 @@ describe("coverage gaps", () => {
 
   it("shuffleEnginesWithPriority cycles through all", () => {
     for (let i = 0; i < 10; i++) {
-      const out = shuffleEnginesWithPriorityPublic([...TEXT_ENGINES]);
+      const out = shuffleEnginesWithPriority([...TEXT_ENGINES]);
       expect(out[0].name).toBe("wikipedia");
       expect(out).toHaveLength(7);
     }
@@ -1043,13 +1032,13 @@ describe("coverage gaps", () => {
   it("provider dedup continue path", async () => {
     // duck and yahoo share provider "bing" -> second is skipped via continue
     const duckHtml = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const yahooHtml = `<div class="relsrch"><div class="Title"><h3><a href="https://a.com">Hi</a></h3></div><div class="Text">b</div></div>`;
     const fetchSpy = vi.fn().mockImplementation((url: string) => {
-      // yahoo should never be called due to provider dedup (same "bing" as duck)
-      // duck POSTs to html.duckduckgo.com
-      if (typeof url === "string" && url.includes("duckduckgo")) {
-        return Promise.resolve(new Response(duckHtml, { status: 200 }));
-      }
-      return Promise.resolve(new Response("", { status: 500 }));
+      // yahoo and duck share provider "bing" -> only one should contribute
+      // but shuffle is non-deterministic, so either may run first
+      const isDuck = typeof url === "string" && url.includes("duckduckgo");
+      const html = isDuck ? duckHtml : yahooHtml;
+      return Promise.resolve(new Response(html, { status: 200 }));
     });
     vi.stubGlobal("fetch", fetchSpy);
     const provider = createUnslothProvider({
@@ -1064,6 +1053,7 @@ describe("coverage gaps", () => {
       numResults: 5,
     });
     expect(result).toBeDefined();
+    // Exactly one fetch: yahoo and duck share provider "bing", second is skipped
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
