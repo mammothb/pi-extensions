@@ -1025,6 +1025,146 @@ export function shuffledEngines(): Engine[] {
   return wikipedia ? [wikipedia, ...rest] : shuffled;
 }
 
+export function formatSearchResults(results: SearchResult[]): string {
+  const parts = results.map((result) => {
+    const title = result.title.replace(/\s+/g, " ");
+    const href = result.href.trim();
+    const snippet = result.body.replace(/\s+/g, " ");
+    return `Title: ${title}\nURL: ${href}\nSnippet: ${snippet}`;
+  });
+  const text = parts.join("\n\n---\n\n");
+  return (
+    text +
+    "\n\n---\n\nIMPORTANT: These are only short snippets. " +
+    'To get the full page content, call web_search with the url parameter (e.g. {"url": "<URL>"}).'
+  );
+}
+
+export interface UnslothConfig {
+  timeoutMs: number;
+  overallTimeoutMs: number;
+  region: string;
+  safesearch: "on" | "moderate" | "off";
+  engines: import("../../config").UnslothEngineId[];
+}
+
+export function createUnslothProvider(
+  config: UnslothConfig,
+): import("../types").SearchProvider {
+  const { timeoutMs, overallTimeoutMs, region, safesearch, engines } = config;
+  return {
+    name: "unsloth",
+    usageNotes:
+      "\n  - Results are fetched directly from 7 engines (duckduckgo, brave, google, mojeek, yahoo, yandex, wikipedia) with provider-deduplication and frequency ranking — no API key or Docker required",
+    async search(
+      args: import("../types").SearchArgs,
+      signal?: AbortSignal,
+    ): Promise<string | undefined> {
+      if (signal?.aborted) {
+        throw new Error("Request aborted");
+      }
+      const filtered = TEXT_ENGINES.filter((e) =>
+        (engines as string[]).includes(e.name),
+      );
+      if (filtered.length === 0) {
+        return undefined;
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), overallTimeoutMs);
+      const onAbort = () => controller.abort();
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+      const mergedSignal = controller.signal;
+      // Also race external signal via any-signal if available; otherwise our controller covers overall timeout
+      // Merge with external signal for per-engine signal forwarding
+      const perEngineSignal = signal
+        ? AbortSignal.any([mergedSignal, signal])
+        : mergedSignal;
+      try {
+        const ctx: EngineContext = { region, safesearch };
+        // autoTextSearch variant that respects ctx/region/safesearch and filtered engines
+        const seenProviders = new Set<string>();
+        const aggregator = new ResultsAggregator();
+        let err: unknown = null;
+        const uniqueProviders = new Set(filtered.map((e) => e.provider)).size;
+        const maxResults = args.numResults ?? 8;
+        const maxWorkers = Math.min(
+          uniqueProviders,
+          Math.ceil(maxResults / 10) + 1,
+        );
+        // Shuffle filtered set, hoisting wikipedia
+        const shuffled = [...filtered];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          // biome-ignore lint/style/noNonNullAssertion: indices in bounds
+          [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!] as [
+            Engine,
+            Engine,
+          ];
+        }
+        const wikipedia = shuffled.find((e) => e.priority === 2);
+        const rest = shuffled.filter((e) => e.priority !== 2);
+        const ordered = wikipedia ? [wikipedia, ...rest] : shuffled;
+        let i = 0;
+        let pending: Promise<void>[] = [];
+        const run = async (engine: Engine) => {
+          try {
+            const results = await engine.search(
+              args.query,
+              ctx,
+              timeoutMs,
+              perEngineSignal,
+            );
+            if (results?.length) {
+              aggregator.extend(results);
+              seenProviders.add(engine.provider);
+            }
+          } catch (e) {
+            err = e;
+          }
+        };
+        while (i < ordered.length) {
+          if (aggregator.size >= maxResults) {
+            break;
+          }
+          // biome-ignore lint/style/noNonNullAssertion: i < ordered.length
+          const engine = ordered[i++]!;
+          if (seenProviders.has(engine.provider)) {
+            continue;
+          }
+          pending.push(run(engine));
+          if (pending.length >= maxWorkers || i >= maxWorkers) {
+            await Promise.allSettled(pending);
+            pending = [];
+          }
+        }
+        if (pending.length) {
+          await Promise.allSettled(pending);
+        }
+        const results = rankResults(aggregator.extractDicts(), args.query);
+        if (results.length) {
+          return formatSearchResults(results.slice(0, maxResults));
+        }
+        if (err instanceof Error && err.message.includes("timed out")) {
+          throw new Error("Request timed out");
+        }
+        return undefined;
+      } catch (error) {
+        if (controller.signal.aborted && !signal?.aborted) {
+          throw new Error("Request timed out");
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+      }
+    },
+  };
+}
+
 export async function autoTextSearch(
   query: string,
   maxResults: number,

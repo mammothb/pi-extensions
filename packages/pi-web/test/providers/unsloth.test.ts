@@ -509,12 +509,18 @@ describe("autoTextSearch", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns ranked results up to maxResults", async () => {
-    const brave = TEXT_ENGINES.find((e) => e.name === "brave")!;
-    const fakeEngines = [brave, brave]; // same provider -> dedup should run only first
-    await expect(
-      autoTextSearch("hello", 1, 5000, undefined, fakeEngines),
-    ).rejects.toThrow(EmptySweepError);
+  it("provider dedup skips second engine with same provider", async () => {
+    const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
+    const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
+    // Both share provider "bing" — stub success so dedup is observable
+    const html = `<div class="body"><h2>Title</h2><a href="https://example.com">body</a></div>`;
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(new Response(html, { status: 200 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    await autoTextSearch("hello", 5, 5000, undefined, [duck, yahoo]);
+    // duck succeeds -> yahoo (same provider) skipped -> 1 fetch
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("throws EmptySweepError when all engines return null", async () => {

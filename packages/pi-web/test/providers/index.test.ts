@@ -38,11 +38,54 @@ describe("createProvider", () => {
     expect(provider.usageNotes).toBeTruthy();
   });
 
+  it('returns an unsloth provider when config.provider is "unsloth"', () => {
+    const config: WebsearchConfig = {
+      ...BASE_CONFIG,
+      provider: "unsloth",
+    };
+    const provider = createProvider(config);
+    expect(provider.name).toBe("unsloth");
+    expect(provider.usageNotes).toBeTruthy();
+  });
+
   it("throws for an unknown provider value", () => {
     const config = {
       ...BASE_CONFIG,
       provider: "unknown" as unknown as WebsearchConfig["provider"],
     };
     expect(() => createProvider(config)).toThrow("Unknown provider: unknown");
+  });
+});
+
+describe("createProvider unsloth filtering", () => {
+  it("throws when engines and disabledEngines both set", () => {
+    const config = {
+      ...BASE_CONFIG,
+      provider: "unsloth" as const,
+      unsloth: {
+        engines: ["brave"],
+        disabledEngines: ["yahoo"],
+      },
+    } as unknown as WebsearchConfig;
+    expect(() => createProvider(config)).toThrow(/mutually exclusive/);
+  });
+
+  it("throws on unknown unsloth engine id", () => {
+    const config = {
+      ...BASE_CONFIG,
+      provider: "unsloth" as const,
+      unsloth: { engines: ["bing"] },
+    } as unknown as WebsearchConfig;
+    expect(() => createProvider(config)).toThrow(/Unknown unsloth engine/);
+  });
+
+  it("throws when disabledEngines removes all engines", async () => {
+    const { ALL_UNSLOTH_ENGINES } = await import("../../src/config");
+    const config = {
+      ...BASE_CONFIG,
+      provider: "unsloth" as const,
+      unsloth: { disabledEngines: [...ALL_UNSLOTH_ENGINES] },
+    } as unknown as WebsearchConfig;
+    expect(() => createProvider(config)).toThrow(/no engines enabled/);
   });
 });
