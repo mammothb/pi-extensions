@@ -200,15 +200,24 @@ function mergeConfig(
       ...(base.unsloth ?? {}),
       ...overrideUnsloth,
     };
-    if (
-      typeof overrideUnsloth["region"] === "string" &&
-      !UNSLOTH_REGION_RE.test(
-        (overrideUnsloth["region"] as string).toLowerCase(),
-      )
-    ) {
-      throw new Error(
-        `Unsloth: region must match xx-yy (e.g. us-en), got "${overrideUnsloth["region"]}"`,
-      );
+    if ("region" in overrideUnsloth) {
+      const region = overrideUnsloth["region"];
+      if (
+        typeof region !== "string" ||
+        !UNSLOTH_REGION_RE.test(region.toLowerCase())
+      ) {
+        throw new Error(
+          `Unsloth: region must match xx-yy (e.g. us-en), got "${String(region)}"`,
+        );
+      }
+    }
+    if ("safesearch" in overrideUnsloth) {
+      const ss = overrideUnsloth["safesearch"];
+      if (ss !== "on" && ss !== "moderate" && ss !== "off") {
+        throw new Error(
+          `Unsloth: safesearch must be "on", "moderate", or "off", got "${String(ss)}"`,
+        );
+      }
     }
     const hasEngines = overrideUnsloth["engines"] !== undefined;
     const hasDisabled = overrideUnsloth["disabledEngines"] !== undefined;

@@ -225,6 +225,38 @@ describe("loadConfig", () => {
     expect(config.unsloth?.safesearch).toBe("off");
     expect(config.unsloth?.timeoutMs).toBe(8000);
   });
+
+  it("rejects invalid unsloth region via file", () => {
+    writeProject({
+      unsloth: { region: "bad" } as unknown as { region: string },
+    });
+    expect(() => loadConfig(projectDir)).toThrow(/region must match xx-yy/);
+  });
+
+  it("rejects invalid unsloth region numeric via file", () => {
+    // Bypass writeProject type to write numeric via raw JSON
+    writeFileSync(
+      join(projectDir, ".pi", "pi-web.json"),
+      JSON.stringify({ unsloth: { region: 123 } }),
+    );
+    expect(() => loadConfig(projectDir)).toThrow(/region must match xx-yy/);
+  });
+
+  it("rejects invalid unsloth safesearch via file", () => {
+    writeProject({
+      unsloth: { safesearch: "invalid" as unknown as "on" },
+    });
+    expect(() => loadConfig(projectDir)).toThrow(/safesearch must be/);
+  });
+
+  it("allows valid unsloth region and safesearch", () => {
+    writeProject({
+      unsloth: { region: "fr-fr", safesearch: "on" as const },
+    });
+    const config = loadConfig(projectDir);
+    expect(config.unsloth?.region).toBe("fr-fr");
+    expect(config.unsloth?.safesearch).toBe("on");
+  });
 });
 
 describe("resolveUnslothEngines", () => {
