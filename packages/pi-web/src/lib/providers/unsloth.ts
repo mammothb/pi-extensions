@@ -350,41 +350,85 @@ function readAttrStep(
   };
 }
 
+function parseSlashToken(
+  expr: string,
+  i: number,
+): { i: number; axis: "child" | "descendant" } {
+  const double = expr[i + 1] === "/";
+  return {
+    i: double ? i + 2 : i + 1,
+    axis: double ? "descendant" : "child",
+  };
+}
+
+function parseAttrToken(
+  expr: string,
+  i: number,
+  steps: XStep[],
+): { i: number } {
+  const attr = readAttrStep(expr, i + 1);
+  steps.push(attr.step);
+  return { i: attr.next };
+}
+
+function parseTextToken(steps: XStep[]): { i: number } {
+  steps.push({ kind: "text" });
+  return { i: "text()".length };
+}
+
+function parseNameToken(
+  expr: string,
+  i: number,
+  axis: "child" | "descendant",
+  steps: XStep[],
+): { i: number } | null {
+  const m = NODE_NAME_RE.exec(expr.slice(i));
+  if (!m) {
+    return null;
+  }
+  const pos = { value: i + m[0].length };
+  const preds = parsePredBlocks(expr, pos);
+  steps.push({ kind: "node", axis, name: m[0], preds });
+  return { i: pos.value };
+}
+
+function parseNextToken(
+  expr: string,
+  i: number,
+  axis: "child" | "descendant",
+  steps: XStep[],
+): { i: number; axis?: "child" | "descendant" } | null {
+  const ch = expr[i];
+  if (ch === "/") {
+    return parseSlashToken(expr, i);
+  }
+  if (ch === ".") {
+    return { i: i + 1 };
+  }
+  if (ch === "@") {
+    return parseAttrToken(expr, i, steps);
+  }
+  if (expr.startsWith("text()", i)) {
+    const text = parseTextToken(steps);
+    return { i: i + text.i };
+  }
+  return parseNameToken(expr, i, axis, steps);
+}
+
 function parsePath(expr: string): XStep[] {
   const steps: XStep[] = [];
   const start = parsePathStart(expr);
   let i = start.index;
   let axis = start.axis;
   while (i < expr.length) {
-    if (expr[i] === "/") {
-      const double = expr[i + 1] === "/";
-      axis = double ? "descendant" : "child";
-      i += double ? 2 : 1;
-      continue;
-    }
-    if (expr[i] === ".") {
-      i++;
-      continue;
-    }
-    if (expr[i] === "@") {
-      const attr = readAttrStep(expr, i + 1);
-      steps.push(attr.step);
-      i = attr.next;
-      continue;
-    }
-    if (expr.startsWith("text()", i)) {
-      steps.push({ kind: "text" });
-      i += 6;
-      continue;
-    }
-    const m = NODE_NAME_RE.exec(expr.slice(i));
-    if (!m) {
+    const tok = parseNextToken(expr, i, axis, steps);
+    if (!tok) {
       break;
     }
-    const pos = { value: i + m[0].length };
-    const preds = parsePredBlocks(expr, pos);
-    steps.push({ kind: "node", axis, name: m[0], preds });
-    i = pos.value;
+    i = tok.i;
+    if (tok.axis !== undefined) {
+      axis = tok.axis;
+    }
   }
   return steps;
 }
