@@ -67,11 +67,15 @@ const TRACER_NAME = "@mammothb/pi-otel";
  * Build the resource attributes (service.name, host.name, user.*) for the
  * SDK. Order: explicit env > hostname/USER fallback.
  */
-function buildResourceAttributes(serviceName: string): Record<string, string> {
+function buildResourceAttributes(
+  serviceName: string,
+  instanceId: string,
+): Record<string, string> {
   const userName = process.env.PI_OTEL_USER_NAME ?? process.env.USER ?? "";
   const userEmail = process.env.PI_OTEL_USER_EMAIL ?? "";
   const attrs: Record<string, string> = {
     "service.name": serviceName,
+    "service.instance.id": instanceId,
     "host.name": hostname(),
   };
   if (userName) {
@@ -84,6 +88,12 @@ function buildResourceAttributes(serviceName: string): Record<string, string> {
 }
 
 export default function piOtelExtension(pi: ExtensionAPI): void {
+  // Stable for the lifetime of this extension instance (one pi process).
+  // New on /reload, /new, /fork, /resume — exactly the OTel
+  // service.instance.id semantics required to keep concurrent pi processes
+  // from colliding on {job, host_name, service_name} and creating
+  // last-write-wins sawteeth that inflate rate() (e.g. 896k/min idle).
+  const instanceId = randomUUID();
   // Per-instance state (factory closure). pi tears down and re-runs the
   // factory on /reload, /new, /fork, and /resume; a fresh closure gives
   // each extension instance clean state.
@@ -122,7 +132,10 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
         headers: resolvedConfig.headers,
         serviceName: resolvedConfig.serviceName,
         sampleRatio: resolvedConfig.sampleRatio,
-        resourceAttributes: buildResourceAttributes(resolvedConfig.serviceName),
+        resourceAttributes: buildResourceAttributes(
+          resolvedConfig.serviceName,
+          instanceId,
+        ),
       };
       try {
         sdk = await initSdk(config);
