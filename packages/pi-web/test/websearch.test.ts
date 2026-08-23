@@ -2,6 +2,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebsearchConfig } from "../src/config";
 import { DEFAULT_CONFIG } from "../src/config";
+import { SNIPPET_TRAILER } from "../src/lib/format";
 import type { SearchArgs } from "../src/lib/types";
 import { createWebsearchTool } from "../src/websearch";
 
@@ -128,7 +129,7 @@ describe("execute — results", () => {
     );
 
     expect(result).toEqual({
-      content: [{ type: "text", text: "some result" }],
+      content: [{ type: "text", text: "some result" + SNIPPET_TRAILER }],
       details: { query: "test" },
     });
   });

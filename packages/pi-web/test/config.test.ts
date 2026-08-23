@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { WebsearchConfig } from "../src/config";
-import { DEFAULT_CONFIG, loadConfig } from "../src/config";
+import {
+  ALL_UNSLOTH_ENGINES,
+  DEFAULT_CONFIG,
+  loadConfig,
+  resolveUnslothEngines,
+} from "../src/config";
 
 // We test loadConfig end-to-end using real temp directories to avoid
 // mocking getAgentDir (which is complex and fragile).
@@ -200,5 +205,134 @@ describe("loadConfig", () => {
     writeProject({ timeoutMs: 42 });
     const config = loadConfig(projectDir);
     expect(config.provider).toBe("exa-mcp");
+  });
+
+  it("loads unsloth provider", () => {
+    writeProject({ provider: "unsloth" });
+    const config = loadConfig(projectDir);
+    expect(config.provider).toBe("unsloth");
+  });
+
+  it("deep-merges unsloth config", () => {
+    writeGlobal({
+      unsloth: { region: "de-de", safesearch: "off" as const },
+    });
+    writeProject({
+      unsloth: { timeoutMs: 8000 },
+    });
+    const config = loadConfig(projectDir);
+    expect(config.unsloth?.region).toBe("de-de");
+    expect(config.unsloth?.safesearch).toBe("off");
+    expect(config.unsloth?.timeoutMs).toBe(8000);
+  });
+
+  it("rejects invalid unsloth region via file", () => {
+    writeProject({
+      unsloth: { region: "bad" } as unknown as { region: string },
+    });
+    expect(() => loadConfig(projectDir)).toThrow(/region must match xx-yy/);
+  });
+
+  it("rejects invalid unsloth region numeric via file", () => {
+    // Bypass writeProject type to write numeric via raw JSON
+    writeFileSync(
+      join(projectDir, ".pi", "pi-web.json"),
+      JSON.stringify({ unsloth: { region: 123 } }),
+    );
+    expect(() => loadConfig(projectDir)).toThrow(/region must match xx-yy/);
+  });
+
+  it("rejects invalid unsloth safesearch via file", () => {
+    writeProject({
+      unsloth: { safesearch: "invalid" as unknown as "on" },
+    });
+    expect(() => loadConfig(projectDir)).toThrow(/safesearch must be/);
+  });
+
+  it("allows valid unsloth region and safesearch", () => {
+    writeProject({
+      unsloth: { region: "fr-fr", safesearch: "on" as const },
+    });
+    const config = loadConfig(projectDir);
+    expect(config.unsloth?.region).toBe("fr-fr");
+    expect(config.unsloth?.safesearch).toBe("on");
+  });
+});
+
+describe("resolveUnslothEngines", () => {
+  it("returns all engines when cfg is undefined", () => {
+    expect(resolveUnslothEngines(undefined)).toEqual([...ALL_UNSLOTH_ENGINES]);
+    expect(resolveUnslothEngines(null as unknown as undefined)).toEqual([
+      ...ALL_UNSLOTH_ENGINES,
+    ]);
+    expect(resolveUnslothEngines({})).toEqual([...ALL_UNSLOTH_ENGINES]);
+  });
+
+  it("allowlist filters to specified engines", () => {
+    expect(resolveUnslothEngines({ engines: ["brave", "duckduckgo"] })).toEqual(
+      ["brave", "duckduckgo"],
+    );
+  });
+
+  it("blocklist removes disabled engines", () => {
+    const result = resolveUnslothEngines({
+      disabledEngines: ["yandex", "yahoo"],
+    });
+    expect(result).not.toContain("yandex");
+    expect(result).not.toContain("yahoo");
+    expect(result.length).toBe(ALL_UNSLOTH_ENGINES.length - 2);
+  });
+
+  it("throws when both engines and disabledEngines are set", () => {
+    expect(() =>
+      resolveUnslothEngines({
+        engines: ["brave"],
+        disabledEngines: ["yahoo"],
+      }),
+    ).toThrow(/mutually exclusive/);
+  });
+
+  it("throws on unknown engine id", () => {
+    expect(() =>
+      resolveUnslothEngines({ engines: ["bing" as unknown as "brave"] }),
+    ).toThrow(/Unknown unsloth engine/);
+    expect(() =>
+      resolveUnslothEngines({
+        disabledEngines: ["bing" as unknown as "brave"],
+      }),
+    ).toThrow(/Unknown unsloth engine/);
+  });
+
+  it("throws when resolved set is empty", () => {
+    expect(() => resolveUnslothEngines({ engines: [] })).toThrow(
+      /no engines enabled/,
+    );
+    expect(() =>
+      resolveUnslothEngines({
+        disabledEngines: [...ALL_UNSLOTH_ENGINES],
+      }),
+    ).toThrow(/no engines enabled/);
+  });
+
+  it("dedupes allowlist while preserving order", () => {
+    expect(
+      resolveUnslothEngines({ engines: ["brave", "brave", "google"] }),
+    ).toEqual(["brave", "google"]);
+  });
+
+  it("throws when engines is not an array", () => {
+    expect(() =>
+      resolveUnslothEngines({
+        engines: "brave" as unknown as ["brave"],
+      }),
+    ).toThrow(/must be an array/);
+  });
+
+  it("throws when disabledEngines is not an array", () => {
+    expect(() =>
+      resolveUnslothEngines({
+        disabledEngines: "brave" as unknown as ["brave"],
+      }),
+    ).toThrow(/must be an array/);
   });
 });

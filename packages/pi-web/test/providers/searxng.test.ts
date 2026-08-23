@@ -40,7 +40,7 @@ describe("search", () => {
 
     const result = await provider.search(searchArgs);
     expect(result).toBe(
-      "## **1.** Result 1\n**URL:** https://a.com\nContent A\n\n---\n\n## **2.** Result 2\n**URL:** https://b.com\nContent B",
+      "Title: Result 1\nURL: https://a.com\nSnippet: Content A\n\n---\n\nTitle: Result 2\nURL: https://b.com\nSnippet: Content B",
     );
   });
 
@@ -63,7 +63,24 @@ describe("search", () => {
     const provider = createSearxngProvider(SEARXNG_CONFIG);
 
     const result = await provider.search(searchArgs);
-    expect(result).toBe("## **1.** Untitled\n**URL:** https://a.com\n");
+    expect(result).toBe("Title: Untitled\nURL: https://a.com\nSnippet: ");
+  });
+
+  it("discards non-string url but retains entries with non-string fields", async () => {
+    mockFetch({
+      body: searchResponse([
+        { url: 123, title: "Bad URL" },
+        { title: 42, url: "https://a.com", content: 7 },
+        { title: "Good", url: "https://b.com", content: "Body B" },
+      ]),
+    });
+    const provider = createSearxngProvider(SEARXNG_CONFIG);
+
+    const result = await provider.search(searchArgs);
+    // invalid url entry dropped; the rest survive with defaults applied
+    expect(result).toBe(
+      "Title: Untitled\nURL: https://a.com\nSnippet: \n\n---\n\nTitle: Good\nURL: https://b.com\nSnippet: Body B",
+    );
   });
 
   it("returns undefined when all results lack a URL", async () => {
@@ -111,7 +128,7 @@ describe("search", () => {
 
     const result = await provider.search({ ...searchArgs, numResults: 3 });
     // Should have exactly 3 results
-    const count = (result ?? "").split("## **").length - 1;
+    const count = (result ?? "").split("Title:").length - 1;
     expect(count).toBe(3);
   });
 

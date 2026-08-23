@@ -1,7 +1,9 @@
 import type { WebsearchConfig } from "../../config";
+import { resolveUnslothEngines } from "../../config";
 import type { SearchProvider } from "../types";
 import { createExaMcpProvider } from "./exa-mcp";
 import { createSearxngProvider } from "./searxng";
+import { createUnslothProvider } from "./unsloth";
 
 /**
  * Create a search provider based on the current configuration.
@@ -20,6 +22,16 @@ export function createProvider(config: WebsearchConfig): SearchProvider {
         url: config.searxng.url,
         safesearch: config.searxng.safesearch,
         timeoutMs: config.timeoutMs,
+      });
+    }
+    case "unsloth": {
+      const engines = resolveUnslothEngines(config.unsloth);
+      return createUnslothProvider({
+        timeoutMs: config.unsloth?.timeoutMs ?? 10_000,
+        overallTimeoutMs: config.timeoutMs,
+        region: config.unsloth?.region ?? "us-en",
+        safesearch: config.unsloth?.safesearch ?? "moderate",
+        engines,
       });
     }
     default: {

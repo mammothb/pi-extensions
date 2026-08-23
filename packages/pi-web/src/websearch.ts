@@ -8,6 +8,7 @@ import {
   renderError,
 } from "@mammothb/pi-shared";
 import type { WebsearchConfig } from "./config";
+import { SNIPPET_TRAILER } from "./lib/format";
 import { createProvider } from "./lib/providers";
 import type { SearchArgs } from "./lib/types";
 import { WebsearchParameters } from "./lib/types";
@@ -107,7 +108,7 @@ Usage notes:${usageNotes}
             {
               type: "text",
               text:
-                result ??
+                (result ? result + SNIPPET_TRAILER : undefined) ??
                 "No search results found. Please try a different query.",
             },
           ],
