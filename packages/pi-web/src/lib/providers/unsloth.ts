@@ -1089,7 +1089,7 @@ function shuffleEnginesWithPriority(engines: Engine[]): Engine[] {
   return wikipedia ? [wikipedia, ...rest] : shuffled;
 }
 
-function collectSearchError(
+export function collectSearchError(
   err: unknown,
   signal?: AbortSignal,
 ): { shouldThrow: boolean; error: Error } | null {
@@ -1109,6 +1109,10 @@ function collectSearchError(
     };
   }
   return err ? { shouldThrow: false, error: err as Error } : null;
+}
+
+export function shuffleEnginesWithPriorityPublic(engines: Engine[]): Engine[] {
+  return shuffleEnginesWithPriority(engines);
 }
 
 async function runUnslothSearch(

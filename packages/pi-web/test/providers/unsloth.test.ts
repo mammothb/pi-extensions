@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   autoTextSearch,
   buildDom,
+  collectSearchError,
   createUnslothProvider,
   EmptySweepError,
   extractResults,
@@ -10,8 +11,10 @@ import {
   normalizeUrl,
   ResultsAggregator,
   rankResults,
+  SearchCancelled,
   SearchTimeoutError,
   shuffledEngines,
+  shuffleEnginesWithPriorityPublic,
   TEXT_ENGINES,
   xpathNodes,
   xpathText,
@@ -731,6 +734,430 @@ describe("formatSearchResults", () => {
     expect(text).toContain("Snippet: body a");
     expect(text).toContain("---");
     expect(text).toContain("IMPORTANT:");
+  });
+});
+
+// ── coverage: error paths, edge parser, safesearch/region variants, helpers ──
+
+describe("coverage gaps", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("normalizeText handles control chars and entities", () => {
+    // Control chars are stripped
+    expect(normalizeText("a\u0000 b")).not.toContain("\u0000");
+    // Large codepoint branch: hex entity > 10ffff -> FFFD
+    expect(normalizeText("a&#x110000; b")).toContain("\uFFFD");
+    expect(normalizeText("a&#xD800; b")).toContain("\uFFFD");
+    expect(normalizeText("a&#9999999; b")).toBeDefined();
+  });
+
+  it("normalizeUrl handles encoded spaces", () => {
+    expect(normalizeUrl("https://a.com/x%20y")).toBe("https://a.com/x+y");
+    expect(normalizeUrl("https://a.com/x y")).toBe("https://a.com/x+y");
+  });
+
+  it("SearchCancelled has correct name", () => {
+    const e = new SearchCancelled();
+    expect(e.name).toBe("SearchCancelled");
+    expect(e.message).toBe("cancelled");
+  });
+
+  it("collectSearchError covers all branches", () => {
+    // AbortError -> shouldThrow true
+    const abort = new DOMException("aborted", "AbortError");
+    expect(collectSearchError(abort)?.shouldThrow).toBe(true);
+    // timed out -> shouldThrow true
+    expect(collectSearchError(new Error("timed out"))?.shouldThrow).toBe(true);
+    // signal aborted with Error -> shouldThrow true
+    const ctrl = new AbortController();
+    ctrl.abort();
+    expect(
+      collectSearchError(new Error("other"), ctrl.signal)?.shouldThrow,
+    ).toBe(true);
+    // signal aborted without err -> shouldThrow true
+    expect(collectSearchError(null, ctrl.signal)?.shouldThrow).toBe(true);
+    // err without signal abort -> returns shouldThrow false
+    expect(collectSearchError(new Error("other"))?.shouldThrow).toBe(false);
+    // no err, no signal -> null
+    expect(collectSearchError(null)).toBeNull();
+    expect(collectSearchError(undefined)).toBeNull();
+  });
+
+  it("shuffleEnginesWithPriority cycles through all", () => {
+    for (let i = 0; i < 10; i++) {
+      const out = shuffleEnginesWithPriorityPublic([...TEXT_ENGINES]);
+      expect(out[0].name).toBe("wikipedia");
+      expect(out).toHaveLength(7);
+    }
+  });
+
+  it("parsePath handles ./ and attribute terminals", () => {
+    const html = `<div><a href="https://example.com" title="t">x</a></div>`;
+    const root = buildDom(html);
+    const a = xpathNodes("//a", root)[0]!;
+    expect(xpathText("./@href", a)[0]).toBe("https://example.com");
+    expect(xpathText("./@title", a)[0]).toBe("t");
+    // .// descendant from root
+    expect(xpathText(".//a/@href", root)[0]).toBe("https://example.com");
+  });
+
+  it("xpath handles // and breaks", () => {
+    const html = `<div><p>hi</p></div>`;
+    const root = buildDom(html);
+    expect(xpathNodes("//section", root)).toHaveLength(0);
+    expect(xpathText("//p//text()", root).join("")).toBe("hi");
+    // xpathNodes break on terminal
+    const nodes = xpathNodes("//a/@href", root);
+    expect(nodes).toHaveLength(0);
+    // xpathText with no match
+    expect(xpathText("//missing//text()", root)).toEqual([]);
+  });
+
+  it("extractResults handles empty snippet", () => {
+    const html = `<div class="body"><h2></h2><a href=""> </a></div>`;
+    const results = extractResults(html, "//div[contains(@class, 'body')]", {
+      title: ".//h2//text()",
+      href: "./a/@href",
+      body: "./a//text()",
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe("");
+  });
+
+  it("brave with safesearch on", async () => {
+    const brave = TEXT_ENGINES.find((e) => e.name === "brave")!;
+    const html = `<div data-type="web"><a href="https://b.com"><div class="title">T</div></a><div class="snippet"><div class="content">c</div></div></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const results = await brave.search(
+      "hello",
+      { region: "us-en", safesearch: "on" },
+      5000,
+    );
+    expect(results).toHaveLength(1);
+  });
+
+  it("brave with safesearch off", async () => {
+    const brave = TEXT_ENGINES.find((e) => e.name === "brave")!;
+    const html = `<div data-type="web"><a href="https://b.com"><div class="title">T</div></a><div class="snippet"><div class="content">c</div></div></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const results = await brave.search(
+      "hello",
+      { region: "us-en", safesearch: "off" },
+      5000,
+    );
+    expect(results).toHaveLength(1);
+  });
+
+  it("mojeek with safesearch on", async () => {
+    const mojeek = TEXT_ENGINES.find((e) => e.name === "mojeek")!;
+    const html = `<ul class="results"><li><h2><a href="https://m.com">T</a></h2><p class="s">s</p></li></ul>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const results = await mojeek.search(
+      "hello",
+      { region: "us-en", safesearch: "on" },
+      5000,
+    );
+    expect(results).toHaveLength(1);
+  });
+
+  it("wikipedia handles JSON parse failure", async () => {
+    const wiki = TEXT_ENGINES.find((e) => e.name === "wikipedia")!;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("not json", { status: 200 })),
+    );
+    const r = await wiki.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r).toBeNull();
+  });
+
+  it("wikipedia handles opensearch empty", async () => {
+    const wiki = TEXT_ENGINES.find((e) => e.name === "wikipedia")!;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify(["hello", [], [], []]), { status: 200 }),
+        ),
+    );
+    const r = await wiki.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r).toEqual([]);
+  });
+
+  it("wikipedia handles opensearch parse null then extract catch", async () => {
+    const wiki = TEXT_ENGINES.find((e) => e.name === "wikipedia")!;
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        call++;
+        if (call === 1) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                "hello",
+                ["Hello"],
+                ["desc"],
+                ["https://en.wikipedia.org/wiki/Hello"],
+              ]),
+              {
+                status: 200,
+              },
+            ),
+          );
+        }
+        return Promise.resolve(new Response("not json", { status: 200 }));
+      }),
+    );
+    const r = await wiki.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r).toHaveLength(1);
+  });
+
+  it("wikipedia null on fetch failure", async () => {
+    const wiki = TEXT_ENGINES.find((e) => e.name === "wikipedia")!;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("", { status: 500 })),
+    );
+    const r = await wiki.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r).toBeNull();
+  });
+
+  it("yahoo with https RU", async () => {
+    const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
+    const html = `<div class="relsrch"><div class="Title"><h3><a href="https://r.search.yahoo.com/RU=https%3A%2F%2Fa.com/RK=x">T</a></h3></div><div class="Text">b</div></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const r = await yahoo.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r![0].href).toBe("https://a.com");
+  });
+
+  it("unquotePlus handles decode error", async () => {
+    const yahoo = TEXT_ENGINES.find((e) => e.name === "yahoo")!;
+    const html = `<div class="relsrch"><div class="Title"><h3><a href="https://r.search.yahoo.com/RU=%ZZ/RK=x">T</a></h3></div><div class="Text">b</div></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const r = await yahoo.search(
+      "hello",
+      { region: "us-en", safesearch: "moderate" },
+      5000,
+    );
+    expect(r).toHaveLength(1);
+  });
+
+  it("createUnslothProvider with empty filtered engines", async () => {
+    const provider = createUnslothProvider({
+      timeoutMs: 5000,
+      overallTimeoutMs: 5000,
+      region: "us-en",
+      safesearch: "moderate",
+      engines: [],
+    });
+    const r = await provider.search({ query: "hello" });
+    expect(r).toBeUndefined();
+  });
+
+  it("predicate parser error paths", () => {
+    expect(() =>
+      extractResults("<div></div>", "//div[@]", {
+        title: "./@x",
+        href: "./@y",
+        body: "./@z",
+      }),
+    ).toThrow();
+    expect(() =>
+      extractResults("<div></div>", "//div[contains(@class, 'x'", {
+        title: "./@x",
+        href: "./@y",
+        body: "./@z",
+      }),
+    ).toThrow();
+    // Unclosed bracket with quote handling: depth++ path, then throw on bad predicate
+    expect(() =>
+      extractResults("<div></div>", "//div[contains(@class, 'a[b]')]", {
+        title: ".//h2//text()",
+        href: "./@href",
+        body: "./@href",
+      }),
+    ).not.toThrow();
+  });
+
+  it("aggregator early break and pending drain in runUnslothSearch", async () => {
+    const duckHtml = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const braveHtml = `<div data-type="web"><a href="https://b.com"><div class="title">T</div></a><div class="snippet"><div class="content">hello world c</div></div></div>`;
+    const html = `${duckHtml}${braveHtml}`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const provider = createUnslothProvider({
+      timeoutMs: 5000,
+      overallTimeoutMs: 8000,
+      region: "us-en",
+      safesearch: "moderate",
+      engines: ["duckduckgo", "brave"],
+    });
+    const result = await provider.search({
+      query: "hello world",
+      numResults: 1,
+    });
+    expect(result).toBeDefined();
+    expect(result).toContain("Title:");
+  });
+
+  it("provider dedup continue path", async () => {
+    // duck and yahoo share provider "bing" -> second is skipped via continue
+    const duckHtml = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      // yahoo should never be called due to provider dedup (same "bing" as duck)
+      // duck POSTs to html.duckduckgo.com
+      if (typeof url === "string" && url.includes("duckduckgo")) {
+        return Promise.resolve(new Response(duckHtml, { status: 200 }));
+      }
+      return Promise.resolve(new Response("", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const provider = createUnslothProvider({
+      timeoutMs: 5000,
+      overallTimeoutMs: 8000,
+      region: "us-en",
+      safesearch: "moderate",
+      engines: ["duckduckgo", "yahoo"],
+    });
+    const result = await provider.search({
+      query: "hello world",
+      numResults: 5,
+    });
+    expect(result).toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("collectSearchError abort without err via perEngineSignal", async () => {
+    // No engine error but perEngineSignal aborted -> DOMException throw
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(
+                new DOMException("The operation was aborted.", "AbortError"),
+              );
+            });
+          }),
+      ),
+    );
+    const provider = createUnslothProvider({
+      timeoutMs: 5000,
+      overallTimeoutMs: 10,
+      region: "us-en",
+      safesearch: "moderate",
+      engines: ["duckduckgo"],
+    });
+    await expect(provider.search({ query: "hello" })).rejects.toThrow();
+  });
+
+  it("parsePath edge terminals and predicates", () => {
+    // Covers parsePath i++ paths, @ terminal, and break on bad name
+    const html = `<div><a href="https://a.com" data-x="v">x</a><p>hi</p></div>`;
+    const root = buildDom(html);
+    // text() terminal
+    expect(xpathText("//a//text()", root).join("")).toBe("x");
+    // @href terminal
+    expect(xpathText("//a/@href", root)[0]).toBe("https://a.com");
+    // with predicate containing quote
+    expect(xpathNodes("//a[@data-x='v']", root)).toHaveLength(1);
+    // contains(@class, ...) predicate
+    const html2 = `<div class="foo bar">x</div>`;
+    const root2 = buildDom(html2);
+    expect(xpathNodes("//div[contains(@class, 'foo')]", root2)).toHaveLength(1);
+  });
+
+  it("xpathNodes terminal break path", () => {
+    const html = `<div><a href="https://a.com">x</a></div>`;
+    const root = buildDom(html);
+    // xpathNodes with terminal like @href breaks before resolving terminal, returns matched element nodes
+    const nodes = xpathNodes("//a/@href", root);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].tag).toBe("a");
+  });
+
+  it("xpathText covers ApplyStep with name filter", () => {
+    const html = `<section><div class="body"><h2>T</h2></div><span>skip</span></section>`;
+    const results = extractResults(
+      html,
+      "//section//div[contains(@class, 'body')]",
+      {
+        title: ".//h2//text()",
+        href: "./@href",
+        body: "./@href",
+      },
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0].title).toBe("T");
+  });
+
+  it("autoTextSearch break via aggregator size >= maxResults", async () => {
+    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    // 2 engines of different providers, maxResults=1 -> first fills aggregator, second batch breaks
+    const result = await autoTextSearch("hello world", 1, 5000, undefined, [
+      TEXT_ENGINES.find((e) => e.name === "duckduckgo")!,
+      TEXT_ENGINES.find((e) => e.name === "brave")!,
+      TEXT_ENGINES.find((e) => e.name === "google")!,
+    ]);
+    expect(result).toHaveLength(1);
+  });
+
+  it("autoTextSearch pending drain", async () => {
+    const html = `<div class="body"><h2>Hi</h2><a href="https://example.com">hello world body</a></div>`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(html, { status: 200 })),
+    );
+    const duck = TEXT_ENGINES.find((e) => e.name === "duckduckgo")!;
+    const result = await autoTextSearch("hello world", 5, 5000, undefined, [
+      duck,
+    ]);
+    expect(result.length).toBeGreaterThan(0);
   });
 });
 
