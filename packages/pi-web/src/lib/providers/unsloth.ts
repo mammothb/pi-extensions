@@ -138,123 +138,144 @@ interface XStep {
   axis: "descendant" | "child";
   name?: string;
   preds: Pred[];
-  terminal?: "text" | string;
+  terminal?: string;
+}
+
+function readWord(input: string, pos: { value: number }): string {
+  while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+    pos.value++;
+  }
+  const m = /^[A-Za-z][A-Za-z0-9_-]*/.exec(input.slice(pos.value));
+  if (!m) {
+    throw new Error(`bad predicate: ${input}`);
+  }
+  pos.value += m[0].length;
+  return m[0];
+}
+
+function readQuoted(input: string, pos: { value: number }): string {
+  while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+    pos.value++;
+  }
+  const quote = input[pos.value] as string;
+  if (quote !== "'" && quote !== '"') {
+    throw new Error(`bad predicate quote: ${input}`);
+  }
+  pos.value++;
+  const end = input.indexOf(quote, pos.value);
+  if (end === -1) {
+    throw new Error(`bad predicate quote: ${input}`);
+  }
+  const value = input.slice(pos.value, end);
+  pos.value = end + 1;
+  return value;
+}
+
+function parsePredBlocks(input: string, pos: { value: number }): Pred[] {
+  const preds: Pred[] = [];
+  while (pos.value < input.length && input[pos.value] === "[") {
+    const start = pos.value + 1;
+    let depth = 1;
+    let quote: string | null = null;
+    let i = start;
+    while (i < input.length && depth) {
+      const c = input[i];
+      if (quote !== null) {
+        if (c === quote) {
+          quote = null;
+        }
+      } else if (c === "'" || c === '"') {
+        quote = c as string;
+      } else if (c === "[") {
+        depth++;
+      } else if (c === "]") {
+        depth--;
+      }
+      i++;
+    }
+    const inner = input.slice(start, i - 1);
+    preds.push(parsePredExpr(inner));
+    pos.value = i;
+  }
+  return preds;
+}
+
+function parseAtom(
+  input: string,
+  pos: { value: number },
+  parseOr: () => Pred,
+): Pred {
+  while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+    pos.value++;
+  }
+  if (input[pos.value] === "(") {
+    pos.value++;
+    const inner = parseOr();
+    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+      pos.value++;
+    }
+    if (input[pos.value] !== ")") {
+      throw new Error(`bad predicate paren: ${input}`);
+    }
+    pos.value++;
+    return inner;
+  }
+  if (input.startsWith("position()=last()", pos.value)) {
+    pos.value += "position()=last()".length;
+    return { op: "last" };
+  }
+  if (input.startsWith("contains(@class,", pos.value)) {
+    pos.value += "contains(@class,".length;
+    const value = readQuoted(input, pos);
+    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+      pos.value++;
+    }
+    if (input[pos.value] !== ")") {
+      throw new Error(`bad predicate contains: ${input}`);
+    }
+    pos.value++;
+    return { op: "class-contains", value };
+  }
+  if (input[pos.value] === "@") {
+    pos.value++;
+    const name = readWord(input, pos);
+    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
+      pos.value++;
+    }
+    if (input[pos.value] === "=") {
+      pos.value++;
+      const value = readQuoted(input, pos);
+      return { op: "attr-eq", name, value };
+    }
+    return { op: "has-attr", name };
+  }
+  if (input.startsWith(".//", pos.value)) {
+    pos.value += 3;
+    const name = readWord(input, pos);
+    return { op: "desc", tag: name };
+  }
+  const name = readWord(input, pos);
+  const preds = parsePredBlocks(input, pos);
+  return { op: "child", tag: name, preds };
 }
 
 function parsePredExpr(input: string): Pred {
-  let pos = 0;
-  const ws = () => {
-    while (pos < input.length && /\s/.test(input[pos] as string)) {
-      pos++;
-    }
-  };
-  const word = () => {
-    ws();
-    const m = /^[A-Za-z][A-Za-z0-9_-]*/.exec(input.slice(pos));
-    if (!m) {
-      throw new Error(`bad predicate: ${input}`);
-    }
-    pos += m[0].length;
-    return m[0];
-  };
-  const quoted = () => {
-    ws();
-    const quote = input[pos] as string;
-    if (quote !== "'" && quote !== '"') {
-      throw new Error(`bad predicate quote: ${input}`);
-    }
-    pos++;
-    const end = input.indexOf(quote, pos);
-    if (end === -1) {
-      throw new Error(`bad predicate quote: ${input}`);
-    }
-    const value = input.slice(pos, end);
-    pos = end + 1;
-    return value;
-  };
-  const atom = (): Pred => {
-    ws();
-    if (input[pos] === "(") {
-      pos++;
-      const inner = parseOr();
-      ws();
-      if (input[pos] !== ")") {
-        throw new Error(`bad predicate paren: ${input}`);
-      }
-      pos++;
-      return inner;
-    }
-    if (input.startsWith("position()=last()", pos)) {
-      pos += "position()=last()".length;
-      return { op: "last" };
-    }
-    if (input.startsWith("contains(@class,", pos)) {
-      pos += "contains(@class,".length;
-      const value = quoted();
-      ws();
-      if (input[pos] !== ")") {
-        throw new Error(`bad predicate contains: ${input}`);
-      }
-      pos++;
-      return { op: "class-contains", value };
-    }
-    if (input[pos] === "@") {
-      pos++;
-      const name = word();
-      ws();
-      if (input[pos] === "=") {
-        pos++;
-        const value = quoted();
-        return { op: "attr-eq", name, value };
-      }
-      return { op: "has-attr", name };
-    }
-    if (input.startsWith(".//", pos)) {
-      pos += 3;
-      const name = word();
-      return { op: "desc", tag: name };
-    }
-    const name = word();
-    const preds = parsePredBlocks();
-    return { op: "child", tag: name, preds };
-  };
-  const parsePredBlocks = (): Pred[] => {
-    const preds: Pred[] = [];
-    while (pos < input.length && input[pos] === "[") {
-      const start = pos + 1;
-      let depth = 1;
-      let quote: string | null = null;
-      let i = start;
-      while (i < input.length && depth) {
-        const c = input[i];
-        if (quote !== null) {
-          if (c === quote) {
-            quote = null;
-          }
-        } else if (c === "'" || c === '"') {
-          quote = c;
-        } else if (c === "[") {
-          depth++;
-        } else if (c === "]") {
-          depth--;
-        }
-        i++;
-      }
-      const inner = input.slice(start, i - 1);
-      preds.push(parsePredExpr(inner));
-      pos = i;
-    }
-    return preds;
-  };
+  const pos = { value: 0 };
+  const atom = (): Pred => parseAtom(input, pos, parseOr);
   const parseAnd = (): Pred => {
     let left = atom();
     while (true) {
-      ws();
-      if (
-        input.startsWith("and", pos) &&
-        !/[A-Za-z0-9_]/.test(input[pos + 3] ?? "")
+      while (
+        pos.value < input.length &&
+        /\s/.test(input[pos.value] as string)
       ) {
-        pos += 3;
+        pos.value++;
+      }
+      if (
+        input.startsWith("and", pos.value) &&
+        !/\w/.test(input[pos.value + 3] ?? "")
+      ) {
+        pos.value += 3;
         left = { op: "and", a: left, b: atom() };
       } else {
         return left;
@@ -264,12 +285,17 @@ function parsePredExpr(input: string): Pred {
   const parseOr = (): Pred => {
     let left = parseAnd();
     while (true) {
-      ws();
-      if (
-        input.startsWith("or", pos) &&
-        !/[A-Za-z0-9_]/.test(input[pos + 2] ?? "")
+      while (
+        pos.value < input.length &&
+        /\s/.test(input[pos.value] as string)
       ) {
-        pos += 2;
+        pos.value++;
+      }
+      if (
+        input.startsWith("or", pos.value) &&
+        !/\w/.test(input[pos.value + 2] ?? "")
+      ) {
+        pos.value += 2;
         left = { op: "or", a: left, b: parseAnd() };
       } else {
         return left;
@@ -527,8 +553,8 @@ export class SearchCancelled extends Error {
 // ── Aggregator + Ranker (port of engines.ts) ────────────────────────────────
 
 export class ResultsAggregator {
-  private cache = new Map<string, SearchResult>();
-  private counter = new Map<string, number>();
+  private readonly cache = new Map<string, SearchResult>();
+  private readonly counter = new Map<string, number>();
 
   get size(): number {
     return this.cache.size;
@@ -1048,10 +1074,119 @@ export interface UnslothConfig {
   engines: import("../../config").UnslothEngineId[];
 }
 
+function shuffleEnginesWithPriority(engines: Engine[]): Engine[] {
+  const shuffled = [...engines];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    // biome-ignore lint/style/noNonNullAssertion: indices in bounds
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!] as [
+      Engine,
+      Engine,
+    ];
+  }
+  const wikipedia = shuffled.find((e) => e.priority === 2);
+  const rest = shuffled.filter((e) => e.priority !== 2);
+  return wikipedia ? [wikipedia, ...rest] : shuffled;
+}
+
+function collectSearchError(
+  err: unknown,
+  signal?: AbortSignal,
+): { shouldThrow: boolean; error: Error } | null {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return { shouldThrow: true, error: err };
+  }
+  if (err instanceof Error && err.message.includes("timed out")) {
+    return { shouldThrow: true, error: new Error("Request timed out") };
+  }
+  if (err instanceof Error && signal?.aborted) {
+    return { shouldThrow: true, error: err };
+  }
+  if (signal?.aborted) {
+    return {
+      shouldThrow: true,
+      error: new DOMException("The operation was aborted.", "AbortError"),
+    };
+  }
+  return err ? { shouldThrow: false, error: err as Error } : null;
+}
+
+async function runUnslothSearch(
+  filtered: Engine[],
+  args: import("../types").SearchArgs,
+  config: UnslothConfig,
+  perEngineSignal: AbortSignal,
+): Promise<string | undefined> {
+  const ctx: EngineContext = {
+    region: config.region,
+    safesearch: config.safesearch,
+  };
+  const seenProviders = new Set<string>();
+  const aggregator = new ResultsAggregator();
+  let err: unknown = null;
+  const uniqueProviders = new Set(filtered.map((e) => e.provider)).size;
+  const maxResults = args.numResults ?? 8;
+  const maxWorkers = Math.min(uniqueProviders, Math.ceil(maxResults / 10) + 1);
+  const ordered = shuffleEnginesWithPriority(filtered);
+  let i = 0;
+  let pending: Promise<void>[] = [];
+  const run = async (engine: Engine) => {
+    try {
+      const results = await engine.search(
+        args.query,
+        ctx,
+        config.timeoutMs,
+        perEngineSignal,
+      );
+      if (results?.length) {
+        aggregator.extend(results);
+        seenProviders.add(engine.provider);
+      }
+    } catch (e) {
+      err = e;
+    }
+  };
+  while (i < ordered.length) {
+    if (aggregator.size >= maxResults) {
+      break;
+    }
+    // biome-ignore lint/style/noNonNullAssertion: i < ordered.length
+    const engine = ordered[i++]!;
+    if (seenProviders.has(engine.provider)) {
+      continue;
+    }
+    pending.push(run(engine));
+    if (pending.length >= maxWorkers || i >= maxWorkers) {
+      await Promise.allSettled(pending);
+      pending = [];
+    }
+  }
+  if (pending.length) {
+    await Promise.allSettled(pending);
+  }
+  const results = rankResults(aggregator.extractDicts(), args.query);
+  if (results.length) {
+    return formatSearchResults(results.slice(0, maxResults));
+  }
+  const collected = collectSearchError(
+    err,
+    perEngineSignal as unknown as AbortSignal,
+  );
+  // perEngineSignal already reflects external abort; check the original args signal for throw type
+  if (collected?.shouldThrow) {
+    throw collected.error;
+  }
+  // Also surface signal abort even when no engine error was captured
+  if (perEngineSignal.aborted) {
+    throw new DOMException("The operation was aborted.", "AbortError");
+  }
+  return undefined;
+}
+
 export function createUnslothProvider(
   config: UnslothConfig,
 ): import("../types").SearchProvider {
-  const { timeoutMs, overallTimeoutMs, region, safesearch, engines } = config;
+  const { overallTimeoutMs, engines } = config;
   return {
     name: "unsloth",
     usageNotes:
@@ -1063,7 +1198,6 @@ export function createUnslothProvider(
       if (signal?.aborted) {
         throw new Error("Request aborted");
       }
-
       const filtered = TEXT_ENGINES.filter((e) =>
         (engines as string[]).includes(e.name),
       );
@@ -1076,90 +1210,11 @@ export function createUnslothProvider(
       if (signal) {
         signal.addEventListener("abort", onAbort, { once: true });
       }
-      const mergedSignal = controller.signal;
-      // Also race external signal via any-signal if available; otherwise our controller covers overall timeout
-      // Merge with external signal for per-engine signal forwarding
       const perEngineSignal = signal
-        ? AbortSignal.any([mergedSignal, signal])
-        : mergedSignal;
+        ? AbortSignal.any([controller.signal, signal])
+        : controller.signal;
       try {
-        const ctx: EngineContext = { region, safesearch };
-        // autoTextSearch variant that respects ctx/region/safesearch and filtered engines
-        const seenProviders = new Set<string>();
-        const aggregator = new ResultsAggregator();
-        let err: unknown = null;
-        const uniqueProviders = new Set(filtered.map((e) => e.provider)).size;
-        const maxResults = args.numResults ?? 8;
-        const maxWorkers = Math.min(
-          uniqueProviders,
-          Math.ceil(maxResults / 10) + 1,
-        );
-        // Shuffle filtered set, hoisting wikipedia
-        const shuffled = [...filtered];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          // biome-ignore lint/style/noNonNullAssertion: indices in bounds
-          [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!] as [
-            Engine,
-            Engine,
-          ];
-        }
-        const wikipedia = shuffled.find((e) => e.priority === 2);
-        const rest = shuffled.filter((e) => e.priority !== 2);
-        const ordered = wikipedia ? [wikipedia, ...rest] : shuffled;
-        let i = 0;
-        let pending: Promise<void>[] = [];
-        const run = async (engine: Engine) => {
-          try {
-            const results = await engine.search(
-              args.query,
-              ctx,
-              timeoutMs,
-              perEngineSignal,
-            );
-            if (results?.length) {
-              aggregator.extend(results);
-              seenProviders.add(engine.provider);
-            }
-          } catch (e) {
-            err = e;
-          }
-        };
-        while (i < ordered.length) {
-          if (aggregator.size >= maxResults) {
-            break;
-          }
-          // biome-ignore lint/style/noNonNullAssertion: i < ordered.length
-          const engine = ordered[i++]!;
-          if (seenProviders.has(engine.provider)) {
-            continue;
-          }
-          pending.push(run(engine));
-          if (pending.length >= maxWorkers || i >= maxWorkers) {
-            await Promise.allSettled(pending);
-            pending = [];
-          }
-        }
-        if (pending.length) {
-          await Promise.allSettled(pending);
-        }
-        const results = rankResults(aggregator.extractDicts(), args.query);
-        if (results.length) {
-          return formatSearchResults(results.slice(0, maxResults));
-        }
-        if (err instanceof DOMException && err.name === "AbortError") {
-          throw err;
-        }
-        if (err instanceof Error && err.message.includes("timed out")) {
-          throw new Error("Request timed out");
-        }
-        if (err instanceof Error && signal?.aborted) {
-          throw err;
-        }
-        if (signal?.aborted) {
-          throw new DOMException("The operation was aborted.", "AbortError");
-        }
-        return undefined;
+        return await runUnslothSearch(filtered, args, config, perEngineSignal);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           throw error;

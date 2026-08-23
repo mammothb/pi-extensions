@@ -584,23 +584,44 @@ describe("autoTextSearch", () => {
 
 // ── createUnslothProvider ────────────────────────────────────────────────
 
+function makeProvider(
+  overrides: Partial<Parameters<typeof createUnslothProvider>[0]> = {},
+) {
+  return createUnslothProvider({
+    timeoutMs: 5000,
+    overallTimeoutMs: 8000,
+    region: "us-en",
+    safesearch: "moderate",
+    engines: ["duckduckgo"],
+    ...overrides,
+  });
+}
+
+function abortableFetch(_url: string, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    const signal = init?.signal;
+    if (signal?.aborted) {
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+      return;
+    }
+    signal?.addEventListener("abort", () => {
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    });
+  });
+}
+
+function timeoutFetch(_url: string, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => {
+      reject(new DOMException("timed out", "TimeoutError"));
+    });
+  });
+}
+
 describe("createUnslothProvider", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
-
-  function makeProvider(
-    overrides: Partial<Parameters<typeof createUnslothProvider>[0]> = {},
-  ) {
-    return createUnslothProvider({
-      timeoutMs: 5000,
-      overallTimeoutMs: 8000,
-      region: "us-en",
-      safesearch: "moderate",
-      engines: ["duckduckgo"],
-      ...overrides,
-    });
-  }
 
   it("has name unsloth and usageNotes", () => {
     const provider = makeProvider();
@@ -618,52 +639,17 @@ describe("createUnslothProvider", () => {
   });
 
   it("propagates abort when signal fires mid-flight", async () => {
-    // Never-resolving fetch that rejects on abort
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(
-        (_url: string, init?: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            const signal = init?.signal;
-            if (signal?.aborted) {
-              reject(
-                new DOMException("The operation was aborted.", "AbortError"),
-              );
-              return;
-            }
-            signal?.addEventListener("abort", () => {
-              reject(
-                new DOMException("The operation was aborted.", "AbortError"),
-              );
-            });
-          }),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(abortableFetch));
     const provider = makeProvider({ overallTimeoutMs: 5000 });
     const controller = new AbortController();
     const promise = provider.search({ query: "hello" }, controller.signal);
-    // Give the provider a tick to start fetch, then abort
     await Promise.resolve();
     controller.abort();
     await expect(promise).rejects.toThrow();
   });
 
   it("throws Request timed out when overall timeout fires", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(
-        (_url: string, init?: RequestInit) =>
-          new Promise((_resolve, reject) => {
-            const signal = init?.signal;
-            if (signal) {
-              signal.addEventListener("abort", () => {
-                // httpFetch maps TimeoutError -> "timed out"
-                reject(new DOMException("timed out", "TimeoutError"));
-              });
-            }
-          }),
-      ),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(timeoutFetch));
     const provider = makeProvider({ overallTimeoutMs: 10, timeoutMs: 5000 });
     await expect(provider.search({ query: "hello" })).rejects.toThrow(
       "Request timed out",

@@ -12,6 +12,63 @@ export const ALL_UNSLOTH_ENGINES = [
 
 export type UnslothEngineId = (typeof ALL_UNSLOTH_ENGINES)[number];
 
+function assertEngineArray(
+  value: unknown,
+  label: string,
+): asserts value is unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Unsloth: ${label} must be an array`);
+  }
+}
+
+function validateEngineIds(ids: unknown[]): void {
+  for (const id of ids) {
+    if (
+      typeof id !== "string" ||
+      !(ALL_UNSLOTH_ENGINES as readonly string[]).includes(id)
+    ) {
+      throw new Error(
+        `Unknown unsloth engine: "${String(id)}". Valid: ${ALL_UNSLOTH_ENGINES.join(", ")}`,
+      );
+    }
+  }
+}
+
+function dedupeEngines(ids: UnslothEngineId[]): UnslothEngineId[] {
+  const deduped: UnslothEngineId[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      deduped.push(id);
+    }
+  }
+  return deduped;
+}
+
+function resolveAllowlist(engines: unknown[]): UnslothEngineId[] {
+  assertEngineArray(engines, "engines");
+  validateEngineIds(engines);
+  const deduped = dedupeEngines(engines as UnslothEngineId[]);
+  if (deduped.length === 0) {
+    throw new Error("Unsloth: no engines enabled");
+  }
+  return deduped;
+}
+
+function resolveBlocklist(disabled: unknown[]): UnslothEngineId[] {
+  assertEngineArray(disabled, "disabledEngines");
+  validateEngineIds(disabled);
+  const disabledSet = new Set(disabled as string[]);
+  const filtered = (ALL_UNSLOTH_ENGINES as readonly string[]).filter(
+    (e) => !disabledSet.has(e),
+  ) as UnslothEngineId[];
+  if (filtered.length === 0) {
+    throw new Error("Unsloth: no engines enabled");
+  }
+  return filtered;
+}
+
 export function resolveUnslothEngines(
   cfg?: {
     engines?: UnslothEngineId[];
@@ -29,56 +86,10 @@ export function resolveUnslothEngines(
     );
   }
   if (hasEngines) {
-    const engines = cfg.engines as unknown[];
-    if (!Array.isArray(engines)) {
-      throw new Error("Unsloth: engines must be an array");
-    }
-    for (const id of engines) {
-      if (
-        typeof id !== "string" ||
-        !(ALL_UNSLOTH_ENGINES as readonly string[]).includes(id)
-      ) {
-        throw new Error(
-          `Unknown unsloth engine: "${String(id)}". Valid: ${ALL_UNSLOTH_ENGINES.join(", ")}`,
-        );
-      }
-    }
-    const deduped: UnslothEngineId[] = [];
-    const seen = new Set<string>();
-    for (const id of engines as UnslothEngineId[]) {
-      if (!seen.has(id)) {
-        seen.add(id);
-        deduped.push(id);
-      }
-    }
-    if (deduped.length === 0) {
-      throw new Error("Unsloth: no engines enabled");
-    }
-    return deduped;
+    return resolveAllowlist(cfg.engines as unknown[]);
   }
   if (hasDisabled) {
-    const disabled = cfg.disabledEngines as unknown[];
-    if (!Array.isArray(disabled)) {
-      throw new Error("Unsloth: disabledEngines must be an array");
-    }
-    for (const id of disabled) {
-      if (
-        typeof id !== "string" ||
-        !(ALL_UNSLOTH_ENGINES as readonly string[]).includes(id)
-      ) {
-        throw new Error(
-          `Unknown unsloth engine: "${String(id)}". Valid: ${ALL_UNSLOTH_ENGINES.join(", ")}`,
-        );
-      }
-    }
-    const disabledSet = new Set(disabled as string[]);
-    const filtered = (ALL_UNSLOTH_ENGINES as readonly string[]).filter(
-      (e) => !disabledSet.has(e),
-    ) as UnslothEngineId[];
-    if (filtered.length === 0) {
-      throw new Error("Unsloth: no engines enabled");
-    }
-    return filtered;
+    return resolveBlocklist(cfg.disabledEngines as unknown[]);
   }
   return [...ALL_UNSLOTH_ENGINES];
 }
