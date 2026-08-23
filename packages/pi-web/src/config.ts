@@ -1,8 +1,91 @@
 import { loadPiConfig } from "@mammothb/pi-shared";
 
+export const ALL_UNSLOTH_ENGINES = [
+  "duckduckgo",
+  "brave",
+  "google",
+  "mojeek",
+  "yahoo",
+  "yandex",
+  "wikipedia",
+] as const;
+
+export type UnslothEngineId = (typeof ALL_UNSLOTH_ENGINES)[number];
+
+export function resolveUnslothEngines(
+  cfg?: {
+    engines?: UnslothEngineId[];
+    disabledEngines?: UnslothEngineId[];
+  } | null,
+): UnslothEngineId[] {
+  if (!cfg) {
+    return [...ALL_UNSLOTH_ENGINES];
+  }
+  const hasEngines = cfg.engines !== undefined;
+  const hasDisabled = cfg.disabledEngines !== undefined;
+  if (hasEngines && hasDisabled) {
+    throw new Error(
+      "Unsloth: engines and disabledEngines are mutually exclusive",
+    );
+  }
+  if (hasEngines) {
+    const engines = cfg.engines as unknown[];
+    if (!Array.isArray(engines)) {
+      throw new Error("Unsloth: engines must be an array");
+    }
+    for (const id of engines) {
+      if (
+        typeof id !== "string" ||
+        !(ALL_UNSLOTH_ENGINES as readonly string[]).includes(id)
+      ) {
+        throw new Error(
+          `Unknown unsloth engine: "${String(id)}". Valid: ${ALL_UNSLOTH_ENGINES.join(", ")}`,
+        );
+      }
+    }
+    const deduped: UnslothEngineId[] = [];
+    const seen = new Set<string>();
+    for (const id of engines as UnslothEngineId[]) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        deduped.push(id);
+      }
+    }
+    if (deduped.length === 0) {
+      throw new Error("Unsloth: no engines enabled");
+    }
+    return deduped;
+  }
+  if (hasDisabled) {
+    const disabled = cfg.disabledEngines as unknown[];
+    if (!Array.isArray(disabled)) {
+      throw new Error("Unsloth: disabledEngines must be an array");
+    }
+    for (const id of disabled) {
+      if (
+        typeof id !== "string" ||
+        !(ALL_UNSLOTH_ENGINES as readonly string[]).includes(id)
+      ) {
+        throw new Error(
+          `Unknown unsloth engine: "${String(id)}". Valid: ${ALL_UNSLOTH_ENGINES.join(", ")}`,
+        );
+      }
+    }
+    const disabledSet = new Set(disabled as string[]);
+    const filtered = (ALL_UNSLOTH_ENGINES as readonly string[]).filter(
+      (e) => !disabledSet.has(e),
+    ) as UnslothEngineId[];
+    if (filtered.length === 0) {
+      throw new Error("Unsloth: no engines enabled");
+    }
+    return filtered;
+  }
+  return [...ALL_UNSLOTH_ENGINES];
+}
+
 export interface WebsearchConfig {
   /** Which provider to use. */
-  provider: "exa-mcp" | "searxng";
+  provider: "exa-mcp" | "searxng" | "unsloth";
   /** Exa MCP provider configuration. */
   exaMcp: {
     /** MCP server URL */
@@ -22,6 +105,19 @@ export interface WebsearchConfig {
      * When set, this script is used instead of the built-in `bin/searxng` script.
      */
     script?: string;
+  };
+  /** Unsloth provider configuration (direct multi-engine scraper). */
+  unsloth?: {
+    /** Per-engine fetch timeout in ms (default 10_000). */
+    timeoutMs?: number;
+    /** Region string, e.g. "us-en" (default "us-en"). */
+    region?: string;
+    /** SafeSearch level (default "moderate"). */
+    safesearch?: "on" | "moderate" | "off";
+    /** Allowlist — when set, only these engines run. Mutually exclusive with disabledEngines. */
+    engines?: UnslothEngineId[];
+    /** Blocklist — these engines are removed. Mutually exclusive with engines. */
+    disabledEngines?: UnslothEngineId[];
   };
   /** Request timeout in milliseconds */
   timeoutMs: number;
@@ -45,6 +141,7 @@ export const DEFAULT_CONFIG: WebsearchConfig = {
     safesearch: 0,
     script: undefined,
   },
+  unsloth: undefined,
   timeoutMs: 25_000,
   defaults: {
     numResults: 8,
@@ -66,7 +163,9 @@ function mergeConfig(
 
   if (
     typeof override.provider === "string" &&
-    (override.provider === "exa-mcp" || override.provider === "searxng")
+    (override.provider === "exa-mcp" ||
+      override.provider === "searxng" ||
+      override.provider === "unsloth")
   ) {
     merged.provider = override.provider;
   }
@@ -81,6 +180,12 @@ function mergeConfig(
       ...base.searxng,
       ...(override.searxng as Record<string, unknown>),
     };
+  }
+  if (override.unsloth && typeof override.unsloth === "object") {
+    merged.unsloth = {
+      ...(base.unsloth ?? {}),
+      ...(override.unsloth as Record<string, unknown>),
+    } as WebsearchConfig["unsloth"];
   }
   if (override.defaults && typeof override.defaults === "object") {
     merged.defaults = {
