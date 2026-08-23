@@ -141,10 +141,27 @@ type XStep =
   | { kind: "text" }
   | { kind: "attr"; name: string };
 
-function readWord(input: string, pos: { value: number }): string {
+function skipWhitespace(input: string, pos: { value: number }): void {
   while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
     pos.value++;
   }
+}
+
+function expectChar(
+  input: string,
+  pos: { value: number },
+  char: string,
+  what: string,
+): void {
+  skipWhitespace(input, pos);
+  if (input[pos.value] !== char) {
+    throw new Error(`bad predicate ${what}: ${input}`);
+  }
+  pos.value++;
+}
+
+function readWord(input: string, pos: { value: number }): string {
+  skipWhitespace(input, pos);
   const m = /^[A-Za-z][A-Za-z0-9_-]*/.exec(input.slice(pos.value));
   if (!m) {
     throw new Error(`bad predicate: ${input}`);
@@ -154,9 +171,7 @@ function readWord(input: string, pos: { value: number }): string {
 }
 
 function readQuoted(input: string, pos: { value: number }): string {
-  while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
-    pos.value++;
-  }
+  skipWhitespace(input, pos);
   const quote = input[pos.value] as string;
   if (quote !== "'" && quote !== '"') {
     throw new Error(`bad predicate quote: ${input}`);
@@ -200,54 +215,54 @@ function parsePredBlocks(input: string, pos: { value: number }): Pred[] {
   return preds;
 }
 
+function parseParenAtom(
+  input: string,
+  pos: { value: number },
+  parseOr: () => Pred,
+): Pred {
+  pos.value++;
+  const inner = parseOr();
+  expectChar(input, pos, ")", "paren");
+  return inner;
+}
+
+function parseClassContainsAtom(input: string, pos: { value: number }): Pred {
+  pos.value += "contains(@class,".length;
+  const value = readQuoted(input, pos);
+  expectChar(input, pos, ")", "contains");
+  return { op: "class-contains", value };
+}
+
+function parseAttrAtom(input: string, pos: { value: number }): Pred {
+  pos.value++;
+  const name = readWord(input, pos);
+  skipWhitespace(input, pos);
+  if (input[pos.value] === "=") {
+    pos.value++;
+    const value = readQuoted(input, pos);
+    return { op: "attr-eq", name, value };
+  }
+  return { op: "has-attr", name };
+}
+
 function parseAtom(
   input: string,
   pos: { value: number },
   parseOr: () => Pred,
 ): Pred {
-  while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
-    pos.value++;
-  }
+  skipWhitespace(input, pos);
   if (input[pos.value] === "(") {
-    pos.value++;
-    const inner = parseOr();
-    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
-      pos.value++;
-    }
-    if (input[pos.value] !== ")") {
-      throw new Error(`bad predicate paren: ${input}`);
-    }
-    pos.value++;
-    return inner;
+    return parseParenAtom(input, pos, parseOr);
   }
   if (input.startsWith("position()=last()", pos.value)) {
     pos.value += "position()=last()".length;
     return { op: "last" };
   }
   if (input.startsWith("contains(@class,", pos.value)) {
-    pos.value += "contains(@class,".length;
-    const value = readQuoted(input, pos);
-    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
-      pos.value++;
-    }
-    if (input[pos.value] !== ")") {
-      throw new Error(`bad predicate contains: ${input}`);
-    }
-    pos.value++;
-    return { op: "class-contains", value };
+    return parseClassContainsAtom(input, pos);
   }
   if (input[pos.value] === "@") {
-    pos.value++;
-    const name = readWord(input, pos);
-    while (pos.value < input.length && /\s/.test(input[pos.value] as string)) {
-      pos.value++;
-    }
-    if (input[pos.value] === "=") {
-      pos.value++;
-      const value = readQuoted(input, pos);
-      return { op: "attr-eq", name, value };
-    }
-    return { op: "has-attr", name };
+    return parseAttrAtom(input, pos);
   }
   if (input.startsWith(".//", pos.value)) {
     pos.value += 3;
@@ -305,29 +320,45 @@ function parsePredExpr(input: string): Pred {
   return parseOr();
 }
 
+const NODE_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*/;
+const ATTR_NAME_RE = /^[A-Za-z0-9_-]+/;
+
+function parsePathStart(expr: string): {
+  index: number;
+  axis: "child" | "descendant";
+} {
+  if (expr.startsWith("//")) {
+    return { index: 2, axis: "descendant" };
+  }
+  if (expr.startsWith("./")) {
+    return expr[2] === "/"
+      ? { index: 3, axis: "descendant" }
+      : { index: 2, axis: "child" };
+  }
+  return { index: 0, axis: "child" };
+}
+
+function readAttrStep(
+  expr: string,
+  index: number,
+): { step: XStep; next: number } {
+  const m = ATTR_NAME_RE.exec(expr.slice(index));
+  return {
+    step: { kind: "attr", name: m ? m[0] : "" },
+    next: m ? index + m[0].length : index,
+  };
+}
+
 function parsePath(expr: string): XStep[] {
   const steps: XStep[] = [];
-  let i = 0;
-  let axis: "child" | "descendant" = "child";
-  if (expr.startsWith("//")) {
-    axis = "descendant";
-    i = 2;
-  } else if (expr.startsWith("./")) {
-    i = 2;
-    if (expr[i] === "/") {
-      axis = "descendant";
-      i++;
-    }
-  }
+  const start = parsePathStart(expr);
+  let i = start.index;
+  let axis = start.axis;
   while (i < expr.length) {
     if (expr[i] === "/") {
-      if (expr[i + 1] === "/") {
-        axis = "descendant";
-        i += 2;
-      } else {
-        axis = "child";
-        i++;
-      }
+      const double = expr[i + 1] === "/";
+      axis = double ? "descendant" : "child";
+      i += double ? 2 : 1;
       continue;
     }
     if (expr[i] === ".") {
@@ -335,10 +366,9 @@ function parsePath(expr: string): XStep[] {
       continue;
     }
     if (expr[i] === "@") {
-      i++;
-      const m = /^[A-Za-z0-9_-]+/.exec(expr.slice(i));
-      steps.push({ kind: "attr", name: m ? m[0] : "" });
-      i += m ? m[0].length : 0;
+      const attr = readAttrStep(expr, i + 1);
+      steps.push(attr.step);
+      i = attr.next;
       continue;
     }
     if (expr.startsWith("text()", i)) {
@@ -346,37 +376,14 @@ function parsePath(expr: string): XStep[] {
       i += 6;
       continue;
     }
-    const m = /^[A-Za-z][A-Za-z0-9_-]*/.exec(expr.slice(i));
+    const m = NODE_NAME_RE.exec(expr.slice(i));
     if (!m) {
       break;
     }
-    const name = m[0];
-    i += m[0].length;
-    const preds: Pred[] = [];
-    while (i < expr.length && expr[i] === "[") {
-      const start = i + 1;
-      let depth = 1;
-      let quote: string | null = null;
-      let j = start;
-      while (j < expr.length && depth) {
-        const c = expr[j];
-        if (quote !== null) {
-          if (c === quote) {
-            quote = null;
-          }
-        } else if (c === "'" || c === '"') {
-          quote = c;
-        } else if (c === "[") {
-          depth++;
-        } else if (c === "]") {
-          depth--;
-        }
-        j++;
-      }
-      preds.push(parsePredExpr(expr.slice(start, j - 1)));
-      i = j;
-    }
-    steps.push({ kind: "node", axis, name, preds });
+    const pos = { value: i + m[0].length };
+    const preds = parsePredBlocks(expr, pos);
+    steps.push({ kind: "node", axis, name: m[0], preds });
+    i = pos.value;
   }
   return steps;
 }
@@ -449,38 +456,45 @@ function matchesPred(
   }
 }
 
-function applyStep(
+function descendantsOf(el: DomNode): DomNode[] {
+  const out: DomNode[] = [];
+  collectDescendants(el, out);
+  return out;
+}
+
+function collectCandidates(
   step: Extract<XStep, { kind: "node" }>,
   nodes: DomNode[],
 ): DomNode[] {
   const candidates: DomNode[] = [];
   for (const node of nodes) {
-    if (step.axis === "child") {
-      for (const c of node.children) {
-        if (step.name && c.tag !== step.name) {
-          continue;
-        }
-        candidates.push(c);
-      }
-    } else {
-      const list: DomNode[] = [];
-      collectDescendants(node, list);
-      for (const c of list) {
-        if (step.name && c.tag !== step.name) {
-          continue;
-        }
-        candidates.push(c);
+    const source = step.axis === "child" ? node.children : descendantsOf(node);
+    for (const child of source) {
+      if (!step.name || child.tag === step.name) {
+        candidates.push(child);
       }
     }
   }
-  const deduped: DomNode[] = [];
+  return candidates;
+}
+
+function dedupeNodes(nodes: DomNode[]): DomNode[] {
   const seen = new Set<DomNode>();
-  for (const c of candidates) {
-    if (!seen.has(c)) {
-      seen.add(c);
-      deduped.push(c);
+  const deduped: DomNode[] = [];
+  for (const node of nodes) {
+    if (!seen.has(node)) {
+      seen.add(node);
+      deduped.push(node);
     }
   }
+  return deduped;
+}
+
+function applyStep(
+  step: Extract<XStep, { kind: "node" }>,
+  nodes: DomNode[],
+): DomNode[] {
+  const deduped = dedupeNodes(collectCandidates(step, nodes));
   const total = deduped.length;
   return deduped.filter((el, index) =>
     step.preds.every((p) => matchesPred(p, el, index, total)),
