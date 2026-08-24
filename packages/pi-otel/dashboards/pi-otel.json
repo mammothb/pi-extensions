@@ -31,7 +31,35 @@
         "defaults": {
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [10, 10],
+                  "fill": "dash"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -45,6 +73,14 @@
           "expr": "sum by (gen_ai_token_type, gen_ai_request_model) (rate(gen_ai_client_token_usage_sum[5m]) * 60)",
           "legendFormat": "{{gen_ai_token_type}} {{gen_ai_request_model}}",
           "refId": "A"
+        },
+        {
+          "datasource": null,
+          "editorMode": "code",
+          "expr": "100 * sum(rate(gen_ai_client_token_usage_sum{gen_ai_token_type=\"cache_read\"}[5m])) / clamp_min(sum(rate(gen_ai_client_token_usage_sum{gen_ai_token_type=\"input\"}[5m])), 1e-9)",
+          "legendFormat": "cache hit %",
+          "range": true,
+          "refId": "B"
         }
       ],
       "options": {
@@ -69,7 +105,31 @@
         "defaults": {
           "unit": "s"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [10, 10],
+                  "fill": "dash"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -88,44 +148,14 @@
           "expr": "histogram_quantile(0.50, sum by (le, gen_ai_operation_name) (rate(gen_ai_client_operation_duration_seconds_bucket[1h])))",
           "legendFormat": "p50 {{gen_ai_operation_name}}",
           "refId": "B"
-        }
-      ],
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
         },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Chat error rate (%)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 6,
-        "x": 12,
-        "y": 1
-      },
-      "id": 11,
-      "targets": [
         {
+          "datasource": null,
+          "editorMode": "code",
           "expr": "((sum(rate(pi_chat_calls_total{pi_chat_error_type!=\"none\"}[5m])) / clamp_min(sum(rate(pi_chat_calls_total[5m])), 1e-9)) * 100) or on() vector(0)",
-          "legendFormat": "error rate",
-          "refId": "A"
+          "legendFormat": "chat error %",
+          "range": true,
+          "refId": "C"
         }
       ],
       "options": {
