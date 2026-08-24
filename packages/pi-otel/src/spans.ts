@@ -41,6 +41,8 @@ import {
   GEN_AI_RESPONSE_MODEL,
   GEN_AI_SYSTEM,
   GEN_AI_TOOL_NAME,
+  GEN_AI_USAGE_CACHE_READ_TOKENS,
+  GEN_AI_USAGE_CACHE_WRITE_TOKENS,
   GEN_AI_USAGE_INPUT_TOKENS,
   GEN_AI_USAGE_OUTPUT_TOKENS,
   PI_AGENT_SESSION_ID,
@@ -80,13 +82,21 @@ interface StackEntry {
   toolCallId?: string;
 }
 
-/** Subset of an assistant message that endChat needs. */
+/** Subset of an assistant message that endChat needs. `usage.cacheRead` /
+ * `usage.cacheWrite` (prompt-cache hits/writes) are optional because not
+ * every provider reports them; when present they are excluded from the
+ * plain input count by the provider, so they get their own attributes. */
 export interface ChatMessageInfo {
   provider: string;
   model: string;
   responseModel?: string;
   stopReason: string;
-  usage: { input: number; output: number };
+  usage: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
   isError?: boolean;
   errorMessage?: string;
 }
@@ -221,6 +231,24 @@ export class SpanTracker {
     span.setAttribute(GEN_AI_SYSTEM, message.provider);
     span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, message.usage.input);
     span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, message.usage.output);
+    if (
+      typeof message.usage.cacheRead === "number" &&
+      message.usage.cacheRead > 0
+    ) {
+      span.setAttribute(
+        GEN_AI_USAGE_CACHE_READ_TOKENS,
+        message.usage.cacheRead,
+      );
+    }
+    if (
+      typeof message.usage.cacheWrite === "number" &&
+      message.usage.cacheWrite > 0
+    ) {
+      span.setAttribute(
+        GEN_AI_USAGE_CACHE_WRITE_TOKENS,
+        message.usage.cacheWrite,
+      );
+    }
     span.setAttribute(GEN_AI_RESPONSE_FINISH_REASONS, [message.stopReason]);
 
     this._classifyChatError(span, message, responseStatus);

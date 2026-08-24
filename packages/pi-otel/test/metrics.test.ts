@@ -251,6 +251,67 @@ describe("Metrics", () => {
     expect(toolDurationPoints).toHaveLength(1);
   });
 
+  it("records cached tokens as separate series when the provider reports them", async () => {
+    const { pi, handlers } = createMockPi();
+    piOtelExtension(pi as never);
+
+    await fire(
+      handlers,
+      "session_start",
+      { type: "session_start", reason: "startup" },
+      ctx(),
+    );
+    await fire(
+      handlers,
+      "before_agent_start",
+      { type: "before_agent_start", prompt: "hi" },
+      ctx(),
+    );
+    await fire(handlers, "turn_start", {
+      type: "turn_start",
+      turnIndex: 0,
+      timestamp: Date.now(),
+    });
+    await fire(handlers, "before_provider_request", {
+      type: "before_provider_request",
+      payload: {},
+    });
+    // Bedrock-style cached response: input ≈ 0 (uncached remainder only),
+    // cacheRead/cacheWrite carry the bulk of the prompt.
+    await fire(handlers, "message_end", {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        provider: "bedrock",
+        model: "anthropic.claude-sonnet-4-5",
+        stopReason: "stop",
+        usage: { input: 3, output: 900, cacheRead: 120_000, cacheWrite: 0 },
+      },
+    });
+    await fire(handlers, "turn_end", { type: "turn_end", turnIndex: 0 });
+    await fire(handlers, "agent_end", { type: "agent_end", messages: [] });
+    await fire(handlers, "session_shutdown", {
+      type: "session_shutdown",
+      reason: "quit",
+    });
+
+    await provider.forceFlush();
+    const rms = exporter.getMetrics();
+
+    const tokenUsage = findMetric(rms, "gen_ai.client.token.usage");
+    const tokenPoints = histogramPoints(tokenUsage);
+    // Three series: input + output + cache_read. cacheWrite === 0 is
+    // skipped so it doesn't add an empty observation.
+    expect(tokenPoints).toHaveLength(3);
+    const byType = new Map(
+      tokenPoints.map((p) => [p.attributes["gen_ai.token.type"], p]),
+    );
+    expect(byType.get("input")?.value.sum).toBe(3);
+    expect(byType.get("output")?.value.sum).toBe(900);
+    expect(byType.get("cache_read")?.value.sum).toBe(120_000);
+    expect(byType.get("cache_write")).toBeUndefined();
+  });
+
   it("records an errored tool call with is_error=true", async () => {
     const { pi, handlers } = createMockPi();
     piOtelExtension(pi as never);

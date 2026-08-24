@@ -45,6 +45,25 @@ export const GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens";
 /** Output token count. */
 export const GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
 
+/**
+ * Tokens served from the prompt cache (cache hits).
+ *
+ * Not defined by the GenAI semconv yet (`Development` status) — the name
+ * mirrors the provider fields pi-ai normalizes onto `usage.cacheRead`:
+ * Anthropic `cache_read_input_tokens`, Bedrock Converse
+ * `cacheReadInputTokens`. Providers exclude these from the plain input
+ * count, so summing input + cache_read + cache_write reconstructs the true
+ * prompt size.
+ */
+export const GEN_AI_USAGE_CACHE_READ_TOKENS =
+  "gen_ai.usage.cache_read_input_tokens";
+
+/** Tokens written to the prompt cache this request (see
+ * `GEN_AI_USAGE_CACHE_READ_TOKENS`). Umbrella for Anthropic's
+ * `cache_creation_input_tokens` and Bedrock's `cacheWriteInputTokens`. */
+export const GEN_AI_USAGE_CACHE_WRITE_TOKENS =
+  "gen_ai.usage.cache_write_input_tokens";
+
 /** Tool name (for `execute_tool` spans). */
 export const GEN_AI_TOOL_NAME = "gen_ai.tool.name";
 
@@ -60,9 +79,15 @@ export const GEN_AI_CONVERSATION_COMPACTED = "gen_ai.conversation.compacted";
 /** Token type for `gen_ai.client.token.usage` histogram dimension. */
 export const GEN_AI_TOKEN_TYPE = "gen_ai.token.type";
 
+// The well-known semconv values are `input` / `output`; the spec allows
+// custom values when none applies, so cached tokens get their own series on
+// `gen_ai.client.token.usage` rather than being folded into `input` (which
+// would hide cache-hit ratio) — same approach as maxmalkin/pi-OTEL.
 export const GEN_AI_TOKEN_TYPE_VALUE = {
   INPUT: "input",
   OUTPUT: "output",
+  CACHE_READ: "cache_read",
+  CACHE_WRITE: "cache_write",
 } as const;
 
 // ── pi.* (harness-specific, not in any semconv) ───────────────────────────

@@ -245,7 +245,12 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       model?: string;
       responseModel?: string;
       stopReason?: string;
-      usage?: { input?: number; output?: number };
+      usage?: {
+        input?: number;
+        output?: number;
+        cacheRead?: number;
+        cacheWrite?: number;
+      };
       errorMessage?: string;
     };
     if (message.role !== "assistant" || !message.provider || !message.model) {
@@ -267,6 +272,29 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       message.provider ?? "",
       message.usage?.output ?? 0,
     );
+    // Cached tokens are recorded as their own series, never folded into
+    // `input`: providers exclude them from the input count (Anthropic /
+    // Bedrock Converse report `cache_read`/`cache_write` separately), so for
+    // cached models `input` alone is only the uncached remainder — near zero
+    // when pi's provider layer places a cache breakpoint at the end of the
+    // prompt. Zero-valued caches are skipped to avoid polluting the
+    // histogram with empty observations.
+    if ((message.usage?.cacheRead ?? 0) > 0) {
+      metrics.recordTokenUsage(
+        "cache_read",
+        modelLabel,
+        message.provider ?? "",
+        message.usage.cacheRead as number,
+      );
+    }
+    if ((message.usage?.cacheWrite ?? 0) > 0) {
+      metrics.recordTokenUsage(
+        "cache_write",
+        modelLabel,
+        message.provider ?? "",
+        message.usage.cacheWrite as number,
+      );
+    }
     // Classify the chat outcome: HTTP non-2xx wins, then message-derived
     // error signals, then a missing finish_reason.
     const rawStopReason = message.stopReason;
@@ -297,6 +325,8 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
         usage: {
           input: message.usage?.input ?? 0,
           output: message.usage?.output ?? 0,
+          cacheRead: message.usage?.cacheRead,
+          cacheWrite: message.usage?.cacheWrite,
         },
         errorMessage: message.errorMessage,
       },

@@ -30,6 +30,20 @@ import { PI_OTEL_VERSION } from "./version.js";
 
 const METER_NAME = "@mammothb/pi-otel";
 
+/** Token-usage series on `gen_ai.client.token.usage`. `cache_read` /
+ * `cache_write` are custom `gen_ai.token.type` values (allowed by the
+ * semconv when no well-known value applies) covering prompt-cache hits and
+ * writes; providers exclude both from the plain `input` count. */
+export type TokenType = "input" | "output" | "cache_read" | "cache_write";
+
+/** TokenType → `gen_ai.token.type` attribute value. */
+const TOKEN_TYPE_ATTR: Record<TokenType, string> = {
+  input: GEN_AI_TOKEN_TYPE_VALUE.INPUT,
+  output: GEN_AI_TOKEN_TYPE_VALUE.OUTPUT,
+  cache_read: GEN_AI_TOKEN_TYPE_VALUE.CACHE_READ,
+  cache_write: GEN_AI_TOKEN_TYPE_VALUE.CACHE_WRITE,
+};
+
 /** Explicit histogram buckets. Kept here (rather than relying on the SDK's
  * default [0, 5, 10, 25, ...] exponential) so dashboards get meaningful
  * p50/p95/p99 quantiles out of the box. */
@@ -137,10 +151,10 @@ export class Metrics {
 
   // ── recording entry points ───────────────────────────────────────────
 
-  /** Record one token-usage datum for a single chat. `tokenType` is
-   * `input` or `output`. */
+  /** Record one token-usage datum for a single chat. See {@link TokenType}
+   * for the supported series. */
   recordTokenUsage(
-    tokenType: "input" | "output",
+    tokenType: TokenType,
     model: string,
     system: string,
     value: number,
@@ -149,10 +163,7 @@ export class Metrics {
       return;
     }
     this.tokenUsage().record(value, {
-      [GEN_AI_TOKEN_TYPE]:
-        tokenType === "input"
-          ? GEN_AI_TOKEN_TYPE_VALUE.INPUT
-          : GEN_AI_TOKEN_TYPE_VALUE.OUTPUT,
+      [GEN_AI_TOKEN_TYPE]: TOKEN_TYPE_ATTR[tokenType],
       [GEN_AI_REQUEST_MODEL]: model,
       [GEN_AI_SYSTEM]: system,
     });
