@@ -251,6 +251,129 @@ describe("Metrics", () => {
     expect(toolDurationPoints).toHaveLength(1);
   });
 
+  it("records cached tokens as separate series when the provider reports them", async () => {
+    const { pi, handlers } = createMockPi();
+    piOtelExtension(pi as never);
+
+    await fire(
+      handlers,
+      "session_start",
+      { type: "session_start", reason: "startup" },
+      ctx(),
+    );
+    await fire(
+      handlers,
+      "before_agent_start",
+      { type: "before_agent_start", prompt: "hi" },
+      ctx(),
+    );
+    await fire(handlers, "turn_start", {
+      type: "turn_start",
+      turnIndex: 0,
+      timestamp: Date.now(),
+    });
+    await fire(handlers, "before_provider_request", {
+      type: "before_provider_request",
+      payload: {},
+    });
+    // Bedrock-style cached response: pi-ai reports input as the uncached
+    // remainder only; cacheRead carries the bulk of the prompt.
+    await fire(handlers, "message_end", {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        provider: "bedrock",
+        model: "anthropic.claude-sonnet-4-5",
+        stopReason: "stop",
+        usage: { input: 3, output: 900, cacheRead: 120_000, cacheWrite: 500 },
+      },
+    });
+    await fire(handlers, "turn_end", { type: "turn_end", turnIndex: 0 });
+    await fire(handlers, "agent_end", { type: "agent_end", messages: [] });
+    await fire(handlers, "session_shutdown", {
+      type: "session_shutdown",
+      reason: "quit",
+    });
+
+    await provider.forceFlush();
+    const rms = exporter.getMetrics();
+
+    const tokenUsage = findMetric(rms, "gen_ai.client.token.usage");
+    const tokenPoints = histogramPoints(tokenUsage);
+    // Four series. `input` is inclusive per semconv (uncached remainder +
+    // cached reads + writes = full prompt size); caches are subset
+    // breakdowns, so don't sum the series.
+    expect(tokenPoints).toHaveLength(4);
+    const byType = new Map(
+      tokenPoints.map((p) => [p.attributes["gen_ai.token.type"], p]),
+    );
+    expect(byType.get("input")?.value.sum).toBe(120_503);
+    expect(byType.get("output")?.value.sum).toBe(900);
+    expect(byType.get("cache_read")?.value.sum).toBe(120_000);
+    expect(byType.get("cache_write")?.value.sum).toBe(500);
+  });
+
+  it("skips zero-valued cache series and keeps non-cached input untouched", async () => {
+    const { pi, handlers } = createMockPi();
+    piOtelExtension(pi as never);
+
+    await fire(
+      handlers,
+      "session_start",
+      { type: "session_start", reason: "startup" },
+      ctx(),
+    );
+    await fire(
+      handlers,
+      "before_agent_start",
+      { type: "before_agent_start", prompt: "hi" },
+      ctx(),
+    );
+    // Provider without cache fields (e.g. plain OpenAI-compatible): input is
+    // already the full prompt, no cache series may appear.
+    await fire(handlers, "message_end", {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        provider: "openai",
+        model: "gpt-5",
+        stopReason: "stop",
+        usage: { input: 37_000, output: 6_700 },
+      },
+    });
+    // Explicit zero caches must not create empty series either.
+    await fire(handlers, "message_end", {
+      type: "message_end",
+      message: {
+        role: "assistant",
+        provider: "openai",
+        model: "gpt-5",
+        stopReason: "stop",
+        usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0 },
+      },
+    });
+    await fire(handlers, "agent_end", { type: "agent_end", messages: [] });
+    await fire(handlers, "session_shutdown", {
+      type: "session_shutdown",
+      reason: "quit",
+    });
+
+    await provider.forceFlush();
+    const rms = exporter.getMetrics();
+
+    const tokenPoints = histogramPoints(
+      findMetric(rms, "gen_ai.client.token.usage"),
+    );
+    expect(tokenPoints).toHaveLength(2);
+    const byType = new Map(
+      tokenPoints.map((p) => [p.attributes["gen_ai.token.type"], p]),
+    );
+    expect(byType.get("input")?.value.sum).toBe(37_010);
+    expect(byType.get("output")?.value.sum).toBe(6_720);
+    expect(byType.get("cache_read")).toBeUndefined();
+    expect(byType.get("cache_write")).toBeUndefined();
+  });
+
   it("records an errored tool call with is_error=true", async () => {
     const { pi, handlers } = createMockPi();
     piOtelExtension(pi as never);

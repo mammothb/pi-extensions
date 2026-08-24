@@ -201,7 +201,12 @@ describe("SpanTracker", () => {
       model: "gpt-5",
       responseModel: "gpt-5-2025-08-01",
       stopReason: "stop",
-      usage: { input: 42, output: 7 },
+      usage: {
+        input: 42,
+        output: 7,
+        cacheRead: 1000,
+        cacheWrite: 500,
+      },
     });
     tracker.endTurn();
     tracker.endInteraction();
@@ -212,10 +217,38 @@ describe("SpanTracker", () => {
     expect(chat.attributes["gen_ai.request.model"]).toBe("gpt-5");
     expect(chat.attributes["gen_ai.response.model"]).toBe("gpt-5-2025-08-01");
     expect(chat.attributes["gen_ai.system"]).toBe("openai");
-    expect(chat.attributes["gen_ai.usage.input_tokens"]).toBe(42);
+    // Inclusive per semconv: 42 uncached + 1000 read + 500 written.
+    expect(chat.attributes["gen_ai.usage.input_tokens"]).toBe(1542);
     expect(chat.attributes["gen_ai.usage.output_tokens"]).toBe(7);
+    expect(chat.attributes["gen_ai.usage.cache_read.input_tokens"]).toBe(1000);
+    expect(chat.attributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(
+      500,
+    );
     expect(chat.attributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(chat.status.code).toBe(SpanStatusCode.UNSET);
+  });
+
+  it("omits cache attributes when the provider reports none", () => {
+    tracker.beginInteraction();
+    tracker.beginTurn(0);
+    tracker.beginChat();
+    tracker.endChat({
+      provider: "openai",
+      model: "gpt-5",
+      stopReason: "stop",
+      usage: { input: 1, output: 1 },
+    });
+    tracker.endTurn();
+    tracker.endInteraction();
+    provider.forceFlush();
+
+    const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
+    expect(
+      chat.attributes["gen_ai.usage.cache_read.input_tokens"],
+    ).toBeUndefined();
+    expect(
+      chat.attributes["gen_ai.usage.cache_creation.input_tokens"],
+    ).toBeUndefined();
   });
 
   it("marks chat span as ERROR on non-2xx HTTP response", () => {
