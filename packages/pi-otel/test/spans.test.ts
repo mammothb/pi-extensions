@@ -217,10 +217,13 @@ describe("SpanTracker", () => {
     expect(chat.attributes["gen_ai.request.model"]).toBe("gpt-5");
     expect(chat.attributes["gen_ai.response.model"]).toBe("gpt-5-2025-08-01");
     expect(chat.attributes["gen_ai.system"]).toBe("openai");
-    expect(chat.attributes["gen_ai.usage.input_tokens"]).toBe(42);
+    // Inclusive per semconv: 42 uncached + 1000 read + 500 written.
+    expect(chat.attributes["gen_ai.usage.input_tokens"]).toBe(1542);
     expect(chat.attributes["gen_ai.usage.output_tokens"]).toBe(7);
-    expect(chat.attributes["gen_ai.usage.cache_read_input_tokens"]).toBe(1000);
-    expect(chat.attributes["gen_ai.usage.cache_write_input_tokens"]).toBe(500);
+    expect(chat.attributes["gen_ai.usage.cache_read.input_tokens"]).toBe(1000);
+    expect(chat.attributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(
+      500,
+    );
     expect(chat.attributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(chat.status.code).toBe(SpanStatusCode.UNSET);
   });
@@ -241,10 +244,10 @@ describe("SpanTracker", () => {
 
     const chat = findSpan(exporter.getFinishedSpans(), SPAN_NAME.CHAT);
     expect(
-      chat.attributes["gen_ai.usage.cache_read_input_tokens"],
+      chat.attributes["gen_ai.usage.cache_read.input_tokens"],
     ).toBeUndefined();
     expect(
-      chat.attributes["gen_ai.usage.cache_write_input_tokens"],
+      chat.attributes["gen_ai.usage.cache_creation.input_tokens"],
     ).toBeUndefined();
   });
 

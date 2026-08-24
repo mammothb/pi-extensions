@@ -41,8 +41,8 @@ import {
   GEN_AI_RESPONSE_MODEL,
   GEN_AI_SYSTEM,
   GEN_AI_TOOL_NAME,
+  GEN_AI_USAGE_CACHE_CREATION_TOKENS,
   GEN_AI_USAGE_CACHE_READ_TOKENS,
-  GEN_AI_USAGE_CACHE_WRITE_TOKENS,
   GEN_AI_USAGE_INPUT_TOKENS,
   GEN_AI_USAGE_OUTPUT_TOKENS,
   PI_AGENT_SESSION_ID,
@@ -229,25 +229,22 @@ export class SpanTracker {
       message.responseModel ?? message.model,
     );
     span.setAttribute(GEN_AI_SYSTEM, message.provider);
-    span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, message.usage.input);
+    // Inclusive per semconv ("cached tokens SHOULD be included in
+    // gen_ai.usage.input_tokens"): pi-ai's usage.input excludes cached
+    // tokens, so reassemble the full prompt size and emit the caches as
+    // subset breakdowns.
+    const cacheRead = message.usage.cacheRead ?? 0;
+    const cacheCreation = message.usage.cacheWrite ?? 0;
+    span.setAttribute(
+      GEN_AI_USAGE_INPUT_TOKENS,
+      message.usage.input + cacheRead + cacheCreation,
+    );
     span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, message.usage.output);
-    if (
-      typeof message.usage.cacheRead === "number" &&
-      message.usage.cacheRead > 0
-    ) {
-      span.setAttribute(
-        GEN_AI_USAGE_CACHE_READ_TOKENS,
-        message.usage.cacheRead,
-      );
+    if (cacheRead > 0) {
+      span.setAttribute(GEN_AI_USAGE_CACHE_READ_TOKENS, cacheRead);
     }
-    if (
-      typeof message.usage.cacheWrite === "number" &&
-      message.usage.cacheWrite > 0
-    ) {
-      span.setAttribute(
-        GEN_AI_USAGE_CACHE_WRITE_TOKENS,
-        message.usage.cacheWrite,
-      );
+    if (cacheCreation > 0) {
+      span.setAttribute(GEN_AI_USAGE_CACHE_CREATION_TOKENS, cacheCreation);
     }
     span.setAttribute(GEN_AI_RESPONSE_FINISH_REASONS, [message.stopReason]);
 

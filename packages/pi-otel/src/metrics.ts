@@ -80,7 +80,8 @@ export class Metrics {
       this._tokenUsage = this.getMeter().createHistogram(
         "gen_ai.client.token.usage",
         {
-          description: "Token usage per LLM call, split by input/output.",
+          description:
+            "Token usage per LLM call. `input` is the total prompt size (cached tokens included); `cache_read` / `cache_write` are subset breakdowns.",
           unit: "{token}",
           advice: { explicitBucketBoundaries: TOKEN_BUCKETS },
         },

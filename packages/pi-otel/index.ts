@@ -260,11 +260,20 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
     // backend-resolved message.model, so gen_ai.request.model reflects the
     // model the user actually selected (e.g. an alias like `hy3-free`).
     const modelLabel = currentModelId ?? message.model ?? "";
+    // `input` is the inclusive prompt size (uncached remainder + cached
+    // reads + cache writes). pi-ai normalizes usage.input to the uncached
+    // remainder only — near zero on every call for Claude-on-Bedrock, where
+    // its provider layer places a cache breakpoint at the end of the prompt
+    // and Bedrock counts cached tokens under separate fields. The semconv
+    // states cached tokens SHOULD be included in gen_ai.usage.input_tokens,
+    // with the caches below as subset breakdowns — so don't sum the series.
+    const cacheRead = message.usage?.cacheRead ?? 0;
+    const cacheWrite = message.usage?.cacheWrite ?? 0;
     metrics.recordTokenUsage(
       "input",
       modelLabel,
       message.provider ?? "",
-      message.usage?.input ?? 0,
+      (message.usage?.input ?? 0) + cacheRead + cacheWrite,
     );
     metrics.recordTokenUsage(
       "output",
@@ -272,27 +281,23 @@ export default function piOtelExtension(pi: ExtensionAPI): void {
       message.provider ?? "",
       message.usage?.output ?? 0,
     );
-    // Cached tokens are recorded as their own series, never folded into
-    // `input`: providers exclude them from the input count (Anthropic /
-    // Bedrock Converse report `cache_read`/`cache_write` separately), so for
-    // cached models `input` alone is only the uncached remainder — near zero
-    // when pi's provider layer places a cache breakpoint at the end of the
-    // prompt. Zero-valued caches are skipped to avoid polluting the
-    // histogram with empty observations.
-    if ((message.usage?.cacheRead ?? 0) > 0) {
+    // Cached tokens additionally get their own breakdown series. Zero-valued
+    // caches are skipped to avoid polluting the histogram with empty
+    // observations.
+    if (cacheRead > 0) {
       metrics.recordTokenUsage(
         "cache_read",
         modelLabel,
         message.provider ?? "",
-        message.usage.cacheRead as number,
+        cacheRead,
       );
     }
-    if ((message.usage?.cacheWrite ?? 0) > 0) {
+    if (cacheWrite > 0) {
       metrics.recordTokenUsage(
         "cache_write",
         modelLabel,
         message.provider ?? "",
-        message.usage.cacheWrite as number,
+        cacheWrite,
       );
     }
     // Classify the chat outcome: HTTP non-2xx wins, then message-derived
