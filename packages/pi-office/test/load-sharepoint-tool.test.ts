@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { TextContent } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SharepointConfig } from "../src/config.js";
 import { createLoadSharepointTool } from "../src/tools/load-sharepoint.js";
@@ -15,11 +15,8 @@ let tmpDir: string;
 
 beforeEach(() => {
   process.env.PI_OFFICE_TEST_TOKEN = "tok";
-  tmpDir = join(
-    tmpdir(),
-    `pi-office-tool-test-${Date.now()}-${randomUUID().slice(0, 8)}`,
-  );
-  mkdtempSync(tmpDir);
+  // Assign the returned path — mkdtempSync appends a suffix to the prefix.
+  tmpDir = mkdtempSync(join(tmpdir(), "pi-office-tool-test-"));
 });
 
 afterEach(() => {
@@ -45,6 +42,8 @@ describe("createLoadSharepointTool", () => {
       "call-1",
       { url: "https://contoso.sharepoint.com/sites/team/Docs/report.pdf" },
       undefined,
+      undefined,
+      {} as never,
     );
 
     const outputPath = result.details.outputPath;
@@ -52,7 +51,7 @@ describe("createLoadSharepointTool", () => {
     expect(readFileSync(outputPath, "utf-8")).toBe("%PDF-bytes");
     expect(result.details.source).toContain("contoso.sharepoint.com");
     expect(result.details.bytes).toBe(expectedBytes);
-    expect(result.content[0].text).toContain(outputPath);
+    expect((result.content[0]! as TextContent).text).toContain(outputPath);
   });
 
   it("propagates client errors", async () => {
@@ -66,6 +65,8 @@ describe("createLoadSharepointTool", () => {
         "call-1",
         { url: "https://contoso.sharepoint.com/sites/t/f.pdf" },
         undefined,
+        undefined,
+        {} as never,
       ),
     ).rejects.toThrow(/unauthorized/i);
   });

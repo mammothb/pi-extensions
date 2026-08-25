@@ -47,7 +47,7 @@ export function createLoadSharepointTool(
         throw new Error("Cancelled");
       }
 
-      const { bytes, fileName } = await client.downloadFile(params.url);
+      const { bytes, fileName } = await client.downloadFile(params.url, signal);
 
       if (signal?.aborted) {
         throw new Error("Cancelled");

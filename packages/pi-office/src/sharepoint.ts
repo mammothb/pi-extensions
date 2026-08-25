@@ -214,10 +214,12 @@ export class SharepointClient {
     return token;
   }
 
-  private async request(path: string): Promise<Response> {
+  private async request(path: string, signal?: AbortSignal): Promise<Response> {
+    // Body reads (arrayBuffer) are bound to the same signal by fetch itself.
+    const timeout = AbortSignal.timeout(60_000);
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: { Authorization: `Bearer ${this.token()}` },
-      signal: AbortSignal.timeout(60_000),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     if (res.status === 401 || res.status === 403) {
       throw new Error(
@@ -229,17 +231,21 @@ export class SharepointClient {
     return res;
   }
 
-  private async resolveDrive(parsed: DirectFileRef): Promise<string> {
+  private async resolveDrive(
+    parsed: DirectFileRef,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const key = `${parsed.host}/${parsed.sitePath ?? ""}`;
     const cached = this.drives.get(key);
     if (cached) {
       return cached.driveId;
     }
 
+    // Graph format: /sites/{hostname}:/{server-relative-path}
     const siteRef = parsed.sitePath
-      ? `${parsed.host}:${parsed.sitePath}`
+      ? `${parsed.host}:/${parsed.sitePath}`
       : parsed.host;
-    const siteRes = await this.request(`/sites/${siteRef}`);
+    const siteRes = await this.request(`/sites/${siteRef}`, signal);
     if (!siteRes.ok) {
       throw new Error(
         `Cannot access SharePoint site (${siteRes.status}): ${siteRef}`,
@@ -247,7 +253,7 @@ export class SharepointClient {
     }
     const site = (await siteRes.json()) as { id: string };
 
-    const driveRes = await this.request(`/sites/${site.id}/drive`);
+    const driveRes = await this.request(`/sites/${site.id}/drive`, signal);
     if (!driveRes.ok) {
       throw new Error(
         `Cannot access default document drive (${driveRes.status}) for site ${site.id}`,
@@ -266,10 +272,11 @@ export class SharepointClient {
    */
   private async downloadShared(
     url: string,
+    signal?: AbortSignal,
   ): Promise<{ bytes: Buffer; fileName: string }> {
     const token = encodeSharingUrl(url);
 
-    const metaRes = await this.request(`/shares/${token}/driveItem`);
+    const metaRes = await this.request(`/shares/${token}/driveItem`, signal);
     if (!metaRes.ok) {
       throw new Error(
         `Cannot resolve shared link (${metaRes.status}${
@@ -284,7 +291,10 @@ export class SharepointClient {
       );
     }
 
-    const contentRes = await this.request(`/shares/${token}/driveItem/content`);
+    const contentRes = await this.request(
+      `/shares/${token}/driveItem/content`,
+      signal,
+    );
     if (!contentRes.ok) {
       throw new Error(
         `Cannot download "${item.name ?? "file"}" (${contentRes.status})`,
@@ -302,14 +312,19 @@ export class SharepointClient {
    */
   async downloadFile(
     rawUrl: string,
+    signal?: AbortSignal,
   ): Promise<{ bytes: Buffer; fileName: string }> {
     const parsed = parseSharepointUrl(rawUrl.trim());
 
-    if (parsed.kind === "shared") {
-      return this.downloadShared(parsed.url);
+    if (signal?.aborted) {
+      throw new Error("Cancelled");
     }
 
-    const driveId = await this.resolveDrive(parsed);
+    if (parsed.kind === "shared") {
+      return this.downloadShared(parsed.url, signal);
+    }
+
+    const driveId = await this.resolveDrive(parsed, signal);
     const itemRef = `/drives/${driveId}/root:/${parsed.itemPath
       .split("/")
       .map(encodeURIComponent)
