@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-otel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenTelemetry traces and metrics for the pi coding harness, exported via OTLP/HTTP to Grafana otel-lgtm",
   "keywords": [
     "pi-package",

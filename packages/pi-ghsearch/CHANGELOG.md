@@ -1,5 +1,12 @@
 # @mammothb/pi-ghsearch
 
+## 1.1.5
+
+### Patch Changes
+
+- Updated dependencies [0152f03]
+  - @mammothb/pi-shared@1.6.0
+
 ## 1.1.4
 
 ### Patch Changes
