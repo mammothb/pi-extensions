@@ -72,6 +72,83 @@ function hasFileExtension(segment: string | undefined): boolean {
   return segment !== undefined && /\.[a-z0-9]+$/i.test(segment);
 }
 
+/** Strip the URL fragment — hashes in pasted URLs would break resolution. */
+function withoutFragment(rawUrl: string): string {
+  return rawUrl.split("#")[0] ?? rawUrl;
+}
+
+/**
+ * Office web editor pages carry the real target in ?sourcedoc={GUID}; let
+ * the Graph shares endpoint resolve them. Other _layouts system pages
+ * cannot be mapped to a document.
+ */
+function parseLayoutsPage(url: URL, rawUrl: string): SharedLinkRef | undefined {
+  if (!/\/_layouts\//i.test(url.pathname)) {
+    return undefined;
+  }
+  if (!url.searchParams.has("sourcedoc")) {
+    throw new Error(
+      `Unsupported SharePoint system page: "${rawUrl}". Paste a direct file ` +
+        `URL, an editor URL (?sourcedoc=...), or a share link instead.`,
+    );
+  }
+  return { kind: "shared", url: withoutFragment(rawUrl) };
+}
+
+/** Browser folder views expose the selected file via ?id=/server/rel/path. */
+function parseSelectedBrowserFile(url: URL): DirectFileRef | undefined {
+  const idParam = url.searchParams.get("id");
+  if (
+    !idParam?.startsWith("/") ||
+    !hasFileExtension(idParam.split("/").pop())
+  ) {
+    return undefined;
+  }
+  const ref = refFromServerRelative(url.host, idParam);
+  return ref?.itemPath ? ref : undefined;
+}
+
+/**
+ * Share links: "/:x:/r/sites/team/file.xlsx" embeds the real path after the
+ * marker; other forms ("/:x:/s/<token>") are opaque and need /shares.
+ */
+function parseShareMarker(
+  host: string,
+  segments: string[],
+  rawUrl: string,
+): ParsedSharepointUrl | undefined {
+  const markerIndex = segments.findIndex((s) => SHARE_MARKER_RE.test(s));
+  if (markerIndex === -1) {
+    return undefined;
+  }
+  const afterMarker = segments[markerIndex + 1];
+  const rest = segments.slice(markerIndex + 2);
+  if (afterMarker?.toLowerCase() === "r" && hasFileExtension(rest.at(-1))) {
+    const ref = refFromServerRelative(host, `/${rest.join("/")}`);
+    if (ref?.itemPath) {
+      return ref;
+    }
+  }
+  return { kind: "shared", url: withoutFragment(rawUrl) };
+}
+
+/** Plain document-library path; rejects folder views without a selection. */
+function parsePlainPath(
+  host: string,
+  segments: string[],
+  rawUrl: string,
+): DirectFileRef {
+  const ref = refFromServerRelative(host, `/${segments.join("/")}`);
+  const lastSegment = ref?.itemPath.split("/").pop();
+  if (!ref?.itemPath || lastSegment?.toLowerCase() === "allitems.aspx") {
+    throw new Error(
+      `URL does not point at a file: "${rawUrl}". Paste the URL of a specific ` +
+        `document, not a folder view.`,
+    );
+  }
+  return ref;
+}
+
 export function parseSharepointUrl(rawUrl: string): ParsedSharepointUrl {
   let url: URL;
   try {
@@ -85,63 +162,17 @@ export function parseSharepointUrl(rawUrl: string): ParsedSharepointUrl {
   if (url.protocol !== "https:") {
     throw new Error(`SharePoint URL must use https://, got: ${rawUrl}`);
   }
-  const cleanUrl = rawUrl.split("#")[0] ?? rawUrl;
   const segments = decodeURIComponent(url.pathname)
     .split("/")
     .filter((s) => s.length > 0);
 
-  // Office web editor pages carry the real target in ?sourcedoc={GUID};
-  // let the Graph shares endpoint resolve them.
-  if (/\/_layouts\//i.test(url.pathname) && url.searchParams.has("sourcedoc")) {
-    return { kind: "shared", url: cleanUrl };
-  }
-
-  // Other _layouts system pages cannot be mapped to a document.
-  if (/\/_layouts\//i.test(url.pathname)) {
-    throw new Error(
-      `Unsupported SharePoint system page: "${rawUrl}". Paste a direct file ` +
-        `URL, an editor URL (?sourcedoc=...), or a share link instead.`,
-    );
-  }
-
-  // Browser folder views expose the selected file via ?id=/server/rel/path.
-  const idParam = url.searchParams.get("id");
-  if (idParam?.startsWith("/")) {
-    const lastSegment = idParam.split("/").pop();
-    if (hasFileExtension(lastSegment)) {
-      const ref = refFromServerRelative(url.host, idParam);
-      if (ref?.itemPath) {
-        return ref;
-      }
-    }
-  }
-
-  // Share links: "/:x:/r/sites/team/file.xlsx" embeds the real path after
-  // the marker; other forms ("/:x:/s/<token>") are opaque.
-  const markerIndex = segments.findIndex((s) => SHARE_MARKER_RE.test(s));
-  if (markerIndex !== -1) {
-    const afterMarker = segments[markerIndex + 1];
-    const rest = segments.slice(markerIndex + 2);
-    if (afterMarker?.toLowerCase() === "r" && hasFileExtension(rest.at(-1))) {
-      const ref = refFromServerRelative(url.host, `/${rest.join("/")}`);
-      if (ref?.itemPath) {
-        return ref;
-      }
-    }
-    return { kind: "shared", url: cleanUrl };
-  }
-
-  const ref = refFromServerRelative(url.host, `/${segments.join("/")}`);
-  if (
-    !ref?.itemPath ||
-    ref.itemPath.split("/").pop()?.toLowerCase() === "allitems.aspx"
-  ) {
-    throw new Error(
-      `URL does not point at a file: "${rawUrl}". Paste the URL of a specific ` +
-        `document, not a folder view.`,
-    );
-  }
-  return ref;
+  // Try each URL shape in turn; first match wins.
+  return (
+    parseLayoutsPage(url, rawUrl) ??
+    parseSelectedBrowserFile(url) ??
+    parseShareMarker(url.host, segments, rawUrl) ??
+    parsePlainPath(url.host, segments, rawUrl)
+  );
 }
 
 interface ResolvedLocation {
