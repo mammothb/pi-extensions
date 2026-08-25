@@ -1,5 +1,12 @@
 # @mammothb/pi-otel
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [0152f03]
+  - @mammothb/pi-shared@1.6.0
+
 ## 0.2.0
 
 ### Minor Changes
