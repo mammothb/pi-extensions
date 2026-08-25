@@ -1,0 +1,95 @@
+import { writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import type { SharepointConfig } from "../config.js";
+import { SharepointClient } from "../sharepoint.js";
+import { buildToolResponse, createTempDir, truncatePreview } from "../utils.js";
+
+export interface LoadSharepointDetails {
+  outputPath: string;
+  source: string;
+  bytes: number;
+}
+
+const LoadSharepointSchema = Type.Object({
+  url: Type.String({
+    description:
+      "SharePoint file URL: direct document URL " +
+      '("https://contoso.sharepoint.com/sites/team/Shared Documents/report.pdf"), ' +
+      "Office editor URL (?sourcedoc={GUID}), or a share link (/:x:/r/...). " +
+      "Browser folder-view URLs (AllItems.aspx?id=...) also work.",
+  }),
+});
+
+export function createLoadSharepointTool(
+  config: SharepointConfig,
+): ToolDefinition<typeof LoadSharepointSchema, LoadSharepointDetails> {
+  const client = new SharepointClient(config);
+
+  return {
+    name: "load_sharepoint",
+    label: "Load SharePoint File",
+    description:
+      "Download a file from SharePoint via Microsoft Graph and write it to a temporary " +
+      "local path. Accepts direct document URLs, Office editor URLs " +
+      "(?sourcedoc={GUID}), and share links (/:x:/r/...). Feed the returned path into " +
+      "read_pdf / read_docx / read_xlsx / search_pdf. Requires sharepoint.tokenSource " +
+      "in the pi-office config.",
+    promptSnippet: "Download a file from SharePoint to a local temp path",
+    promptGuidelines: [
+      "load_sharepoint: accepts direct SharePoint URLs, editor URLs (?sourcedoc=...), and share links; use the returned outputPath with read_pdf/read_docx/read_xlsx.",
+    ],
+    parameters: LoadSharepointSchema,
+
+    async execute(_toolCallId, params, signal) {
+      if (signal?.aborted) {
+        throw new Error("Cancelled");
+      }
+
+      const { bytes, fileName } = await client.downloadFile(params.url, signal);
+
+      if (signal?.aborted) {
+        throw new Error("Cancelled");
+      }
+
+      const dir = await createTempDir();
+      const outputPath = await writeBytes(dir, fileName, bytes);
+
+      const preview = [
+        `# SharePoint download: ${fileName}`,
+        "",
+        `- Source: ${params.url}`,
+        `- Size: ${bytes.length} bytes`,
+        "",
+        "File saved locally — inspect it with the appropriate reader tool:",
+        "",
+        "```",
+        `outputPath = "${outputPath}"`,
+        "```",
+        "",
+        truncatePreview(
+          `${fileName} → ${basename(outputPath)} (${bytes.length} bytes)`,
+        ),
+      ].join("\n");
+
+      return buildToolResponse(preview, {
+        outputPath,
+        source: params.url,
+        bytes: bytes.length,
+      });
+    },
+  };
+}
+
+async function writeBytes(
+  dir: string,
+  fileName: string,
+  bytes: Buffer,
+): Promise<string> {
+  // Sanitize the filename: keep the base name only, strip path separators.
+  const safeName = basename(fileName).replace(/[/\\]/g, "_") || "download";
+  const filePath = join(dir, safeName);
+  await writeFile(filePath, bytes);
+  return filePath;
+}

@@ -1,7 +1,7 @@
 ---
 name: office
 description: >-
-  Use dedicated tools (read_pdf, search_pdf, read_docx, search_docx, read_xlsx, search_xlsx) for PDF, Word, and Excel files.
+  Use dedicated tools (read_pdf, search_pdf, read_docx, search_docx, read_xlsx, search_xlsx, load_sharepoint) for PDF, Word, and Excel files.
   Discover structure first, search before reading full documents, then read selectively.
   Pure JS — no LibreOffice, no system dependencies, no OCR setup needed.
   Works in corporate/air-gapped environments.
@@ -20,6 +20,8 @@ Do not fall back to manual CLI commands unless the extension tools are unavailab
 - Use `search_docx` to find a phrase in a Word document with character-offset context.
 - Use `read_xlsx` for Excel files — omit sheet name for index mode (sheet names + preview), provide sheet name for full single sheet. Set `raw: false` to get display-formatted values (dates, currencies, percentages as shown in Excel).
 - Use `search_xlsx` to find a phrase across all sheets or a specific sheet.
+- Use `load_sharepoint` (when available) to download a SharePoint file via Microsoft Graph;
+  pass the returned local path to the reader tools.
 
 ## Recommended workflow
 

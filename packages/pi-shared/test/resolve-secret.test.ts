@@ -57,6 +57,24 @@ describe("resolveSecret", () => {
     expect(resolveSecret(`file:${dir}`)).toBe(`file:${dir}`);
   });
 
+  it("resolves a cmd: reference and trims stdout", () => {
+    expect(resolveSecret("cmd:echo hello-token")).toBe("hello-token");
+  });
+
+  it("tokenizes quoted cmd: arguments", () => {
+    expect(resolveSecret('cmd:echo "two  spaces"')).toBe("two  spaces");
+  });
+
+  it("falls back to the literal when the command fails", () => {
+    expect(resolveSecret("cmd:false")).toBe("cmd:false");
+  });
+
+  it("falls back to the literal when the command is missing", () => {
+    expect(resolveSecret("cmd:pi-shared-no-such-binary-xyz --version")).toBe(
+      "cmd:pi-shared-no-such-binary-xyz --version",
+    );
+  });
+
   it("expands a leading tilde in a file: path", () => {
     const prevHome = process.env.HOME;
     process.env.HOME = tmpDir;
