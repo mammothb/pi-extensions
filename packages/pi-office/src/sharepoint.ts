@@ -4,13 +4,15 @@ import type { SharepointConfig } from "./config.js";
 /**
  * Minimal Microsoft Graph client for downloading SharePoint files.
  *
- * Flow per file URL (site/drive lookups cached per session):
- *   1. GET /sites/{host}:{sitePath}          → site id
- *   2. GET /sites/{siteId}/drive             → drive id
- *   3. GET /drives/{driveId}/root:/{path}:/content → file bytes
+ * URL shapes supported (parsed by parseSharepointUrl):
+ * - Direct document paths  → site → drive → /root:{path}:/content
+ *   (site/drive lookups cached per session)
+ * - Editor pages (_layouts/Doc.aspx?sourcedoc={GUID}) and opaque share
+ *   links → resolved through the /shares/{u!encoded}/driveItem endpoint
  */
 
-export interface ParsedSharepointUrl {
+export interface DirectFileRef {
+  kind: "direct";
   /** SharePoint host, e.g. "contoso.sharepoint.com". */
   host: string;
   /** Site path without leading slash, e.g. "sites/team". Null for root site. */
@@ -19,8 +21,56 @@ export interface ParsedSharepointUrl {
   itemPath: string;
 }
 
+export interface SharedLinkRef {
+  kind: "shared";
+  /** Fragment-stripped URL to resolve via the /shares endpoint. */
+  url: string;
+}
+
+export type ParsedSharepointUrl = DirectFileRef | SharedLinkRef;
+
 /** Site URL prefixes under which a site lives below the host root. */
-const SITE_SEGMENTS = new Set(["sites", "teams"]);
+const SITE_SEGMENTS = new Set(["sites", "teams", "personal"]);
+
+/** Share-link decoration segment, e.g. ":x:", ":w:", ":p:". */
+const SHARE_MARKER_RE = /^:[a-z]:$/i;
+
+/** Encode a URL into a Graph sharing token: "u!" + unpadded base64url. */
+function encodeSharingUrl(url: string): string {
+  const b64 = Buffer.from(url, "utf-8").toString("base64");
+  return `u!${b64.replace(/=+$/, "").replace(/\//g, "_").replace(/\+/g, "-")}`;
+}
+
+/**
+ * Build a direct file reference from a server-relative path such as
+ * "/sites/team/Shared Documents/report.pdf".
+ * Returns undefined when no item path remains.
+ */
+function refFromServerRelative(
+  host: string,
+  path: string,
+): DirectFileRef | undefined {
+  const segments = path.split("/").filter((s) => s.length > 0);
+  const [first, second] = segments;
+  if (first && second && SITE_SEGMENTS.has(first.toLowerCase())) {
+    return {
+      kind: "direct",
+      host,
+      sitePath: `${first}/${second}`,
+      itemPath: segments.slice(2).join("/"),
+    };
+  }
+  return {
+    kind: "direct",
+    host,
+    sitePath: null,
+    itemPath: segments.join("/"),
+  };
+}
+
+function hasFileExtension(segment: string | undefined): boolean {
+  return segment !== undefined && /\.[a-z0-9]+$/i.test(segment);
+}
 
 export function parseSharepointUrl(rawUrl: string): ParsedSharepointUrl {
   let url: URL;
@@ -35,31 +85,73 @@ export function parseSharepointUrl(rawUrl: string): ParsedSharepointUrl {
   if (url.protocol !== "https:") {
     throw new Error(`SharePoint URL must use https://, got: ${rawUrl}`);
   }
-
+  const cleanUrl = rawUrl.split("#")[0] ?? rawUrl;
   const segments = decodeURIComponent(url.pathname)
     .split("/")
     .filter((s) => s.length > 0);
 
-  const [first, second] = segments;
-  if (first && second && SITE_SEGMENTS.has(first.toLowerCase())) {
-    return {
-      host: url.host,
-      sitePath: `${first}/${second}`,
-      itemPath: segments.slice(2).join("/"),
-    };
+  // Office web editor pages carry the real target in ?sourcedoc={GUID};
+  // let the Graph shares endpoint resolve them.
+  if (/\/_layouts\//i.test(url.pathname) && url.searchParams.has("sourcedoc")) {
+    return { kind: "shared", url: cleanUrl };
   }
 
-  // Root site — everything in the path belongs to the default drive.
-  return {
-    host: url.host,
-    sitePath: null,
-    itemPath: segments.join("/"),
-  };
+  // Other _layouts system pages cannot be mapped to a document.
+  if (/\/_layouts\//i.test(url.pathname)) {
+    throw new Error(
+      `Unsupported SharePoint system page: "${rawUrl}". Paste a direct file ` +
+        `URL, an editor URL (?sourcedoc=...), or a share link instead.`,
+    );
+  }
+
+  // Browser folder views expose the selected file via ?id=/server/rel/path.
+  const idParam = url.searchParams.get("id");
+  if (idParam?.startsWith("/")) {
+    const lastSegment = idParam.split("/").pop();
+    if (hasFileExtension(lastSegment)) {
+      const ref = refFromServerRelative(url.host, idParam);
+      if (ref?.itemPath) {
+        return ref;
+      }
+    }
+  }
+
+  // Share links: "/:x:/r/sites/team/file.xlsx" embeds the real path after
+  // the marker; other forms ("/:x:/s/<token>") are opaque.
+  const markerIndex = segments.findIndex((s) => SHARE_MARKER_RE.test(s));
+  if (markerIndex !== -1) {
+    const afterMarker = segments[markerIndex + 1];
+    const rest = segments.slice(markerIndex + 2);
+    if (afterMarker?.toLowerCase() === "r" && hasFileExtension(rest.at(-1))) {
+      const ref = refFromServerRelative(url.host, `/${rest.join("/")}`);
+      if (ref?.itemPath) {
+        return ref;
+      }
+    }
+    return { kind: "shared", url: cleanUrl };
+  }
+
+  const ref = refFromServerRelative(url.host, `/${segments.join("/")}`);
+  if (
+    !ref?.itemPath ||
+    ref.itemPath.split("/").pop()?.toLowerCase() === "allitems.aspx"
+  ) {
+    throw new Error(
+      `URL does not point at a file: "${rawUrl}". Paste the URL of a specific ` +
+        `document, not a folder view.`,
+    );
+  }
+  return ref;
 }
 
 interface ResolvedLocation {
   driveId: string;
   sitePathKey: string;
+}
+
+interface DriveItemJson {
+  name?: string;
+  folder?: unknown;
 }
 
 export class SharepointClient {
@@ -99,13 +191,14 @@ export class SharepointClient {
     if (res.status === 401 || res.status === 403) {
       throw new Error(
         `SharePoint request unauthorized (${res.status}). The token from ` +
-          `"${this.tokenSource}" may be expired or lack Files.Read permission.`,
+          `"${this.tokenSource}" may be expired or lack Files.Read / ` +
+          `Sites.Read.All permission.`,
       );
     }
     return res;
   }
 
-  private async resolveDrive(parsed: ParsedSharepointUrl): Promise<string> {
+  private async resolveDrive(parsed: DirectFileRef): Promise<string> {
     const key = `${parsed.host}/${parsed.sitePath ?? ""}`;
     const cached = this.drives.get(key);
     if (cached) {
@@ -136,21 +229,60 @@ export class SharepointClient {
   }
 
   /**
-   * Download a file given its full SharePoint URL.
+   * Download via the Graph shares endpoint (editor pages, opaque share
+   * links). Two requests: metadata (validates it's a file, gets the name),
+   * then the content stream.
+   */
+  private async downloadShared(
+    url: string,
+  ): Promise<{ bytes: Buffer; fileName: string }> {
+    const token = encodeSharingUrl(url);
+
+    const metaRes = await this.request(`/shares/${token}/driveItem`);
+    if (!metaRes.ok) {
+      throw new Error(
+        `Cannot resolve shared link (${metaRes.status}${
+          metaRes.status === 404 ? " — not found or no access" : ""
+        }): ${url}`,
+      );
+    }
+    const item = (await metaRes.json()) as DriveItemJson;
+    if (item.folder) {
+      throw new Error(
+        `Shared link points at a folder (${item.name ?? "unknown"}), not a file.`,
+      );
+    }
+
+    const contentRes = await this.request(`/shares/${token}/driveItem/content`);
+    if (!contentRes.ok) {
+      throw new Error(
+        `Cannot download "${item.name ?? "file"}" (${contentRes.status})`,
+      );
+    }
+    return {
+      bytes: Buffer.from(await contentRes.arrayBuffer()),
+      fileName: item.name ?? "download",
+    };
+  }
+
+  /**
+   * Download a file given any supported SharePoint URL shape.
    * Returns the raw file bytes and the original filename.
    */
   async downloadFile(
     rawUrl: string,
   ): Promise<{ bytes: Buffer; fileName: string }> {
-    const parsed = parseSharepointUrl(rawUrl);
-    if (!parsed.itemPath) {
-      throw new Error(
-        `URL does not point at a file: "${rawUrl}". Expected the full path ` +
-          `to a document inside a document library.`,
-      );
+    const parsed = parseSharepointUrl(rawUrl.trim());
+
+    if (parsed.kind === "shared") {
+      return this.downloadShared(parsed.url);
     }
+
     const driveId = await this.resolveDrive(parsed);
-    const itemRef = `/drives/${driveId}/root:/${parsed.itemPath.split("/").map(encodeURIComponent).join("/")}`;
+    const itemRef = `/drives/${driveId}/root:/${parsed.itemPath
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}`;
     const res = await this.request(`${itemRef}:/content`);
     if (!res.ok) {
       throw new Error(
@@ -159,8 +291,9 @@ export class SharepointClient {
         })`,
       );
     }
-    const bytes = Buffer.from(await res.arrayBuffer());
-    const fileName = parsed.itemPath.split("/").pop() ?? "download";
-    return { bytes, fileName };
+    return {
+      bytes: Buffer.from(await res.arrayBuffer()),
+      fileName: parsed.itemPath.split("/").pop() ?? "download",
+    };
   }
 }

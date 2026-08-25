@@ -15,8 +15,10 @@ export interface LoadSharepointDetails {
 const LoadSharepointSchema = Type.Object({
   url: Type.String({
     description:
-      "Full SharePoint file URL, e.g. " +
-      '"https://contoso.sharepoint.com/sites/team/Shared Documents/report.pdf"',
+      "SharePoint file URL: direct document URL " +
+      '("https://contoso.sharepoint.com/sites/team/Shared Documents/report.pdf"), ' +
+      "Office editor URL (?sourcedoc={GUID}), or a share link (/:x:/r/...). " +
+      "Browser folder-view URLs (AllItems.aspx?id=...) also work.",
   }),
 });
 
@@ -30,11 +32,13 @@ export function createLoadSharepointTool(
     label: "Load SharePoint File",
     description:
       "Download a file from SharePoint via Microsoft Graph and write it to a temporary " +
-      "local path. Feed the returned path into read_pdf / read_docx / read_xlsx / search_pdf. " +
-      "Requires sharepoint.tokenSource in the pi-office config.",
+      "local path. Accepts direct document URLs, Office editor URLs " +
+      "(?sourcedoc={GUID}), and share links (/:x:/r/...). Feed the returned path into " +
+      "read_pdf / read_docx / read_xlsx / search_pdf. Requires sharepoint.tokenSource " +
+      "in the pi-office config.",
     promptSnippet: "Download a file from SharePoint to a local temp path",
     promptGuidelines: [
-      "load_sharepoint: pass the full SharePoint file URL; use the returned outputPath with read_pdf/read_docx/read_xlsx.",
+      "load_sharepoint: accepts direct SharePoint URLs, editor URLs (?sourcedoc=...), and share links; use the returned outputPath with read_pdf/read_docx/read_xlsx.",
     ],
     parameters: LoadSharepointSchema,
 

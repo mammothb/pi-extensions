@@ -139,4 +139,55 @@ describe("SharepointClient", () => {
       "Bearer cmd-token",
     );
   });
+
+  it("resolves editor URLs via the shares endpoint", async () => {
+    const rawUrl =
+      "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc=%7BGUID%7D&file=report.docx&action=edit";
+    const expectedToken = `u!${Buffer.from(rawUrl, "utf-8")
+      .toString("base64")
+      .replace(/=+$/, "")
+      .replace(/\//g, "_")
+      .replace(/\+/g, "-")}`;
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ name: "report.docx", file: {} }))
+      .mockResolvedValueOnce(bytesResponse(new TextEncoder().encode("docx")));
+
+    const client = new SharepointClient(CONFIG);
+    const result = await client.downloadFile(rawUrl);
+
+    expect(result.fileName).toBe("report.docx");
+    expect(result.bytes.toString()).toBe("docx");
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `https://graph.microsoft.com/v1.0/shares/${expectedToken}/driveItem`,
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      `https://graph.microsoft.com/v1.0/shares/${expectedToken}/driveItem/content`,
+    );
+  });
+
+  it("resolves opaque share links via the shares endpoint", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ name: "budget.xlsx" }))
+      .mockResolvedValueOnce(bytesResponse(new Uint8Array([1])));
+
+    const client = new SharepointClient(CONFIG);
+    const result = await client.downloadFile(
+      "https://contoso.sharepoint.com/:x:/s/sites/team/EYz8mNtoken",
+    );
+    expect(result.fileName).toBe("budget.xlsx");
+  });
+
+  it("rejects shared links that point at folders", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ name: "Team Docs", folder: {} }),
+    );
+
+    const client = new SharepointClient(CONFIG);
+    await expect(
+      client.downloadFile(
+        "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc={FOLDER}",
+      ),
+    ).rejects.toThrow(/folder.*not a file/);
+  });
 });
