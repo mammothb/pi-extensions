@@ -53,18 +53,24 @@ function refFromServerRelative(
   const segments = path.split("/").filter((s) => s.length > 0);
   const [first, second] = segments;
   if (first && second && SITE_SEGMENTS.has(first.toLowerCase())) {
+    // segments: [sites|teams|personal, {site}, {library}, ...itemPath].
+    // downloadFile resolves the site's *default* drive, whos root already maps
+    // to the document library ({library}), so that segment must be dropped
+    // from the drive-relative path or Graph 404s (e.g., "Shared Documents/...").
     return {
       kind: "direct",
       host,
       sitePath: `${first}/${second}`,
-      itemPath: segments.slice(2).join("/"),
+      itemPath: segments.slice(3).join("/"),
     };
   }
   return {
     kind: "direct",
     host,
     sitePath: null,
-    itemPath: segments.join("/"),
+    // segments: [{library}, ...itemPath] - drop the library folder for the
+    // same reason (the resolved default drive root is that library).
+    itemPath: segments.slice(1).join("/"),
   };
 }
 
@@ -86,13 +92,22 @@ function parseLayoutsPage(url: URL, rawUrl: string): SharedLinkRef | undefined {
   if (!/\/_layouts\//i.test(url.pathname)) {
     return undefined;
   }
-  if (!url.searchParams.has("sourcedoc")) {
+  const sourcedoc = url.searchParams.get("sourcedoc");
+  if (!sourcedoc) {
     throw new Error(
       `Unsupported SharePoint system page: "${rawUrl}". Paste a direct file ` +
         `URL, an editor URL (?sourcedoc=...), or a share link instead.`,
     );
   }
-  return { kind: "shared", url: withoutFragment(rawUrl) };
+  // The /shares share-id is a byte-exact base64 of the URL, and editor links
+  // are not true sharing URLs, so Graph resolves them best-effort by the
+  // encoded blob. Stray Teams/Office params carried in the past (notably
+  // web=1) flip SharePoint into a context that returns 403 accessDenied.
+  // The file's identity is the sourcedoc GUID, so drop every other param.
+  return {
+    kind: "shared",
+    url: `${url.origin}${url.pathname}?sourcedoc=${encodeURIComponent(sourcedoc)}`,
+  };
 }
 
 /** Browser folder views expose the selected file via ?id=/server/rel/path. */
