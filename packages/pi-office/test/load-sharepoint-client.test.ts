@@ -64,9 +64,10 @@ describe("SharepointClient", () => {
     expect(driveCall[0]).toBe(
       "https://graph.microsoft.com/v1.0/sites/site-1/drive",
     );
-    // Spaces in the item path must be encoded.
+    // The parser drops the document-library segment (e.g. "Shared Documents")
+    // because the resolved default drive's root already maps to that library.
     expect(fetchMock.mock.calls[2][0]).toBe(
-      "https://graph.microsoft.com/v1.0/drives/drive-1/root:/Shared%20Documents/a.pdf:/content",
+      "https://graph.microsoft.com/v1.0/drives/drive-1/root:/a.pdf:/content",
     );
   });
 
@@ -107,7 +108,7 @@ describe("SharepointClient", () => {
     fetchMock.mockResolvedValue(jsonResponse({}, 401));
     const client = new SharepointClient(CONFIG);
     await expect(
-      client.downloadFile("https://contoso.sharepoint.com/sites/t/f.pdf"),
+      client.downloadFile("https://contoso.sharepoint.com/sites/t/Docs/f.pdf"),
     ).rejects.toThrow(/unauthorized.*expired or lack Files.Read/i);
   });
 
@@ -119,7 +120,9 @@ describe("SharepointClient", () => {
 
     const client = new SharepointClient(CONFIG);
     await expect(
-      client.downloadFile("https://contoso.sharepoint.com/sites/t/gone.pdf"),
+      client.downloadFile(
+        "https://contoso.sharepoint.com/sites/t/Docs/gone.pdf",
+      ),
     ).rejects.toThrow(/file not found/);
   });
 
@@ -127,7 +130,7 @@ describe("SharepointClient", () => {
     delete process.env.PI_OFFICE_TEST_TOKEN;
     const client = new SharepointClient(CONFIG);
     await expect(
-      client.downloadFile("https://contoso.sharepoint.com/sites/t/f.pdf"),
+      client.downloadFile("https://contoso.sharepoint.com/sites/t/Docs/f.pdf"),
     ).rejects.toThrow(/Failed to resolve SharePoint token/);
   });
 
@@ -137,7 +140,7 @@ describe("SharepointClient", () => {
       tokenSource: "",
     });
     await expect(
-      client.downloadFile("https://contoso.sharepoint.com/sites/t/f.pdf"),
+      client.downloadFile("https://contoso.sharepoint.com/sites/t/Docs/f.pdf"),
     ).rejects.toThrow(/not configured/);
   });
 
@@ -151,7 +154,9 @@ describe("SharepointClient", () => {
       ...CONFIG,
       tokenSource: "cmd:echo cmd-token",
     });
-    await client.downloadFile("https://contoso.sharepoint.com/sites/t/f.bin");
+    await client.downloadFile(
+      "https://contoso.sharepoint.com/sites/t/Docs/f.bin",
+    );
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
       "Bearer cmd-token",
     );
@@ -160,7 +165,11 @@ describe("SharepointClient", () => {
   it("resolves editor URLs via the shares endpoint", async () => {
     const rawUrl =
       "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc=%7BGUID%7D&file=report.docx&action=edit";
-    const expectedToken = `u!${Buffer.from(rawUrl, "utf-8")
+    // The parser strips everything but the sourcedoc param before the shares
+    // endpoint resolves the link, so the token is built from the stripped URL.
+    const parsedUrl =
+      "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc=%7BGUID%7D";
+    const expectedToken = `u!${Buffer.from(parsedUrl, "utf-8")
       .toString("base64")
       .replace(/=+$/, "")
       .replace(/\//g, "_")
@@ -215,7 +224,7 @@ describe("SharepointClient", () => {
     const client = new SharepointClient(CONFIG);
     await expect(
       client.downloadFile(
-        "https://contoso.sharepoint.com/sites/t/f.pdf",
+        "https://contoso.sharepoint.com/sites/t/Docs/f.pdf",
         controller.signal,
       ),
     ).rejects.toThrow(/Cancelled/);
@@ -231,7 +240,7 @@ describe("SharepointClient", () => {
 
     const client = new SharepointClient(CONFIG);
     await client.downloadFile(
-      "https://contoso.sharepoint.com/sites/t/f.pdf",
+      "https://contoso.sharepoint.com/sites/t/Docs/f.pdf",
       controller.signal,
     );
 
@@ -266,7 +275,7 @@ describe("SharepointClient", () => {
       const start = Date.now();
       await expect(
         client.downloadFile(
-          "https://contoso.sharepoint.com/sites/t/stalled.pdf",
+          "https://contoso.sharepoint.com/sites/t/Docs/stalled.pdf",
           controller.signal,
         ),
       ).rejects.toThrow();

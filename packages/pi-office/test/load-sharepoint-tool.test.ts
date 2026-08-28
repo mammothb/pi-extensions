@@ -63,7 +63,7 @@ describe("createLoadSharepointTool", () => {
     await expect(
       tool.execute(
         "call-1",
-        { url: "https://contoso.sharepoint.com/sites/t/f.pdf" },
+        { url: "https://contoso.sharepoint.com/sites/t/Docs/f.pdf" },
         undefined,
         undefined,
         {} as never,
