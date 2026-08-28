@@ -1,6 +1,6 @@
 {
   "name": "@mammothb/pi-office",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A pi extension for reading and searching PDF, DOCX, and XLSX files, plus SharePoint downloads via Microsoft Graph — pure JS, zero system dependencies",
   "keywords": [
     "pi-package"
