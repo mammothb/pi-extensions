@@ -11,13 +11,15 @@ describe("parseSharepointUrl — direct paths", () => {
       kind: "direct",
       host: "contoso.sharepoint.com",
       sitePath: "sites/team",
-      itemPath: "Shared Documents/report.pdf",
+      itemPath: "report.pdf",
     });
   });
 
   it("parses a /teams/ URL", () => {
     expect(
-      parseSharepointUrl("https://contoso.sharepoint.com/teams/eng/a.docx"),
+      parseSharepointUrl(
+        "https://contoso.sharepoint.com/teams/eng/Documents/a.docx",
+      ),
     ).toEqual({
       kind: "direct",
       host: "contoso.sharepoint.com",
@@ -35,7 +37,7 @@ describe("parseSharepointUrl — direct paths", () => {
       kind: "direct",
       host: "contoso.sharepoint.com",
       sitePath: null,
-      itemPath: "Shared Documents/file.xlsx",
+      itemPath: "file.xlsx",
     });
   });
 
@@ -48,7 +50,7 @@ describe("parseSharepointUrl — direct paths", () => {
       kind: "direct",
       host: "contoso-my.sharepoint.com",
       sitePath: "personal/alice_contoso_com",
-      itemPath: "Documents/notes.docx",
+      itemPath: "notes.docx",
     });
   });
 
@@ -56,7 +58,7 @@ describe("parseSharepointUrl — direct paths", () => {
     const parsed = parseSharepointUrl(
       "https://contoso.sharepoint.com/sites/team/Docs%20Folder/my%20file.pdf",
     );
-    expect(parsed).toMatchObject({ itemPath: "Docs Folder/my file.pdf" });
+    expect(parsed).toMatchObject({ itemPath: "my file.pdf" });
   });
 
   it("rejects non-https URLs", () => {
@@ -82,20 +84,22 @@ describe("parseSharepointUrl — editor pages", () => {
   it("routes _layouts Doc.aspx?sourcedoc to the shares resolver", () => {
     const raw =
       "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc=%7B8A5B1F2E-3C4D-4E5F-8A9B-0C1D2E3F4A5B%7D&file=report.docx&action=edit";
+    // Stray query params (file=, action=) are stripped — only the sourcedoc
+    // GUID is needed by the shares endpoint.
     expect(parseSharepointUrl(raw)).toEqual({
       kind: "shared",
-      url: raw,
+      url: "https://contoso.sharepoint.com/sites/team/_layouts/15/Doc.aspx?sourcedoc=%7B8A5B1F2E-3C4D-4E5F-8A9B-0C1D2E3F4A5B%7D",
     });
   });
 
-  it("strips fragments but keeps query for editor URLs", () => {
+  it("strips fragments and extra query params for editor URLs", () => {
     const parsed = parseSharepointUrl(
       "https://contoso-my.sharepoint.com/personal/a/_layouts/15/Doc.aspx?sourcedoc={GUID}&file=x.xlsx#anchor",
     );
     expect(parsed.kind).toBe("shared");
     if (parsed.kind === "shared") {
       expect(parsed.url).not.toContain("#");
-      expect(parsed.url).toContain("sourcedoc={GUID}");
+      expect(parsed.url).toContain("sourcedoc=%7BGUID%7D");
     }
   });
 
@@ -117,7 +121,7 @@ describe("parseSharepointUrl — share links", () => {
       kind: "direct",
       host: "contoso.sharepoint.com",
       sitePath: "sites/team",
-      itemPath: "Documents/q3.xlsx",
+      itemPath: "q3.xlsx",
     });
   });
 
@@ -129,7 +133,7 @@ describe("parseSharepointUrl — share links", () => {
       kind: "direct",
       host: "contoso-my.sharepoint.com",
       sitePath: "personal/alice_contoso_com",
-      itemPath: "Documents/draft.docx",
+      itemPath: "draft.docx",
     });
   });
 
@@ -151,7 +155,7 @@ describe("parseSharepointUrl — browser folder views", () => {
       kind: "direct",
       host: "contoso.sharepoint.com",
       sitePath: "sites/team",
-      itemPath: "Shared Documents/plan.pdf",
+      itemPath: "plan.pdf",
     });
   });
 
