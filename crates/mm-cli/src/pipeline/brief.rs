@@ -133,6 +133,18 @@ fn strip_self_talk(text: &str) -> String {
     result
 }
 
+/// Truncate `s` at byte index `max`, flooring to the nearest char boundary.
+fn clip_at_char_boundary(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Compress a bash command for brief display.
 fn compress_bash(raw: &str) -> String {
     // Take first meaningful line
@@ -156,7 +168,7 @@ fn compress_bash(raw: &str) -> String {
 
     // Cap length
     if cmd.len() > BASH_CAP {
-        format!("{}...", &cmd[..BASH_CAP - 3])
+        format!("{}...", clip_at_char_boundary(&cmd, BASH_CAP - 3))
     } else {
         cmd
     }
@@ -197,7 +209,7 @@ fn tool_one_liner(name: &str, args: &Value) -> String {
     // query fallback (clip at 60 chars)
     if let Some(query) = args.get("query").and_then(Value::as_str) {
         let clipped = if query.len() > 60 {
-            format!("{}...", &query[..57])
+            format!("{}...", clip_at_char_boundary(query, 57))
         } else {
             query.to_string()
         };
