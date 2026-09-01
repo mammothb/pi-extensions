@@ -133,6 +133,18 @@ fn strip_self_talk(text: &str) -> String {
     result
 }
 
+/// Truncate `s` at byte index `max`, flooring to the nearest char boundary.
+fn clip_at_char_boundary(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Compress a bash command for brief display.
 fn compress_bash(raw: &str) -> String {
     // Take first meaningful line
@@ -156,7 +168,7 @@ fn compress_bash(raw: &str) -> String {
 
     // Cap length
     if cmd.len() > BASH_CAP {
-        format!("{}...", &cmd[..BASH_CAP - 3])
+        format!("{}...", clip_at_char_boundary(&cmd, BASH_CAP - 3))
     } else {
         cmd
     }
@@ -197,7 +209,7 @@ fn tool_one_liner(name: &str, args: &Value) -> String {
     // query fallback (clip at 60 chars)
     if let Some(query) = args.get("query").and_then(Value::as_str) {
         let clipped = if query.len() > 60 {
-            format!("{}...", &query[..57])
+            format!("{}...", clip_at_char_boundary(query, 57))
         } else {
             query.to_string()
         };
@@ -636,6 +648,16 @@ mod tests {
         assert_eq!(compress_bash("line1\nline2\nline3"), "line1");
     }
 
+    #[rstest]
+    fn compress_bash_multibyte_at_cap_boundary() {
+        // '界' is a 3-byte char. Placed at byte 116, it spans 116..119,
+        // so the old `&cmd[..BASH_CAP - 3]` slice (byte 117) split it and
+        // panicked. Must floor to a char boundary instead.
+        let cmd = format!("{}界bbbb", "a".repeat(116));
+        let result = compress_bash(&cmd);
+        assert_eq!(result, format!("{}...", "a".repeat(116)));
+    }
+
     // ================
     // tool_one_liner
     // ================
@@ -686,6 +708,15 @@ mod tests {
             tool_one_liner("Search", &json!({"query": "auth"})),
             "* Search \"auth\""
         );
+    }
+
+    #[rstest]
+    fn tool_one_liner_query_multibyte_at_clip_boundary() {
+        // '界' at byte 56 spans 56..59, so the old `&query[..57]` slice
+        // split it and panicked. Must floor to a char boundary.
+        let query = format!("{}界zz", "q".repeat(56));
+        let result = tool_one_liner("Search", &json!({ "query": query }));
+        assert_eq!(result, format!("* Search \"{}...\"", "q".repeat(56)));
     }
 
     #[rstest]
