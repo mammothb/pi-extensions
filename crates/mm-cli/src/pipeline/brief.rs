@@ -648,6 +648,16 @@ mod tests {
         assert_eq!(compress_bash("line1\nline2\nline3"), "line1");
     }
 
+    #[rstest]
+    fn compress_bash_multibyte_at_cap_boundary() {
+        // '界' is a 3-byte char. Placed at byte 116, it spans 116..119,
+        // so the old `&cmd[..BASH_CAP - 3]` slice (byte 117) split it and
+        // panicked. Must floor to a char boundary instead.
+        let cmd = format!("{}界bbbb", "a".repeat(116));
+        let result = compress_bash(&cmd);
+        assert_eq!(result, format!("{}...", "a".repeat(116)));
+    }
+
     // ================
     // tool_one_liner
     // ================
@@ -698,6 +708,15 @@ mod tests {
             tool_one_liner("Search", &json!({"query": "auth"})),
             "* Search \"auth\""
         );
+    }
+
+    #[rstest]
+    fn tool_one_liner_query_multibyte_at_clip_boundary() {
+        // '界' at byte 56 spans 56..59, so the old `&query[..57]` slice
+        // split it and panicked. Must floor to a char boundary.
+        let query = format!("{}界zz", "q".repeat(56));
+        let result = tool_one_liner("Search", &json!({ "query": query }));
+        assert_eq!(result, format!("* Search \"{}...\"", "q".repeat(56)));
     }
 
     #[rstest]
