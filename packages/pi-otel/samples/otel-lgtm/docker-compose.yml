@@ -10,6 +10,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DASHBOARDS_ALLOW_UI_UPDATES=true
     volumes:
       - otel-lgtm-data:/data
 volumes:

@@ -63,7 +63,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
+        "w": 8,
         "x": 0,
         "y": 1
       },
@@ -133,8 +133,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 6,
+        "w": 8,
+        "x": 8,
         "y": 1
       },
       "id": 2,
@@ -184,8 +184,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 6,
-        "x": 18,
+        "w": 8,
+        "x": 16,
         "y": 1
       },
       "id": 5,
@@ -259,7 +259,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (pi_tool_name) (pi_tool_calls_total)",
+          "expr": "sum by (pi_tool_name) (increase(pi_tool_calls_total[$__range]) > 0)",
           "legendFormat": "{{pi_tool_name}}",
           "refId": "A"
         }
@@ -287,7 +287,7 @@
       "id": 3,
       "targets": [
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_calls_total[5m]) * 60)",
+          "expr": "sum by (pi_tool_name) ((rate(pi_tool_calls_total[$__range]) > 0) * 60)",
           "legendFormat": "{{pi_tool_name}}",
           "refId": "A"
         }
@@ -327,7 +327,7 @@
       "id": 4,
       "targets": [
         {
-          "expr": "(sum by (pi_tool_name) (rate(pi_tool_calls_total{pi_tool_is_error=\"true\"}[5m])) or (sum by (pi_tool_name) (rate(pi_tool_calls_total[5m])) * 0)) / clamp_min(sum by (pi_tool_name) (rate(pi_tool_calls_total[5m])), 0.0001)",
+          "expr": "sum by (pi_tool_name) (rate(pi_tool_calls_total{pi_tool_is_error=\"true\"}[$__range])) / sum by (pi_tool_name) (rate(pi_tool_calls_total[$__range]))",
           "legendFormat": "{{pi_tool_name}}",
           "refId": "A"
         }
@@ -389,7 +389,83 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "0-10ms"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "10-100ms"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "100ms-1s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "1-10s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": ">10s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -422,31 +498,31 @@
       },
       "targets": [
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"10\"}[1h]))",
+          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"10\"}[$__range]) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A1"
         },
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"100\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10\"}[1h]))",
+          "expr": "sum by (pi_tool_name) ((rate(pi_tool_duration_bucket{le=\"100\"}[$__range]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10\"}[$__range])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A2"
         },
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"1000\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"100\"}[1h]))",
+          "expr": "sum by (pi_tool_name) ((rate(pi_tool_duration_bucket{le=\"1000\"}[$__range]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"100\"}[$__range])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A3"
         },
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"10000\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"1000\"}[1h]))",
+          "expr": "sum by (pi_tool_name) ((rate(pi_tool_duration_bucket{le=\"10000\"}[$__range]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"1000\"}[$__range])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A4"
         },
         {
-          "expr": "sum by (pi_tool_name) (rate(pi_tool_duration_bucket{le=\"+Inf\"}[1h]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10000\"}[1h]))",
+          "expr": "sum by (pi_tool_name) ((rate(pi_tool_duration_bucket{le=\"+Inf\"}[$__range]) - ignoring(le) rate(pi_tool_duration_bucket{le=\"10000\"}[$__range])) > 0)",
           "format": "table",
           "instant": true,
           "refId": "A5"
