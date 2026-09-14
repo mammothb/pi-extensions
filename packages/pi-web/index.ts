@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { loadConfig } from "./src/config.js";
+import { loadConfig, resolveUnslothEngines } from "./src/config.js";
 import {
   getInstancesDir,
   inspectShutdownState,
@@ -8,6 +8,17 @@ import {
 } from "./src/lib/searxng-manager.js";
 import { createWebfetchTool } from "./src/webfetch.js";
 import { createWebsearchTool } from "./src/websearch.js";
+
+function describeProvider(config: ReturnType<typeof loadConfig>): string {
+  switch (config.provider) {
+    case "searxng":
+      return config.searxng.url;
+    case "exa-mcp":
+      return config.exaMcp.url;
+    case "unsloth":
+      return `engines: ${resolveUnslothEngines(config.unsloth).join(",")}`;
+  }
+}
 
 /**
  * Set up the SearXNG Docker lifecycle for the current pi session.
@@ -69,10 +80,8 @@ export default function (pi: ExtensionAPI) {
       searxngShutdown = setupSearxng(config.searxng.script).shutdown;
     }
 
-    const providerDetail =
-      config.provider === "searxng" ? config.searxng.url : config.exaMcp.url;
     ctx.ui.notify(
-      `Web: fetch + search ready (search: ${config.provider} @ ${providerDetail})`,
+      `Web: fetch + search ready (search: ${config.provider} @ ${describeProvider(config)})`,
       "info",
     );
   });
